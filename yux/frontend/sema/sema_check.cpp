@@ -564,6 +564,11 @@ void SemaPass::checkArrayInit(ExprArrayInitNode* n, const TypeInfo* expected) {
         }
     }
 
+    if (auto* ilit = dynamic_cast<LiteralIntNode*>(n->value())) {
+        (void)sema::parseIntLiteral(ilit->getValue().getText(), n->getLineNumber(), n->getColumn(),
+                                    ilit->getType().name);
+    }
+
     auto rejectUnsupportedFill = [&]() {
         // Phase C：fill 须是 int / float / bool 字面量（与 compileArrayInitExpr 对齐）。
         // string / null / 码点 / 变量（literalObj）→ E3080。与 T 无关，模板期也报。

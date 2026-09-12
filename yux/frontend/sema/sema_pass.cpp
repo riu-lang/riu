@@ -205,6 +205,10 @@ void SemaPass::run() {
                 auto sft = sf.type->getType();
                 validateContainerBansAt(sft, sf.type, sf.type->getLineNumber(), sf.type->getColumn(), false);
                 noteConcreteGenericType(sft);
+                if (sf.init) {
+                    visitExpr(sf.init, &sft);
+                    flushIntLiteralRangeChecks();
+                }
             } catch (const YuxError&) {
                 throw;
             } catch (...) { // NOLINT(bugprone-empty-catch)
@@ -219,6 +223,11 @@ void SemaPass::run() {
                 validateContainerBansAt(gc->getType(), gc->typeNode(), gc->getLineNumber(), gc->getColumn(), false);
             }
             noteConcreteGenericType(gc->getType());
+            if (gc->value()) {
+                TypeInfo ty = gc->getType();
+                visitExpr(gc->value(), &ty);
+                flushIntLiteralRangeChecks();
+            }
         } catch (const YuxError&) {
             throw;
         } catch (...) { // NOLINT(bugprone-empty-catch)
@@ -231,6 +240,11 @@ void SemaPass::run() {
                 validateContainerBansAt(gv->getType(), gv->typeNode(), gv->getLineNumber(), gv->getColumn(), false);
             }
             noteConcreteGenericType(gv->getType());
+            if (gv->value()) {
+                TypeInfo ty = gv->getType();
+                visitExpr(gv->value(), &ty);
+                flushIntLiteralRangeChecks();
+            }
         } catch (const YuxError&) {
             throw;
         } catch (...) { // NOLINT(bugprone-empty-catch)
@@ -348,8 +362,21 @@ void SemaPass::visitSpecDefaults() {
     }
 }
 
+void SemaPass::flushIntLiteralRangeChecks() {
+    for (auto& p : _pendingIntLits) {
+        if (!p.lit) continue;
+        (void)sema::parseIntLiteral(p.lit->getValue().getText(), p.line, p.col, p.lit->getType().name,
+                                    p.lit->isUnaryNegated());
+    }
+    _pendingIntLits.clear();
+}
+
 void SemaPass::visitFn(FnNode* fn) {
     if (!fn) return;
+    // 泛型实例复查会嵌套 visitFn；外层尚未推断完的灵活整数不能被内层 flush 掉。
+    auto savedPending = std::move(_pendingIntLits);
+    _pendingIntLits.clear();
+
     // Phase 3.3 前置.4: 进入 fn 时记 _currentFn, 让 visitExpr 里的
     // checkErrPropagateForIdCall / checkBangWithoutFallibleCaller 能拿到
     // caller 的 #Fallible(E) 注解.
@@ -401,6 +428,8 @@ void SemaPass::visitFn(FnNode* fn) {
     for (auto& stmt : fn->body()) {
         visitStmt(stmt);
     }
+    flushIntLiteralRangeChecks();
+    _pendingIntLits = std::move(savedPending);
     _currentTypeParams = std::move(savedTypeParams);
     _currentFn = savedFn;
 }

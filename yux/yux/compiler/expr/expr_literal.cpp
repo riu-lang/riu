@@ -53,7 +53,7 @@ llvm::Value* Compiler::compileArrayInitExpr(ExprArrayInitNode* node, const TypeI
     f64 floatFillVal = 0.0;
 
     if (auto intLiteral = dynamic_cast<LiteralIntNode*>(literal)) {
-        intFillVal = sema::parseIntLiteral(text, node->getLineNumber(), node->getColumn());
+        intFillVal = sema::parseIntLiteral(text, node->getLineNumber(), node->getColumn(), elementType.name);
         fillValue = llvm::ConstantInt::get(getLLVMType(elementType), intFillVal, true);
         isZeroFill = (intFillVal == 0); // 零值优化
     } else if (auto floatLiteral = dynamic_cast<LiteralFloatNode*>(literal)) {
@@ -117,7 +117,8 @@ llvm::Value* Compiler::compileLiteralExpr(ExprLiteralNode* node) {
     auto text = literal->getValue().getText();
 
     if (auto intLiteral = dynamic_cast<LiteralIntNode*>(literal)) {
-        i64 numVal = sema::parseIntLiteral(text, node->getLineNumber(), node->getColumn());
+        i64 numVal = sema::parseIntLiteral(text, node->getLineNumber(), node->getColumn(), type.name,
+                                           intLiteral->isUnaryNegated());
         DEBUG_LOG_VAL("    Expr: IntLiteral", text << " : " << type.name);
         return llvm::ConstantInt::get(getLLVMType(type), numVal, true);
     } else if (auto floatLiteral = dynamic_cast<LiteralFloatNode*>(literal)) {

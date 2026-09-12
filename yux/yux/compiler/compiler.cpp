@@ -321,6 +321,7 @@ void Compiler::compileGlobalConsts() {
         TypeInfo type = globalConst->getType();
         auto llvmType = getLLVMType(type);
 
+        inferFlexibleIntForType(globalConst->value(), type);
         auto value = ev.eval(globalConst->value());
         if (!value) {
             // E3140 由 ASTBuilder::visitLetGlobal 先抛；此处防再求值失败。

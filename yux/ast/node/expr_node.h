@@ -40,7 +40,9 @@ public:
 
     void setResolvedType(TypeInfo t) { _resolvedType = std::move(t); }
     [[nodiscard]] bool hasResolvedType() const { return _resolvedType.has_value(); }
-    [[nodiscard]] const TypeInfo& resolvedType() const { return *_resolvedType; }
+    [[nodiscard]] const TypeInfo& resolvedType() const {
+        return *_resolvedType; // NOLINT(bugprone-unchecked-optional-access)
+    }
     // 块值汇合（if / match / try）优先读 SemaPass 靶向后的 resolved，避免 `[]` 的
     // getType `[__empty * 0]` 与 `Array<T>` 假阳性失配。
     [[nodiscard]] TypeInfo resolvedOrGetType() const { return hasResolvedType() ? resolvedType() : getType(); }
@@ -49,7 +51,9 @@ public:
     void setResolvedVar(SymbolInfo* v) { _resolvedSymbol = ResolvedSymbol{.var = v, .fn = nullptr}; }
     void setResolvedFn(FnSymbolInfo* f) { _resolvedSymbol = ResolvedSymbol{.var = nullptr, .fn = f}; }
     [[nodiscard]] bool hasResolvedSymbol() const { return _resolvedSymbol.has_value(); }
-    [[nodiscard]] const ResolvedSymbol& resolvedSymbol() const { return *_resolvedSymbol; }
+    [[nodiscard]] const ResolvedSymbol& resolvedSymbol() const {
+        return *_resolvedSymbol; // NOLINT(bugprone-unchecked-optional-access)
+    }
 };
 
 // 如果表达式是无后缀的整数字面量且其类型可以推断，则返回 true。
@@ -60,6 +64,12 @@ bool isFlexibleIntExpr(ExprNode* expr);
 // 如果成功则返回 true（子树与 target 兼容——既可以是灵活类型并被传播，
 // 也可以是其类型已经等于 target）。
 bool tryInferIntType(ExprNode* expr, const TypeInfo& target);
+
+// 一元负号作用到操作数里的整数字面量（`--x` 翻转两次）。
+void applyUnaryNegToIntLits(ExprNode* expr);
+
+// 灵活整数子树中的无后缀 LiteralIntNode。
+std::vector<LiteralIntNode*> collectFlexibleIntLits(ExprNode* expr);
 
 // 如果表达式是 null 字面量（或其简单包装，如括号），返回 true。
 // "灵活 null"：可以在上下文中推断为任意 Nullable<T>。
@@ -73,6 +83,18 @@ bool tryInferNullType(ExprNode* expr, const TypeInfo& nullableTarget);
 inline bool isIntTypeName(const string& n) {
     return n == "i8" || n == "i16" || n == "i32" || n == "i64" || n == "u8" || n == "u16" || n == "u32" || n == "u64" ||
            n == "isize" || n == "usize";
+}
+
+// 声明 / 字段 / #Cval 靶向类型已知时，把无后缀整数字面量推断到该类型。
+inline void inferFlexibleIntForType(ExprNode* expr, const TypeInfo& target) {
+    if (!expr) return;
+    TypeInfo t = target;
+    if (t.isNullable()) {
+        if (auto inner = t.nullableInnerType()) t = *inner;
+    }
+    if (isIntTypeName(t.name) && isFlexibleIntExpr(expr)) {
+        tryInferIntType(expr, t);
+    }
 }
 
 class ExprCallNode : public ExprNode {

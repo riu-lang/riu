@@ -454,16 +454,23 @@ void validateDotFieldPrivacy(FileNode* file, FileNode* sdkFile, ExprDotNode* nod
 // 整数字面量解析 + 越界校验 (Phase 3.4.f.2).
 //
 // 原位于 compiler_expr.cpp 顶部 anonymous-ns, 现整体抠到 sema 共享.
-// 识别 suffix (i8/i16/i32/i64/u8/u16/u32/u64) → 走 stoll/stoull 路径;
-// 识别 base prefix (0b/0o/0x); 移下划线分隔符; out_of_range / invalid_argument
-// 抛 E3103. `line=0` 时降级到 1, col 透传.
+// 识别 suffix (i8/i16/i32/i64/u8/u16/u32/u64/isize/usize); 识别 base prefix
+// (0b/0o/0x); 移下划线分隔符; 按类型范围校验，越界 / 非法格式抛 E3103.
+//
+// typeName 非空：按该类型（推断或声明）决定符号性与范围。
+// typeName 空：用文本后缀；无后缀则 i32（§1.6.1.2 默认靶向）.
+// `line=0` 时降级到 1, col 透传.
 //
 // 调用方:
 //   - Compiler::compileLiteralExpr / compileArrayInitExpr int 分支
 //   - SemaPass.visitExpr ExprLiteralNode 分支 (LiteralIntNode 命中时)
+//   - ConstEvaluator 整数字面量叶
 //
 // 纯字符串解析, 无 LLVM / AST 依赖.
-i64 parseIntLiteral(const string& text, int line = 0, int col = 0);
+// negatedOperand：外层一元负号（token 不含 '-'）。范围按负数检查，返回幅度位
+// （codegen / const-eval 仍会再取负）。`let x = 9223372036854775808` 不带此标志。
+i64 parseIntLiteral(const string& text, int line = 0, int col = 0, const string& typeName = "",
+                    bool negatedOperand = false);
 
 // Bucket 6 单点 (CURRENT-check.md): 比较表达式 leftType 形态校验.
 //

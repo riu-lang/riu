@@ -128,13 +128,9 @@ std::optional<ConstantValue> ConstEvaluator::evalLiteral(LiteralNode* lit) {
     if (!lit) return std::nullopt;
 
     if (auto i = dynamic_cast<LiteralIntNode*>(lit)) {
-        try {
-            i64 v = sema::parseIntLiteral(i->getValue().getText(), i->getLineNumber(), 0);
-            return ConstantValue::makeInt(truncateBits(static_cast<u64>(v), i->getType()), i->getType());
-        } catch (...) {
-            // 越界 / 非法形式 —— Phase 1 静默失败（caller 会先走 sema 校验）
-            return std::nullopt;
-        }
+        // E3103 越界必须上抛（推断 / 后缀 / 声明类型）。其余非法形式仍 nullopt。
+        i64 v = sema::parseIntLiteral(i->getValue().getText(), i->getLineNumber(), 0, i->getType().name);
+        return ConstantValue::makeInt(truncateBits(static_cast<u64>(v), i->getType()), i->getType());
     }
     if (auto f = dynamic_cast<LiteralFloatNode*>(lit)) {
         // [#4.8.A] host double 简化求值
@@ -176,6 +172,22 @@ std::optional<ConstantValue> ConstEvaluator::evalLiteralObj(LiteralObjNode* obj)
 }
 
 std::optional<ConstantValue> ConstEvaluator::evalUnary(ExprUnaryNode* node) {
+    if (node->op() == ExprUnaryNode::Op::Neg) {
+        ExprNode* r = node->right();
+        while (auto* paren = dynamic_cast<ExprParenNode*>(r))
+            r = paren->expr();
+        if (auto* litExpr = dynamic_cast<ExprLiteralNode*>(r)) {
+            if (auto* i = dynamic_cast<LiteralIntNode*>(litExpr->literal())) {
+                string text = i->getValue().getText();
+                if (text.empty() || (text[0] != '-' && text[0] != '+'))
+                    text = "-" + text;
+                else if (text[0] == '+')
+                    text = "-" + text.substr(1);
+                i64 v = sema::parseIntLiteral(text, i->getLineNumber(), 0, i->getType().name);
+                return ConstantValue::makeInt(truncateBits(static_cast<u64>(v), i->getType()), i->getType());
+            }
+        }
+    }
     auto inner = eval(node->right());
     if (!inner) return std::nullopt;
 

@@ -1,0 +1,8 @@
+; #Cval 声明类型越界
+
+#Cval
+let A u8 = 300  ; check: E3103
+
+fn main() {
+  ret;
+}

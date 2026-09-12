@@ -207,6 +207,7 @@ N | <源码行原文>
 | E3100 | `Tuple index {} out of range for type '{}' (size {})` |
 | E3101 | `Tuple destructure expects type tuple, got '{}'` |
 | E3102 | `Tuple destructure arity mismatch: {} names vs tuple size {}` |
+| E3103 | `Integer literal '{}' out of range for type '{}'` |
 
 const-mut（E3104..E3111；引入自 [draft/DRAFT-const-mut.md](draft/DRAFT-const-mut.md)，落地章节 §5.1.5 / §6.1.2a / §6.2.2a / §7.1.4 / §11.6 / §11.7 / §11.8）：
 

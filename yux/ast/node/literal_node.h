@@ -31,12 +31,17 @@ class LiteralIntNode : public LiteralNumberNode {
 protected:
     TypeInfo _type;
     bool _hasSuffix = false;
+    // 外层 ExprUnaryNode::Neg 次数为奇数。token 不含 '-'，i32/i64 最小值
+    // 的绝对值超出正范围，范围检查与 codegen 必须看此标记。
+    bool _unaryNegated = false;
 
 public:
     explicit LiteralIntNode(const Token& value);
     [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] bool hasSuffix() const { return _hasSuffix; }
     void setType(TypeInfo t) { _type = std::move(t); }
+    void setUnaryNegated(bool v) { _unaryNegated = v; }
+    [[nodiscard]] bool isUnaryNegated() const { return _unaryNegated; }
 };
 
 class LiteralFloatNode : public LiteralNumberNode {

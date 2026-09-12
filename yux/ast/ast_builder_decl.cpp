@@ -225,6 +225,7 @@ std::any ASTBuilder::visitLetGlobal(yux::yuxParser::LetGlobalContext* ctx) {
 
         auto typeNode = any_cast_p<TypeNode>(visit(ctx->type()));
         auto expr = any_cast_p<ExprNode>(visit(ctx->expr()));
+        inferFlexibleIntForType(expr, typeNode->getType());
 
         // E3155: 全局 init 内禁 try/catch (DRAFT-static-vars §6)
         if (exprContainsTryCatch(expr)) {
@@ -267,6 +268,7 @@ std::any ASTBuilder::visitLetGlobal(yux::yuxParser::LetGlobalContext* ctx) {
 
         auto typeNode = any_cast_p<TypeNode>(visit(ctx->type()));
         auto expr = any_cast_p<ExprNode>(visit(ctx->expr()));
+        inferFlexibleIntForType(expr, typeNode->getType());
 
         // DRAFT-const-eval Phase 2: RHS 必须 const-evaluable。失败抛 E3140；溢出 / 除 0 抛 E3143。
         ConstEvaluator ev;
@@ -309,6 +311,7 @@ std::any ASTBuilder::visitLetGlobal(yux::yuxParser::LetGlobalContext* ctx) {
 
     auto typeNode = any_cast_p<TypeNode>(visit(ctx->type()));
     auto expr = any_cast_p<ExprNode>(visit(ctx->expr()));
+    inferFlexibleIntForType(expr, typeNode->getType());
 
     // E3155: 全局 init 内禁 try/catch (DRAFT-static-vars §6)
     if (exprContainsTryCatch(expr)) {

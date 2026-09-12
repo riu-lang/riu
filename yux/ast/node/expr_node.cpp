@@ -390,46 +390,154 @@ bool isFlexibleIntExpr(ExprNode* expr) {
     return false;
 }
 
-bool tryInferIntType(ExprNode* expr, const TypeInfo& target) {
-    if (!isIntTypeName(target.name)) return false;
+static void setIntLitNegatedRec(ExprNode* expr, bool negated) {
     expr = unwrapParen(expr);
+    if (!expr) return;
+    if (auto lit = dynamic_cast<ExprLiteralNode*>(expr)) {
+        if (auto ilit = dynamic_cast<LiteralIntNode*>(lit->literal())) {
+            ilit->setUnaryNegated(negated);
+        }
+        return;
+    }
+    if (auto u = dynamic_cast<ExprUnaryNode*>(expr)) {
+        if (u->op() == ExprUnaryNode::Op::Not) return;
+        bool next = (u->op() == ExprUnaryNode::Op::Neg) ? !negated : negated;
+        setIntLitNegatedRec(u->right(), next);
+    }
+}
+
+void applyUnaryNegToIntLits(ExprNode* expr) {
+    setIntLitNegatedRec(expr, true);
+}
+
+namespace {
+
+void collectFlexibleIntLitsRec(ExprNode* expr, vector<LiteralIntNode*>& out) {
+    expr = unwrapParen(expr);
+    if (!expr) return;
+    if (auto lit = dynamic_cast<ExprLiteralNode*>(expr)) {
+        if (auto ilit = dynamic_cast<LiteralIntNode*>(lit->literal())) {
+            if (!ilit->hasSuffix()) out.push_back(ilit);
+        }
+        return;
+    }
+    if (auto u = dynamic_cast<ExprUnaryNode*>(expr)) {
+        if (u->op() != ExprUnaryNode::Op::Not) collectFlexibleIntLitsRec(u->right(), out);
+        return;
+    }
+    if (auto a = dynamic_cast<ExprAddSubNode*>(expr)) {
+        collectFlexibleIntLitsRec(a->left(), out);
+        collectFlexibleIntLitsRec(a->right(), out);
+        return;
+    }
+    if (auto m = dynamic_cast<ExprMulDivModNode*>(expr)) {
+        collectFlexibleIntLitsRec(m->left(), out);
+        collectFlexibleIntLitsRec(m->right(), out);
+        return;
+    }
+    if (auto b = dynamic_cast<ExprBinOpNode*>(expr)) {
+        collectFlexibleIntLitsRec(b->left(), out);
+        collectFlexibleIntLitsRec(b->right(), out);
+        return;
+    }
+    if (auto call = dynamic_cast<ExprCallNode*>(expr)) {
+        auto* dot = dynamic_cast<ExprDotNode*>(call->getCalleeExpr());
+        if (!dot) return;
+        const string m = dot->member();
+        if (m == "inv" && call->getArgs().empty()) {
+            collectFlexibleIntLitsRec(dot->baseExpr(), out);
+        } else if ((m == "and" || m == "or" || m == "xor" || m == "shl" || m == "shr") && call->getArgs().size() == 1) {
+            collectFlexibleIntLitsRec(dot->baseExpr(), out);
+            collectFlexibleIntLitsRec(call->getArgs()[0], out);
+        }
+    }
+}
+
+} // namespace
+
+vector<LiteralIntNode*> collectFlexibleIntLits(ExprNode* expr) {
+    vector<LiteralIntNode*> out;
+    collectFlexibleIntLitsRec(expr, out);
+    return out;
+}
+
+bool tryInferIntType(ExprNode* expr, const TypeInfo& target) {
+    if (!expr || !isIntTypeName(target.name)) return false;
+    if (auto paren = dynamic_cast<ExprParenNode*>(expr)) {
+        bool ok = tryInferIntType(paren->expr(), target);
+        if (ok) paren->setResolvedType(target);
+        return ok;
+    }
     if (auto lit = dynamic_cast<ExprLiteralNode*>(expr)) {
         if (auto ilit = dynamic_cast<LiteralIntNode*>(lit->literal())) {
             if (!ilit->hasSuffix()) {
                 ilit->setType(target);
+                lit->setResolvedType(target);
                 return true;
             }
-            return ilit->getType() == target;
+            if (ilit->getType() == target) {
+                lit->setResolvedType(target);
+                return true;
+            }
+            return false;
         }
         return false;
     }
     if (auto u = dynamic_cast<ExprUnaryNode*>(expr)) {
         if (u->op() == ExprUnaryNode::Op::Not) return false;
-        return tryInferIntType(u->right(), target);
+        bool ok = tryInferIntType(u->right(), target);
+        if (ok) u->setResolvedType(target);
+        return ok;
     }
     if (auto a = dynamic_cast<ExprAddSubNode*>(expr)) {
-        return tryInferIntType(a->left(), target) && tryInferIntType(a->right(), target);
+        bool ok = tryInferIntType(a->left(), target) && tryInferIntType(a->right(), target);
+        if (ok) a->setResolvedType(target);
+        return ok;
     }
     if (auto m = dynamic_cast<ExprMulDivModNode*>(expr)) {
-        return tryInferIntType(m->left(), target) && tryInferIntType(m->right(), target);
+        bool ok = tryInferIntType(m->left(), target) && tryInferIntType(m->right(), target);
+        if (ok) m->setResolvedType(target);
+        return ok;
     }
     if (auto b = dynamic_cast<ExprBinOpNode*>(expr)) {
-        return tryInferIntType(b->left(), target) && tryInferIntType(b->right(), target);
+        bool ok = tryInferIntType(b->left(), target) && tryInferIntType(b->right(), target);
+        if (ok) b->setResolvedType(target);
+        return ok;
     }
     if (auto call = dynamic_cast<ExprCallNode*>(expr)) {
         auto* dot = dynamic_cast<ExprDotNode*>(call->getCalleeExpr());
         if (dot) {
             const string m = dot->member();
             if (m == "inv" && call->getArgs().empty()) {
-                return tryInferIntType(dot->baseExpr(), target);
+                bool ok = tryInferIntType(dot->baseExpr(), target);
+                if (ok) {
+                    call->setResolvedType(target);
+                    try {
+                        dot->setResolvedType(dot->getType());
+                    } catch (...) { // NOLINT(bugprone-empty-catch)
+                    }
+                }
+                return ok;
             }
             if ((m == "and" || m == "or" || m == "xor" || m == "shl" || m == "shr") && call->getArgs().size() == 1) {
-                return tryInferIntType(dot->baseExpr(), target) && tryInferIntType(call->getArgs()[0], target);
+                bool ok = tryInferIntType(dot->baseExpr(), target) && tryInferIntType(call->getArgs()[0], target);
+                if (ok) {
+                    call->setResolvedType(target);
+                    try {
+                        dot->setResolvedType(dot->getType());
+                    } catch (...) { // NOLINT(bugprone-empty-catch)
+                    }
+                }
+                return ok;
             }
         }
     }
     try {
-        return expr->getType() == target;
+        if (expr->getType() == target) {
+            expr->setResolvedType(target);
+            return true;
+        }
+        return false;
     } catch (...) {
         return false;
     }

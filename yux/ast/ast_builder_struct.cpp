@@ -263,6 +263,7 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
 
             auto typeNode = any_cast_p<TypeNode>(visit(fieldCtx->type()));
             auto initExpr = any_cast_p<ExprNode>(visit(fieldCtx->init));
+            inferFlexibleIntForType(initExpr, typeNode->getType());
 
             // E3155: 静态字段 init 内禁 try/catch (DRAFT-static-vars §6)
             if (ASTBuilder::exprContainsTryCatch(initExpr)) {

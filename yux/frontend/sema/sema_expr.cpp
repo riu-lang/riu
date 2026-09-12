@@ -293,10 +293,10 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
                 }
             }
         }
-        // Phase 3.4.f.2: int 字面量越界 (E3103) — getType 仅返回类型不解析值,
-        // 这里主动调 sema::parseIntLiteral 触发越界 / 非法格式校验.
+        // Phase 3.4.f.2: int 字面量越界 (E3103) 延后到推断完成后再查
+        // （assert_eq 等泛型调用先 visit 实参、后才把灵活整数回填到 T）。
         if (auto intLit = dynamic_cast<LiteralIntNode*>(n->literal())) {
-            (void)sema::parseIntLiteral(intLit->getValue().getText(), n->getLineNumber(), n->getColumn());
+            _pendingIntLits.push_back({.lit = intLit, .line = n->getLineNumber(), .col = n->getColumn()});
         }
         // Phase B：标识符解析挂到 AST，codegen 读 resolvedSymbol。
         if (auto objSym = dynamic_cast<LiteralObjNode*>(n->literal())) {
@@ -732,6 +732,17 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
                                     if (isNoCopyTypeIn(T, _file, _sdkFile)) {
                                         throw YuxError(n->getLineNumber(), n->getColumn(), ErrorCode::E4031, T.name,
                                                        "copy_of", T.name);
+                                    }
+                                }
+                                // 灵活整数按推断后的形参回填（assert_eq(a_u32, 4000000000)）
+                                vector<TypeInfo> instParams;
+                                if (substGenericCallParams(genFn->header(), genFn->header()->typeParams(), typeArgs,
+                                                           instParams)) {
+                                    for (size_t i = 0; i < n->getArgs().size() && i < instParams.size(); ++i) {
+                                        TypeInfo want = instParams[i].peelRef();
+                                        if (isFlexibleIntExpr(n->getArgs()[i]) && isIntTypeName(want.name)) {
+                                            tryInferIntType(n->getArgs()[i], want);
+                                        }
                                     }
                                 }
                             }
@@ -1568,6 +1579,7 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
     }
     if (auto n = dynamic_cast<ExprUnaryNode*>(expr)) {
         visitExpr(n->right());
+        if (n->op() == ExprUnaryNode::Op::Neg) applyUnaryNegToIntLits(n->right());
         string m;
         switch (n->op()) {
         case ExprUnaryNode::Op::Neg:

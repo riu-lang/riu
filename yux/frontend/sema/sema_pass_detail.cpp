@@ -877,7 +877,10 @@ void checkCallArgAgainst(ExprNode* arg, const TypeInfo& want, int line, int col,
     if (stillTemplateType(w0, typeParams, subst)) return;
 
     TypeInfo peeledWant = w0.peelRef();
-    if (isFlexibleIntExpr(arg) && isIntTypeName(peeledWant.name)) return;
+    if (isFlexibleIntExpr(arg) && isIntTypeName(peeledWant.name)) {
+        tryInferIntType(arg, peeledWant);
+        return;
+    }
 
     TypeInfo got;
     if (!tryGetExprType(arg, got)) return;
@@ -905,7 +908,10 @@ void checkCallArgAgainst(ExprNode* arg, const TypeInfo& want, int line, int col,
         if (isFlexibleNullExpr(arg)) return;
         if (auto inner = w.nullableInnerType()) {
             auto in = sema::resolveAlias(*inner, file, sdk);
-            if (isIntTypeName(in.name) && isFlexibleIntExpr(arg)) return;
+            if (isIntTypeName(in.name) && isFlexibleIntExpr(arg)) {
+                tryInferIntType(arg, in);
+                return;
+            }
             if (g == in) return;
         }
     }

@@ -24,6 +24,7 @@
 #include <map>
 #include <regex>
 #include <set>
+#include <stdexcept>
 
 namespace sema {
 
@@ -828,6 +829,7 @@ void inferGenericFnTypeArgs(ExprCallNode* callNode, FnNode* genericFn, const str
     }
 
     map<string, TypeInfo> inferred;
+    set<string> lockedFromConcrete;
     // 递归 unify: 形参 pType 与实参 aType 匹配; 遇到形如 T 的裸类型形参则记录推断
     std::function<void(const TypeInfo&, const TypeInfo&)> unify = [&](const TypeInfo& pType, const TypeInfo& aType) {
         // 实参为引用但形参非引用：剥引用（如 arr[0] 返回 T& 传给形参 T）
@@ -940,14 +942,59 @@ void inferGenericFnTypeArgs(ExprCallNode* callNode, FnNode* genericFn, const str
         }
 
         if (!skipUnify) {
+            map<string, TypeInfo> before = inferred;
             unify(pType, argTypes[i]);
+            if (!isFlexibleIntExpr(callNode->getArgs()[i])) {
+                for (auto& [k, v] : inferred) {
+                    auto prev = before.find(k);
+                    if (prev == before.end() || !(prev->second == v)) lockedFromConcrete.insert(k);
+                }
+            }
         }
     }
+
+    auto litFits = [](LiteralIntNode* lit, const string& ty) -> bool {
+        try {
+            (void)parseIntLiteral(lit->getValue().getText(), 0, 0, ty, lit->isUnaryNegated());
+            return true;
+        } catch (const YuxError&) {
+            return false;
+        }
+    };
+    auto flexibleArgsFit = [&](const string& tpName, const string& ty) -> bool {
+        for (size_t i = 0; i < params.size(); ++i) {
+            if (!isFlexibleIntExpr(callNode->getArgs()[i])) continue;
+            auto pt = params[i]->type();
+            if (!pt) continue;
+            TypeInfo pType = pt->getType();
+            bool involves = (pType.isNormal() && pType.name == tpName);
+            if (pType.isNullable()) {
+                if (auto inner = pType.nullableInnerType(); inner && inner->name == tpName) involves = true;
+            }
+            if (pType.isRef()) {
+                if (auto inner = pType.refElementType(); inner && inner->name == tpName) involves = true;
+            }
+            if (!involves) continue;
+            for (auto* lit : collectFlexibleIntLits(callNode->getArgs()[i])) {
+                if (!litFits(lit, ty)) return false;
+            }
+        }
+        return true;
+    };
 
     for (auto& tp : typeParams) {
         auto it = inferred.find(tp);
         if (it == inferred.end()) {
             throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6013, tp, fnName);
+        }
+        TypeInfo t = it->second;
+        if (t.isRef()) {
+            if (auto inner = t.refElementType()) t = *inner;
+        }
+        // 仅灵活整数贡献的 T 默认为 i32 时，若字面量装不下则升到 i64。
+        if (t.name == "i32" && !lockedFromConcrete.contains(tp) && !flexibleArgsFit(tp, "i32") &&
+            flexibleArgsFit(tp, "i64")) {
+            it->second = TypeInfo("i64");
         }
         outTypeArgs.push_back(it->second);
     }
@@ -1854,52 +1901,103 @@ void validateDotFieldPrivacy(FileNode* file, FileNode* sdkFile, ExprDotNode* nod
 
 // ==================== 整数字面量解析 (Phase 3.4.f.2) ====================
 
-i64 parseIntLiteral(const string& text, int line, int col) {
+namespace {
+
+bool intTypeIsUnsigned(const string& name) {
+    return name == "u8" || name == "u16" || name == "u32" || name == "u64" || name == "usize";
+}
+
+// 返回位宽；未知名返回 0.
+int intTypeBitWidth(const string& name) {
+    if (name == "i8" || name == "u8") return 8;
+    if (name == "i16" || name == "u16") return 16;
+    if (name == "i32" || name == "u32") return 32;
+    if (name == "i64" || name == "u64") return 64;
+    if (name == "isize" || name == "usize") return static_cast<int>(sizeof(void*) * 8);
+    return 0;
+}
+
+bool intMagFits(u64 mag, bool negative, const string& typeName) {
+    int w = intTypeBitWidth(typeName);
+    if (w <= 0) return false;
+    if (intTypeIsUnsigned(typeName)) {
+        if (negative && mag != 0) return false;
+        if (w >= 64) return true;
+        return mag < (static_cast<u64>(1) << static_cast<unsigned>(w));
+    }
+    if (w >= 64) {
+        const u64 i64MinMag = u64{1} << 63u;
+        return negative ? mag <= i64MinMag : mag < i64MinMag;
+    }
+    u64 maxPos = (static_cast<u64>(1) << static_cast<unsigned>(w - 1)) - 1;
+    u64 maxNeg = static_cast<u64>(1) << static_cast<unsigned>(w - 1);
+    return negative ? mag <= maxNeg : mag <= maxPos;
+}
+
+} // namespace
+
+i64 parseIntLiteral(const string& text, int line, int col, const string& typeName, bool negatedOperand) {
+    int errLine = line > 0 ? line : 1;
+    auto throwRange = [&](const string& ty) { throw YuxError(errLine, col, ErrorCode::E3103, text, ty); };
+
     string numStr = text;
 
-    // 识别类型后缀 (决定 signed/unsigned 解析路径)
-    static const std::regex suffix_regex(R"([iu](?:8|16|32|64|size)?$)");
+    // 识别类型后缀（与 lexer INT_SUFFIX 对齐）
+    static const std::regex suffix_regex(R"([iu](?:8|16|32|64|size)$)");
     std::smatch m;
     string suffix;
     if (std::regex_search(numStr, m, suffix_regex)) {
         suffix = m.str();
     }
-    bool isUnsigned = !suffix.empty() && suffix[0] == 'u';
     numStr = std::regex_replace(numStr, suffix_regex, "");
+
+    string checkType = !typeName.empty() ? typeName : (!suffix.empty() ? suffix : string("i32"));
+    if (intTypeBitWidth(checkType) <= 0) {
+        throwRange(checkType);
+    }
+
+    bool negative = false;
+    if (!numStr.empty() && (numStr[0] == '+' || numStr[0] == '-')) {
+        negative = numStr[0] == '-';
+        numStr = numStr.substr(1);
+    }
+    if (negatedOperand) negative = !negative;
 
     int base = 10;
     string parseStr = numStr;
 
     // 进制前缀
-    if (numStr.size() >= 2) {
-        if (numStr[0] == '0' && (numStr[1] == 'b' || numStr[1] == 'B')) {
+    if (numStr.size() >= 2 && numStr[0] == '0') {
+        if (numStr[1] == 'b' || numStr[1] == 'B') {
             base = 2;
             parseStr = numStr.substr(2);
-        } else if (numStr[0] == '0' && (numStr[1] == 'o' || numStr[1] == 'O')) {
+        } else if (numStr[1] == 'o' || numStr[1] == 'O') {
             base = 8;
             parseStr = numStr.substr(2);
-        } else if (numStr[0] == '0' && (numStr[1] == 'x' || numStr[1] == 'X')) {
+        } else if (numStr[1] == 'x' || numStr[1] == 'X') {
             base = 16;
             parseStr = numStr.substr(2);
         }
     }
 
-    // 下划线分隔符
     std::erase(parseStr, '_');
+    if (parseStr.empty()) throwRange(checkType);
 
+    u64 mag = 0;
     try {
-        if (isUnsigned) {
-            u64 v = std::stoull(parseStr, nullptr, base);
-            return static_cast<i64>(v);
-        }
-        return std::stoll(parseStr, nullptr, base);
+        mag = std::stoull(parseStr, nullptr, base);
     } catch (const std::out_of_range&) {
-        int errLine = line > 0 ? line : 1;
-        throw YuxError(errLine, col, ErrorCode::E3103, text, suffix.empty() ? string("i64") : suffix);
+        throwRange(checkType);
     } catch (const std::invalid_argument&) {
-        int errLine = line > 0 ? line : 1;
-        throw YuxError(errLine, col, ErrorCode::E3103, text, suffix.empty() ? string("i64") : suffix);
+        throwRange(checkType);
     }
+
+    if (!intMagFits(mag, negative, checkType)) throwRange(checkType);
+
+    // 外层还会 CreateNeg / evalUnary：返回幅度位，避免双重取负。
+    if (negatedOperand) return static_cast<i64>(mag);
+    if (negative) return static_cast<i64>(static_cast<u64>(0) - mag);
+    return static_cast<i64>(mag);
 }
 
 // Bucket 6 单点: 比较表达式 leftType 形态校验.

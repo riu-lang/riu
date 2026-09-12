@@ -8,6 +8,7 @@
 #include "sema/name_resolver.h"
 
 #include <map>
+#include <vector>
 
 class ExprNode;
 class StatementNode;
@@ -95,6 +96,16 @@ private:
     std::set<std::string> _movedVars;
     // 正在访问 Dot 的 base：路径前缀 ident / 中间段不算「当值」。
     bool _inDotBase = false;
+
+    // 无后缀整数字面量可能在 visitExpr 之后才被灵活推断（如 assert_eq）。
+    // 先记下，visitFn / 全局 init 结束再按最终类型做 E3103。
+    struct PendingIntLit {
+        class LiteralIntNode* lit;
+        int line;
+        int col;
+    };
+    vector<PendingIntLit> _pendingIntLits;
+    void flushIntLiteralRangeChecks();
 
     void visitFn(FnNode* fn);
     void visitStmt(StatementNode* stmt);

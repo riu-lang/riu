@@ -99,6 +99,7 @@ void Compiler::compileGlobalVars() {
         llvm::Constant* init = nullptr;
         bool isConstEval = false;
 
+        inferFlexibleIntForType(gvNode->value(), type);
         if (auto& cv = gvNode->constValue()) {
             init = llvmConstantFromValue(_context, *cv, llvmType);
             isConstEval = true;
@@ -143,6 +144,7 @@ void Compiler::compileGlobalVars() {
             auto v = ev.eval(prior->value());
             if (v) ev.setNamedConst(prior->name().getText(), *v);
         }
+        inferFlexibleIntForType(sf.init, type);
         if (auto cv = ev.eval(sf.init)) {
             init = llvmConstantFromValue(_context, *cv, llvmType);
             isConstEval = true;

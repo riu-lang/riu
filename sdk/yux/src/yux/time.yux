@@ -28,24 +28,15 @@ let _NS_PER_MS i64 = 1000000i64
 #Cval
 let _NS_PER_SEC i64 = 1000000000i64
 #Cval
+let _NS_PER_MIN i64 = 60000000000
+#Cval
+let _NS_PER_HOUR i64 = 3600000000000
+#Cval
 let _HNS_PER_SEC u64 = 10000000u64
-
-fn _ns_per_min() i64 {
-  60i64 * _NS_PER_SEC
-}
-
-fn _ns_per_hour() i64 {
-  3600i64 * _NS_PER_SEC
-}
-
-fn _hns_per_min() i64 {
-  60i64 * _HNS_PER_SEC.to_i64()
-}
-
-; 1601-01-01 → 1970-01-01：11644473600 秒 × 10^7
-fn _unix_ft_epoch() u64 {
-  11644473600u64 * _HNS_PER_SEC
-}
+#Cval
+let _HNS_PER_MIN i64 = 600000000
+#Cval
+let _UNIX_FT_EPOCH u64 = 116444736000000000
 
 fn _qpc_to_ns(ticks i64) i64 {
   #Mut let freq i64 = 0
@@ -112,7 +103,7 @@ fn _utc_offset_min(utc_ft u64) i32 {
   if _FileTimeToLocalFileTime(&utc_copy, &local_ft) == 0 {
     ret 0
   }
-  let step u64 = _hns_per_min().to_u64()
+  let step u64 = _HNS_PER_MIN.to_u64()
   if local_ft >= utc_ft {
     let d u64 = (local_ft - utc_ft) / step
     d.to_i32()
@@ -196,12 +187,12 @@ struct Duration {
 
   #Static
   fn from_mins(mins i64) Duration {
-    Duration { mins * _ns_per_min() }
+    Duration { mins * _NS_PER_MIN }
   }
 
   #Static
   fn from_hours(hours i64) Duration {
-    Duration { hours * _ns_per_hour() }
+    Duration { hours * _NS_PER_HOUR }
   }
 
   fn as_ns() i64 {
@@ -221,11 +212,11 @@ struct Duration {
   }
 
   fn as_mins() i64 {
-    $._ns / _ns_per_min()
+    $._ns / _NS_PER_MIN
   }
 
   fn as_hours() i64 {
-    $._ns / _ns_per_hour()
+    $._ns / _NS_PER_HOUR
   }
 
   fn is_zero() bool {
@@ -304,8 +295,8 @@ struct Duration {
       out = "-"
       ns = 0 - ns
     }
-    let hour_ns i64 = _ns_per_hour()
-    let min_ns i64 = _ns_per_min()
+    let hour_ns i64 = _NS_PER_HOUR
+    let min_ns i64 = _NS_PER_MIN
     let hours i64 = ns / hour_ns
     ns = ns - hours * hour_ns
     let mins i64 = ns / min_ns
@@ -410,7 +401,7 @@ struct SystemTime {
 
   #Static
   fn from_unix(secs i64, nanos u32) SystemTime {
-    #Mut let ft u64 = _unix_ft_epoch()
+    #Mut let ft u64 = _UNIX_FT_EPOCH
     if secs >= 0 {
       ft = ft + secs.to_u64() * _HNS_PER_SEC
     } else {
@@ -428,7 +419,7 @@ struct SystemTime {
 
   fn unix() i64 {
     let ft u64 = $._ft
-    let epoch u64 = _unix_ft_epoch()
+    let epoch u64 = _UNIX_FT_EPOCH
     if ft >= epoch {
       ((ft - epoch) / _HNS_PER_SEC).to_i64()
     } else {
@@ -547,7 +538,7 @@ struct DateTime {
       ret SystemTime { 0u64 }
     }
     #Mut let ft i64 = ft0.get().to_i64()
-    ft = ft - $.utc_offset_min.to_i64() * _hns_per_min()
+    ft = ft - $.utc_offset_min.to_i64() * _HNS_PER_MIN
     if ft < 0 {
       ft = 0
     }

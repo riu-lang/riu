@@ -602,8 +602,7 @@ public:
     // DRAFT-const-eval Phase 5: ConstantValue -> llvm::Constant 翻译 (递归; 支持 Struct 嵌套).
     // 失败 (含未支持的 kind / 字段类型不匹配) 返回 nullptr, 调用方报错.
     llvm::Constant* buildLLVMConstantFromValue(const ConstantValue& v, llvm::Type* expectedTy);
-    // #Cval #Inline 字段 init 直接求值为 llvm::Constant*（不经过 ConstEvaluator，
-    // 避免 parseIntLiteral 对大 u64 字面量 stoll 溢出问题）
+    // #Cval #Inline 字段 init 直接求值为 llvm::Constant*（按字段类型解析，越界 E3103）
     llvm::Constant* evalInlineFieldInit(ExprNode* init, const TypeInfo& fieldType, llvm::Type* llvmType);
     void compileStructDecls();                          // 编译结构体声明
     void compileStructImpls();                          // 编译结构体实现 (方法、析构函数)

@@ -20,12 +20,9 @@
 #include <cassert>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
-#include <regex>
 #include <set>
 
-// #Cval #Inline 静态字段 init 直接求值为 llvm::Constant*。
-// 不经过 ConstEvaluator，避免其内部 parseIntLiteral 对大 u64 字面量（>= 2^63）
-// 走 stoll 溢出导致返回 nullopt。直接按字段类型决定 signedness 解析。
+// #Cval #Inline 静态字段 init：按字段类型解析整数字面量（含无后缀大 u64），越界抛 E3103。
 llvm::Constant* Compiler::evalInlineFieldInit(ExprNode* init, const TypeInfo& fieldType, llvm::Type* llvmType) {
     if (!init || !llvmType) return nullptr;
 
@@ -45,42 +42,19 @@ llvm::Constant* Compiler::evalInlineFieldInit(ExprNode* init, const TypeInfo& fi
 
         if (auto* intLit = dynamic_cast<LiteralIntNode*>(lit)) {
             string text = intLit->getValue().getText();
-            // 按字段类型决定 signedness（而非文本后缀），避免无后缀大 u64 走 stoll 溢出
-            bool isUnsigned = fieldType.isUnsigned();
+            if (negate) {
+                if (!text.empty() && text[0] == '-')
+                    text = text.substr(1);
+                else if (!text.empty() && text[0] == '+')
+                    text = "-" + text.substr(1);
+                else
+                    text = "-" + text;
+            }
             try {
-                // 去掉文本后缀再按 fieldType 解析
-                string numStr = text;
-                static const std::regex suffixRe(R"([iu](?:8|16|32|64|size)?$)");
-                numStr = std::regex_replace(numStr, suffixRe, "");
-
-                int base = 10;
-                string parseStr = numStr;
-                if (numStr.size() >= 2 && numStr[0] == '0') {
-                    if (numStr[1] == 'b' || numStr[1] == 'B') {
-                        base = 2;
-                        parseStr = numStr.substr(2);
-                    } else if (numStr[1] == 'o' || numStr[1] == 'O') {
-                        base = 8;
-                        parseStr = numStr.substr(2);
-                    } else if (numStr[1] == 'x' || numStr[1] == 'X') {
-                        base = 16;
-                        parseStr = numStr.substr(2);
-                    }
-                }
-                std::erase(parseStr, '_');
-
-                u64 bits;
-                if (isUnsigned) {
-                    bits = std::stoull(parseStr, nullptr, base);
-                } else {
-                    i64 v = std::stoll(parseStr, nullptr, base);
-                    bits = static_cast<u64>(v);
-                }
-                if (negate) {
-                    i64 negV = -static_cast<i64>(bits);
-                    bits = static_cast<u64>(negV);
-                }
-                return llvm::ConstantInt::get(llvmType, bits, false);
+                i64 v = sema::parseIntLiteral(text, init->getLineNumber(), init->getColumn(), fieldType.name);
+                return llvm::ConstantInt::get(llvmType, static_cast<u64>(v), false);
+            } catch (const YuxError&) {
+                throw;
             } catch (...) {
                 return nullptr;
             }

@@ -212,12 +212,25 @@ let CMIN i32 = const_add(-1073741824, -1073741824)  ; -2147483648
 #Cval
 let CMAX i32 = 2147483647
 
+#Cval
+let C_I64_UNSUF i64 = 60000000000
+
+#Cval
+let C_U64_UNSUF u64 = 116444736000000000
+
 ; 验证：常量边界值（零、负数、MIN）
 #Test
 fn test_cval_boundary() {
   assert_eq(CZERO, 0)
   assert_eq(CNEG, -100)
   assert_eq(CMIN, -2147483648)
+}
+
+; 验证：#Cval 无后缀大整数按声明类型求值，不截断
+#Test
+fn test_cval_large_unsuffixed() {
+  assert_eq(C_I64_UNSUF, 60000000000i64)
+  assert_eq(C_U64_UNSUF, 116444736000000000u64)
 }
 
 ; 验证：常量零输入下的函数调用
