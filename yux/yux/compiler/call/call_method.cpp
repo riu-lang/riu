@@ -221,17 +221,10 @@ llvm::Value* Compiler::compileSafeDotMethodCall(ExprCallNode* callNode, ExprDotN
     for (size_t i = 0; i < callArgs.size(); ++i) {
         auto& at = argTypes[i];
         auto argVal = compileExpr(callArgs[i]);
-        passAsArg(argVal, at, callArgs[i]);
         size_t mpi = i + 1;
-        bool needsAutoRef = mpi < mparams.size() && mparams[mpi].isRef() && !at.isRef();
-        if (needsAutoRef || structParamUsesPointer(at)) {
-            auto structType = getLLVMType(at);
-            auto alloca = _builder.CreateAlloca(structType, nullptr, "sd.m.arg_tmp");
-            _builder.CreateStore(argVal, alloca);
-            methodArgs.push_back(alloca);
-        } else {
-            methodArgs.push_back(argVal);
-        }
+        TypeInfo formal = mpi < mparams.size() ? mparams[mpi] : at;
+        if (!formal.isRef()) passAsArg(argVal, at, callArgs[i]);
+        methodArgs.push_back(abiValueForParam(callArgs[i], argVal, formal));
     }
 
     // 获取或创建 LLVM 函数
@@ -2054,18 +2047,9 @@ llvm::Value* Compiler::compileStructMethodCall(ExprCallNode* callNode, ExprNode*
                     for (size_t i = 0; i < args.size(); ++i) {
                         TypeInfo at = i < argTypes.size() ? applySubst(argTypes[i]) : TypeInfo();
                         TypeInfo formal = i < formalTypes.size() ? formalTypes[i] : at;
-                        if (i < callNode->getArgs().size()) {
-                            passAsArg(args[i], at, callNode->getArgs()[i]);
-                        }
-                        bool needsAutoRef = formal.isRef() && !at.isRef();
-                        if (needsAutoRef || structParamUsesPointer(formal)) {
-                            auto slotTy = getLLVMType(needsAutoRef ? at : formal);
-                            auto alloca = _builder.CreateAlloca(slotTy, nullptr, "struct_arg_tmp");
-                            _builder.CreateStore(args[i], alloca);
-                            methodArgs.push_back(alloca);
-                        } else {
-                            methodArgs.push_back(args[i]);
-                        }
+                        ExprNode* argExpr = i < callNode->getArgs().size() ? callNode->getArgs()[i] : nullptr;
+                        if (!formal.isRef() && argExpr) passAsArg(args[i], at, argExpr);
+                        methodArgs.push_back(abiValueForParam(argExpr, args[i], formal));
                     }
 
                     auto fn = getMethodFunction(effName, member, formalTypes, genRetType, mFallibleErr,
@@ -2186,16 +2170,9 @@ llvm::Value* Compiler::compileStructMethodCall(ExprCallNode* callNode, ExprNode*
         for (size_t i = 0; i < args.size(); ++i) {
             TypeInfo actual = i < argTypes.size() ? applySubst(argTypes[i]) : TypeInfo();
             TypeInfo formal = i < formalTypes.size() ? formalTypes[i] : actual;
-            if (i < callNode->getArgs().size()) passAsArg(args[i], actual, callNode->getArgs()[i]);
-            const bool needsAutoRef = formal.isRef() && !actual.isRef();
-            if (needsAutoRef || structParamUsesPointer(formal)) {
-                auto* slotType = getLLVMType(needsAutoRef ? actual : formal);
-                auto* slot = _builder.CreateAlloca(slotType, nullptr, "generic_method_arg_tmp");
-                _builder.CreateStore(args[i], slot);
-                methodArgs.push_back(slot);
-            } else {
-                methodArgs.push_back(args[i]);
-            }
+            ExprNode* argExpr = i < callNode->getArgs().size() ? callNode->getArgs()[i] : nullptr;
+            if (!formal.isRef() && argExpr) passAsArg(args[i], actual, argExpr);
+            methodArgs.push_back(abiValueForParam(argExpr, args[i], formal));
         }
 
         string ownerModule = genericOwner ? genericOwner->moduleName() : _file->moduleName();
@@ -2285,20 +2262,11 @@ llvm::Value* Compiler::compileStructMethodCall(ExprCallNode* callNode, ExprNode*
         methodArgs.push_back(receiverArg);
         for (size_t i = 0; i < args.size(); ++i) {
             auto& at = argTypes[i];
-            if (i < callNode->getArgs().size()) {
-                passAsArg(args[i], at, callNode->getArgs()[i]);
-            }
-            // auto-ref: 方法形参为 T& 但实参为 T（by-value）时，取址传指针
             size_t mpi = i + 1; // 跳 receiver（mparams[0]）
-            bool needsAutoRef = mpi < mparams.size() && mparams[mpi].isRef() && !at.isRef();
-            if (needsAutoRef || structParamUsesPointer(at)) {
-                auto structType = getLLVMType(at);
-                auto alloca = _builder.CreateAlloca(structType, nullptr, "struct_arg_tmp");
-                _builder.CreateStore(args[i], alloca);
-                methodArgs.push_back(alloca);
-            } else {
-                methodArgs.push_back(args[i]);
-            }
+            TypeInfo formal = mpi < mparams.size() ? mparams[mpi] : at;
+            ExprNode* argExpr = i < callNode->getArgs().size() ? callNode->getArgs()[i] : nullptr;
+            if (!formal.isRef() && argExpr) passAsArg(args[i], at, argExpr);
+            methodArgs.push_back(abiValueForParam(argExpr, args[i], formal));
         }
 
         string ownerMod = methodSymbol->moduleName.empty() ? _file->moduleName() : methodSymbol->moduleName;
@@ -2454,15 +2422,12 @@ llvm::Value* Compiler::compileDynMethodCall(ExprCallNode* callNode, ExprNode* ba
     std::vector<llvm::Value*> callArgs;
     callArgs.push_back(receiver);
     for (size_t i = 0; i < args.size(); ++i) {
-        auto& at = argTypes[i];
-        if (structParamUsesPointer(at)) {
-            auto stTy = getLLVMType(at);
-            auto alloca = _builder.CreateAlloca(stTy, nullptr, "dyn.arg.tmp");
-            _builder.CreateStore(args[i], alloca);
-            callArgs.push_back(alloca);
-        } else {
-            callArgs.push_back(args[i]);
+        TypeInfo formal = argTypes[i];
+        if (i < sig->params().size() && sig->params()[i] && sig->params()[i]->type()) {
+            formal = sig->params()[i]->type()->getType();
         }
+        ExprNode* argExpr = i < callNode->getArgs().size() ? callNode->getArgs()[i] : nullptr;
+        callArgs.push_back(abiValueForParam(argExpr, args[i], formal));
     }
 
     const char* callName = llvmRetType->isVoidTy() ? "" : "dyn.call";

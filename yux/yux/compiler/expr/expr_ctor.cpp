@@ -372,6 +372,10 @@ llvm::Value* Compiler::compileEnumCtorExpr(ExprPathCallNode* node) {
                 // (compiler_call.cpp:667-670). 不做这步会让 callee 拿到 caller 唯一 +1,
                 // callee 析构释放后 caller 的 alloca 变成 use-after-free.
                 for (size_t i = 0; i < argVals.size() && i < paramTypes.size(); ++i) {
+                    if (paramTypes[i].isRef()) {
+                        argVals[i] = pointerForRefParam(node->args()[i], argVals[i]);
+                        continue;
+                    }
                     passAsArg(argVals[i], paramTypes[i], node->args()[i]);
                     // B-4: Array<T> 等 struct-by-pointer 实参做指针转换,
                     // 对齐 getMethodFunction 中 structParamUsesPointer 的 LLVM 签名。

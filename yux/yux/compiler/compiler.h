@@ -336,6 +336,10 @@ private:
     void takeOwnership(llvm::Value* val, const TypeInfo& type, ExprNode* expr);
     void storeIntoSlot(llvm::Value* slotPtr, llvm::Value* val, const TypeInfo& type, ExprNode* expr, SlotStore kind);
     void passAsArg(llvm::Value* val, const TypeInfo& type, ExprNode* expr);
+    // T& 形参要底层 T*。compileExpr 对 T& 标识符会自解成 T 值，不能再把该值当指针传入。
+    llvm::Value* pointerForRefParam(ExprNode* argExpr, llvm::Value* compiledVal);
+    // 按形参 ABI：T& → pointerForRefParam；struct 指针 ABI → alloca 暂存；其余原值。
+    llvm::Value* abiValueForParam(ExprNode* argExpr, llvm::Value* compiledVal, const TypeInfo& formal);
     // retainHandle=true：Rc/Weak（及非 Fallible 的 Fn）走 takeOwnership，返回 true。
     // 否则仅在需析构且 fresh 时 consumeTemp，返回 false。
     bool returnValue(llvm::Value* val, const TypeInfo& type, ExprNode* expr, bool retainHandle);

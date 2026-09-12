@@ -234,6 +234,60 @@ fn test_same_ref_string_self() {
   assert_true(same_ref(s1, s1))
 }
 
+; ---------- 方法 T& 形参：实参已是 T& 标识符（非 &owned）----------
+
+enum RefMErr {
+  X
+}
+
+struct RefM {
+  n i32
+
+  #Static
+  fn make(n i32) RefM {
+    ret Self {
+      .n = n
+    }
+  }
+
+  fn get(other RefM&) i32 {
+    other.n
+  }
+
+  fn copy_n(other RefM&) ! RefMErr {
+    $.n = other.n
+  }
+}
+
+fn ref_get_via_helper(a RefM&, b RefM&) i32 {
+  b.get(a)
+}
+
+fn ref_copy_via_helper(a RefM&, b RefM&) {
+  try {
+    b.copy_n(a)
+  } catch e RefMErr {
+    ret;
+  }
+}
+
+; 验证：T& 形参经 helper 再传给实例方法 T&，读到的是原对象而非自解副本
+#Test
+fn test_ref_method_arg_via_helper() {
+  let x RefM = RefM::make(41)
+  let y RefM = RefM::make(0)
+  assert_eq(ref_get_via_helper(&x, &y), 41)
+}
+
+; 验证：同上，fallible 方法走 try 成功路径析构也不崩
+#Test
+fn test_ref_method_arg_via_helper_try() {
+  let x RefM = RefM::make(41)
+  #Mut let y RefM = RefM::make(0)
+  ref_copy_via_helper(&x, &y)
+  assert_eq(y.n, 41)
+}
+
 ; ==================== 边界测试 ====================
 
 #Test

@@ -608,7 +608,10 @@ llvm::Value* Compiler::compileTryCatchExpr(ExprTryCatchNode* node) {
     auto joinBB = llvm::BasicBlock::Create(_context, "trycatch.join");
 
     // 2) 编译 try block，_tryCatchStack 顶为本 try 的 ctx
+    // 独立临时帧：catch 臂的 String 等 spill 不能在 join 上释放，否则成功路径
+    // 析构未初始化槽（File& helper 里 try { m(a) } catch { _die("${e}") } 成功即 AV）。
     _tryCatchStack.push_back(ctx);
+    pushTempFrame();
     auto* tryBlock = node->tryBlock();
     for (auto& stmt : tryBlock->statements()) {
         compileStatement(stmt);
@@ -667,14 +670,17 @@ llvm::Value* Compiler::compileTryCatchExpr(ExprTryCatchNode* node) {
 
     // 4) E7015 / E7017：警告类，TODO
 
-    // try 成功路径末尾跳 join（若未被流终止语句抢占 terminator）
+    // try 成功路径：先释放本路径临时，再跳 join（若未被流终止语句抢占 terminator）
     vector<std::pair<llvm::Value*, llvm::BasicBlock*>> phiIncoming;
     if (!trySuccessEndBB->getTerminator()) {
         if (hasValue && tryResult) {
             phiIncoming.emplace_back(tryResult, trySuccessEndBB);
         }
         _builder.SetInsertPoint(trySuccessEndBB);
+        popAndReleaseTempFrame();
         _builder.CreateBr(joinBB);
+    } else {
+        popAndReleaseTempFrame();
     }
 
     // 5) 编译每个 catch arm
@@ -691,6 +697,7 @@ llvm::Value* Compiler::compileTryCatchExpr(ExprTryCatchNode* node) {
         llvm::Value* prevPtr = hadPtr ? pit->second : nullptr;
         _localVarPtrs[bn] = ctx.armEAllocas[i];
 
+        pushTempFrame();
         // 编译 arm body 语句序列
         for (auto& stmt : arm->body()->statements()) {
             compileStatement(stmt);
@@ -713,10 +720,12 @@ llvm::Value* Compiler::compileTryCatchExpr(ExprTryCatchNode* node) {
         else
             _localVarPtrs.erase(bn);
 
-        // 跳 join（若未被流终止抢占 terminator）
+        // 先释放本臂临时，再跳 join（若未被流终止抢占 terminator）
         if (!armEndBB->getTerminator()) {
+            _builder.SetInsertPoint(armEndBB);
+            popAndReleaseTempFrame();
             if (hasValue && armResult) {
-                phiIncoming.emplace_back(armResult, armEndBB);
+                phiIncoming.emplace_back(armResult, _builder.GetInsertBlock());
                 _builder.CreateBr(joinBB);
             } else if (hasValue) {
                 // 有值 try 的无块值 arm 不参与 phi；未 ret 则视为不可达汇合
@@ -724,6 +733,8 @@ llvm::Value* Compiler::compileTryCatchExpr(ExprTryCatchNode* node) {
             } else {
                 _builder.CreateBr(joinBB);
             }
+        } else {
+            popAndReleaseTempFrame();
         }
     }
 

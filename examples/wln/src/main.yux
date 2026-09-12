@@ -82,6 +82,30 @@ fn _prepare(file File&, force bool, yes bool) {
   }
 }
 
+fn _make_symlink(target File&, link File&) {
+  try {
+    link.symlink_to(target)
+  } catch e IoErr {
+    if target.is_dir() && _is_priv(e) {
+      eprintln("Directory symlink failed (${io_err_text(e)}), falling back to junction")
+      if link.exists() {
+        try {
+          link.remove_all()
+        } catch e2 IoErr {
+          _die("Create link failed: ${io_err_text(e2)}")
+        }
+      }
+      try {
+        link.junction_to(target)
+      } catch e3 IoErr {
+        _die("Create link failed: ${io_err_text(e3)}")
+      }
+      ret;
+    }
+    _die("Create link failed: ${io_err_text(e)}")
+  }
+}
+
 struct Args {
   force bool
   yes bool
@@ -244,25 +268,5 @@ fn main() {
     }
     ret;
   }
-  try {
-    link.symlink_to(&target)
-  } catch e IoErr {
-    if target.is_dir() && _is_priv(e) {
-      eprintln("Directory symlink failed (${io_err_text(e)}), falling back to junction")
-      if link.exists() {
-        try {
-          link.remove_all()
-        } catch e2 IoErr {
-          _die("Create link failed: ${io_err_text(e2)}")
-        }
-      }
-      try {
-        link.junction_to(&target)
-      } catch e3 IoErr {
-        _die("Create link failed: ${io_err_text(e3)}")
-      }
-      ret;
-    }
-    _die("Create link failed: ${io_err_text(e)}")
-  }
+  _make_symlink(&target, &link);
 }

@@ -853,7 +853,12 @@ llvm::Value* Compiler::compileGenericFunctionCall(ExprCallNode* callNode, const 
     for (size_t i = 0; i < args.size(); ++i) {
         auto& at = instParamTypes[i];
         if (at.isPtr() || at.isRef()) {
-            callArgs.push_back(args[i]);
+            if (at.isRef()) {
+                ExprNode* argExpr = i < callNode->getArgs().size() ? callNode->getArgs()[i] : nullptr;
+                callArgs.push_back(pointerForRefParam(argExpr, args[i]));
+            } else {
+                callArgs.push_back(args[i]);
+            }
             continue;
         }
 
@@ -1020,26 +1025,8 @@ llvm::Value* Compiler::compileKnownFunctionCall(ExprCallNode* callNode, const st
         DEBUG_LOG_VAL("    Param isPtr", argTypes[i].isPtr() << " paramIsPtr=" << fnSymbol->params[i].isPtr());
         recordBdangIfEligible(i);
         if (fnSymbol->params[i].isRef() && !fnSymbol->isExternal) {
-            if (auto literalNode = dynamic_cast<ExprLiteralNode*>(callNode->getArgs()[i])) {
-                if (auto objLiteral = dynamic_cast<LiteralObjNode*>(literalNode->literal())) {
-                    auto varName = objLiteral->getValue().getText();
-                    auto it = _localVarPtrs.find(varName);
-                    if (it != _localVarPtrs.end()) {
-                        callArgs.push_back(it->second);
-                        continue;
-                    }
-                }
-            }
-            // Phase 4b: 非局部变量（字符串字面量 / 调用结果 / 字段访问等）传给 T& 形参时，
-            // alloca 一个 T 临时存放，再把 alloca 的指针作为 T& 传入。
-            // args[i] 已是 T 值（compileExpr 对 T& 形参会把 ref 自解；对 T 直接给值）。
-            if (args[i]->getType()->isPointerTy()) {
-                callArgs.push_back(args[i]);
-            } else {
-                auto tmpAlloca = _builder.CreateAlloca(args[i]->getType(), nullptr, "ref_arg_tmp");
-                _builder.CreateStore(args[i], tmpAlloca);
-                callArgs.push_back(tmpAlloca);
-            }
+            ExprNode* argExpr = i < callNode->getArgs().size() ? callNode->getArgs()[i] : nullptr;
+            callArgs.push_back(pointerForRefParam(argExpr, args[i]));
             continue;
         }
 

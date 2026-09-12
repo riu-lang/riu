@@ -387,3 +387,25 @@ fn test_let_array_bang_propagate_ok() {
   }
   assert_eq(n.len(), 2)
 }
+
+fn _ok_void() ! ParseErr {}
+
+fn _sink_str(s String&) {}
+
+fn _err_text(e ParseErr) String {
+  "x"
+}
+
+fn _try_success_catch_has_string() {
+  try {
+    _ok_void()
+  } catch e ParseErr {
+    _sink_str(_err_text(e))
+  }
+}
+
+; 验证：try 成功路径不析构 catch 臂里的 String 临时（未初始化 spill）
+#Test
+fn test_try_success_skips_catch_string_temps() {
+  _try_success_catch_has_string()
+}
