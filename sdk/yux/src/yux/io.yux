@@ -1,6 +1,6 @@
 ; yux SDK - 文件 / stdin IO（v0.21 Phase A，分层文件 API）
 ; 路径走 CreateFileW（UTF-16）；文件内容 UTF-8；错误通道为 T ! IoErr。
-; 独立包 yux.io：须 `use yux.io` / `use yux.io.*` 后才有 `io.fn` / `yux.io.fn`。
+; io_err_text(e) 给出可读说明。独立包 yux.io：须 `use yux.io` / `use yux.io.*`。
 
 use yux.core.helper.*
 
@@ -48,6 +48,8 @@ extern {
   fn _CreateSymbolicLinkW(lpSymlinkFileName Ptr, lpTargetFileName Ptr, dwFlags u32) i32
   #CName("DeviceIoControl")
   fn _DeviceIoControl(hDevice Ptr, dwIoControlCode u32, lpInBuffer Ptr, nInBufferSize u32, lpOutBuffer Ptr, nOutBufferSize u32, lpBytesReturned Ptr, lpOverlapped Ptr) i32
+  #CName("FormatMessageW")
+  fn _FormatMessageW(dwFlags u32, lpSource Ptr, dwMessageId u32, dwLanguageId u32, lpBuffer Ptr, nSize u32, arguments Ptr) u32
 }
 
 ; Win32 常量（文件作用域）
@@ -107,6 +109,10 @@ let _SYMBOLIC_LINK_UNPRIVILEGED u32 = 2
 let _IO_REPARSE_TAG_MOUNT_POINT u32 = 0xA0000003
 #Cval
 let _FSCTL_SET_REPARSE_POINT u32 = 0x000900A4
+#Cval
+let _FORMAT_MESSAGE_FROM_SYSTEM u32 = 0x00001000
+#Cval
+let _FORMAT_MESSAGE_IGNORE_INSERTS u32 = 0x00000200
 
 enum IoErr {
   Eof
@@ -137,6 +143,37 @@ fn _map_err(code u32) IoErr {
 
 fn _map_last_err() IoErr {
   _map_err(_GetLastError())
+}
+
+; Other(code) → 系统消息；失败则 "Win32 ${code}"。命名 variant 不走这条。
+fn _win32_message(code u32) String {
+  let n usize = 512
+  #Mut let buf Array<u16> = Array:<u16>::with_capacity(n)
+  loop i usize = 0 {
+    if i >= n {
+      break;
+    }
+    buf.push(0u16)
+    i += 1
+  }
+  let flags u32 = _FORMAT_MESSAGE_FROM_SYSTEM.or(_FORMAT_MESSAGE_IGNORE_INSERTS)
+  let got u32 = _FormatMessageW(flags, null, code, 0u32, buf, n.to_u32(), null)
+  if got == 0 {
+    ret "Win32 ${code}"
+  }
+  _from_u16(&buf, got.to_usize()).trim_right()
+}
+
+; enum 不能挂方法（§3.10.2.6），可读文案走自由函数。
+fn io_err_text(e IoErr) String {
+  match e {
+    IoErr::Eof => "End of file"
+    IoErr::NotFound => "File not found"
+    IoErr::AccessDenied => "Access denied"
+    IoErr::InvalidUtf8 => "Invalid UTF-8"
+    IoErr::Closed => "File already closed"
+    IoErr::Other(code) => _win32_message(code)
+  }
 }
 
 ; String 码点 → NUL 结尾 UTF-16（CreateFileW）

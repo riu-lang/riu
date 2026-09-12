@@ -1,5 +1,5 @@
 ; yux.io：write/read/append 回合 + 缺文件 NotFound；覆盖分层文件 API
-; 路径 / 环境 / 目录。不调用 read_line（会堵 stdin）。临时文件名互不抢；失败路径可能留文件，由 gitignore 兜底。
+; 路径 / 环境 / 目录；io_err_text。不调用 read_line（会堵 stdin）。临时文件名互不抢；失败路径可能留文件，由 gitignore 兜底。
 
 use yux.io.*
 
@@ -967,4 +967,29 @@ fn test_stream_move_transfer() {
   }
   _cleanup(&raw)
   assert_eq(content, "move")
+}
+
+; ==================== io_err_text ====================
+
+#Test
+fn test_io_err_text_named() {
+  assert_eq(io_err_text(IoErr::Eof), "End of file")
+  assert_eq(io_err_text(IoErr::NotFound), "File not found")
+  assert_eq(io_err_text(IoErr::AccessDenied), "Access denied")
+  assert_eq(io_err_text(IoErr::InvalidUtf8), "Invalid UTF-8")
+  assert_eq(io_err_text(IoErr::Closed), "File already closed")
+}
+
+; FormatMessageW 文案随系统语言，只断言拿到了非回退串。
+#Test
+fn test_io_err_text_win32() {
+  let s2 String = io_err_text(IoErr::Other(2u32))
+  assert_true(s2.len() > 0)
+  assert_false(s2.starts_with("Win32 "))
+  let s5 String = io_err_text(IoErr::Other(5u32))
+  assert_true(s5.len() > 0)
+  assert_false(s5.starts_with("Win32 "))
+  let s1314 String = io_err_text(IoErr::Other(1314u32))
+  assert_true(s1314.len() > 0)
+  assert_false(s1314.starts_with("Win32 "))
 }

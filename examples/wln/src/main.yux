@@ -23,17 +23,6 @@ fn _print_help() {
   println("  -V, --version      Print version")
 }
 
-fn _err_text(e IoErr) String {
-  match e {
-    IoErr::Eof => "Eof"
-    IoErr::NotFound => "NotFound"
-    IoErr::AccessDenied => "AccessDenied"
-    IoErr::InvalidUtf8 => "InvalidUtf8"
-    IoErr::Closed => "Closed"
-    IoErr::Other(code) => "Win32 ${code}"
-  }
-}
-
 fn _die(msg String&) {
   eprintln(msg)
   exit(1)
@@ -99,7 +88,7 @@ fn _prepare(path String&, force bool, yes bool) {
   try {
     remove_all(path)
   } catch e IoErr {
-    _die("Cannot remove ${path}: ${_err_text(e)}")
+    _die("Cannot remove ${path}: ${io_err_text(e)}")
   }
   if !yes {
     println("Deleted: ${path}")
@@ -111,22 +100,22 @@ fn _make_symlink(target String&, link String&) {
     symlink(target, link)
   } catch e IoErr {
     if is_dir(target) && _is_priv(e) {
-      eprintln("Directory symlink failed (${_err_text(e)}), falling back to junction")
+      eprintln("Directory symlink failed (${io_err_text(e)}), falling back to junction")
       if exists(link) {
         try {
           remove_all(link)
         } catch e2 IoErr {
-          _die("Create link failed: ${_err_text(e2)}")
+          _die("Create link failed: ${io_err_text(e2)}")
         }
       }
       try {
         junction(target, link)
       } catch e3 IoErr {
-        _die("Create link failed: ${_err_text(e3)}")
+        _die("Create link failed: ${io_err_text(e3)}")
       }
       ret;
     }
-    _die("Create link failed: ${_err_text(e)}")
+    _die("Create link failed: ${io_err_text(e)}")
   }
 }
 
@@ -274,7 +263,7 @@ fn main() {
     try {
       hardlink(&a.path, &link)
     } catch e IoErr {
-      _die("Create link failed: ${_err_text(e)}")
+      _die("Create link failed: ${io_err_text(e)}")
     }
     ret;
   }
@@ -285,7 +274,7 @@ fn main() {
     try {
       junction(&a.path, &link)
     } catch e IoErr {
-      _die("Create link failed: ${_err_text(e)}")
+      _die("Create link failed: ${io_err_text(e)}")
     }
     ret;
   }
