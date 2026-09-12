@@ -224,7 +224,7 @@ fn _from_utf8(bytes Array<u8>&) String ! IoErr {
       ret IoErr::InvalidUtf8
     }
   }
-  ret String::from(&cps)
+  String::from(&cps)
 }
 
 fn _open(path String&, access u32, disp u32) Ptr ! IoErr {
@@ -233,7 +233,7 @@ fn _open(path String&, access u32, disp u32) Ptr ! IoErr {
   if _bad_handle(h) {
     ret _map_last_err()
   }
-  ret h
+  h
 }
 
 fn _close_handle(h Ptr) ! IoErr {
@@ -283,7 +283,7 @@ fn _read_handle(h Ptr, max_bytes usize) Array<u8> ! IoErr {
       i += 1
     }
   }
-  ret out
+  out
 }
 
 ; 从当前游标读到 EOF；不拥有也不关闭句柄。
@@ -311,7 +311,7 @@ fn _read_to_end_handle(h Ptr) Array<u8> ! IoErr {
       i += 1
     }
   }
-  ret out
+  out
 }
 
 ; 循环处理短写；不拥有也不关闭句柄。
@@ -382,17 +382,17 @@ struct Path {
   #Static
   fn cwd() Path ! IoErr {
     let raw String = cwd()!
-    ret Path::from(&raw)
+    Path::from(&raw)
   }
 
   fn to_string() String {
-    ret $._raw.to_string()
+    $._raw.to_string()
   }
 
   fn join(child String&) Path {
     let base String = $._raw.to_string()
     let raw String = _join_path(&base, child)
-    ret Path {
+    Path {
       ._raw = move(raw)
     }
   }
@@ -400,20 +400,20 @@ struct Path {
   fn parent() Path {
     let base String = $._raw.to_string()
     let raw String = dirname(&base)
-    ret Path {
+    Path {
       ._raw = move(raw)
     }
   }
 
   fn name() String {
     let base String = $._raw.to_string()
-    ret basename(&base)
+    basename(&base)
   }
 
   fn absolute() Path ! IoErr {
     let base String = $._raw.to_string()
     let raw String = abs(&base)!
-    ret Path {
+    Path {
       ._raw = move(raw)
     }
   }
@@ -421,15 +421,15 @@ struct Path {
 
 ; 按 Win32 文件属性结构的小端布局读取字段。
 fn _read_u32_le(data [u8 * 36]&, offset usize) u32 {
-  let b0 u32 = copy_of(data[offset]).to_u32()
-  let b1 u32 = copy_of(data[offset + 1]).to_u32()
-  let b2 u32 = copy_of(data[offset + 2]).to_u32()
-  let b3 u32 = copy_of(data[offset + 3]).to_u32()
-  ret b0 | (b1 << 8u32) | (b2 << 16u32) | (b3 << 24u32)
+  let b0 u32 = data[offset].to_u32()
+  let b1 u32 = data[offset + 1].to_u32()
+  let b2 u32 = data[offset + 2].to_u32()
+  let b3 u32 = data[offset + 3].to_u32()
+  b0 | (b1 << 8u32) | (b2 << 16u32) | (b3 << 24u32)
 }
 
 fn _combine_file_size(high u32, low u32) u64 {
-  ret (high.to_u64() << 32u64) | low.to_u64()
+  (high.to_u64() << 32u64) | low.to_u64()
 }
 
 fn _file_info(path String&) FileInfo ! IoErr {
@@ -449,7 +449,7 @@ fn _file_info(path String&) FileInfo ! IoErr {
   }
   let high u32 = _read_u32_le(&data, 28usize)
   let low u32 = _read_u32_le(&data, 32usize)
-  ret FileInfo {
+  FileInfo {
     .kind = kind
     .size = _combine_file_size(high, low)
     .readonly = (attrs & _FILE_ATTRIBUTE_READONLY) != 0
@@ -462,30 +462,30 @@ struct File {
 
   #Static
   fn at(path Path&) File {
-    ret Self {
+    Self {
       ._path = copy_of:<Path>(path)
     }
   }
 
   #Static
   fn from(raw String&) File {
-    ret Self {
+    Self {
       ._path = Path::from(&raw)
     }
   }
 
   fn path() Path {
-    ret copy_of:<Path>(&$._path)
+    copy_of:<Path>(&$._path)
   }
 
   fn exists() bool {
     let raw String = $._path.to_string()
-    ret exists(&raw)
+    exists(&raw)
   }
 
   fn info() FileInfo ! IoErr {
     let raw String = $._path.to_string()
-    ret _file_info(&raw)!
+    _file_info(&raw)!
   }
 
   fn list() Array<File> ! IoErr {
@@ -528,13 +528,13 @@ struct FileInputStream {
   fn open(path Path&) FileInputStream ! IoErr {
     let raw String = path.to_string()
     let h Ptr = _open(&raw, _GENERIC_READ, _OPEN_EXISTING)!
-    ret Self {
+    Self {
       ._handle = h
     }
   }
 
   fn is_open() bool {
-    ret !_bad_handle($._handle)
+    !_bad_handle($._handle)
   }
 
   fn close() ! IoErr {
@@ -547,19 +547,19 @@ struct FileInputStream {
     if !$.is_open() {
       ret IoErr::Closed
     }
-    ret _read_handle($._handle, max_bytes)!
+    _read_handle($._handle, max_bytes)!
   }
 
   fn read_to_end() Array<u8> ! IoErr {
     if !$.is_open() {
       ret IoErr::Closed
     }
-    ret _read_to_end_handle($._handle)!
+    _read_to_end_handle($._handle)!
   }
 
   fn read_to_string() String ! IoErr {
     let bytes Array<u8> = $.read_to_end()!
-    ret _from_utf8(&bytes)!
+    _from_utf8(&bytes)!
   }
 }
 
@@ -576,7 +576,7 @@ struct FileOutputStream {
   fn create(path Path&) FileOutputStream ! IoErr {
     let raw String = path.to_string()
     let h Ptr = _open(&raw, _GENERIC_WRITE, _CREATE_ALWAYS)!
-    ret Self {
+    Self {
       ._handle = h
     }
   }
@@ -593,13 +593,13 @@ struct FileOutputStream {
         ret _map_err(err)
       }
     }
-    ret Self {
+    Self {
       ._handle = h
     }
   }
 
   fn is_open() bool {
-    ret !_bad_handle($._handle)
+    !_bad_handle($._handle)
   }
 
   fn close() ! IoErr {
@@ -641,7 +641,7 @@ fn read_file(path String&) String ! IoErr {
   }
   let content String = stream.read_to_string()!
   stream.close()!
-  ret content
+  content
 }
 
 fn write_file(path String&, content String&) ! IoErr {
@@ -701,7 +701,7 @@ fn read_line() String ! IoErr {
       raw.pop()
     }
   }
-  ret _from_utf8(&raw)!
+  _from_utf8(&raw)!
 }
 
 fn _is_sep(cp u32) bool {
@@ -738,7 +738,7 @@ fn _from_u16(buf Array<u16>&, n usize) String {
       i += 1
     }
   }
-  ret String::from(&cps)
+  String::from(&cps)
 }
 
 fn _cps_range(s String&, start usize, end usize) String {
@@ -750,7 +750,7 @@ fn _cps_range(s String&, start usize, end usize) String {
     buf.push(s.get(i))
     i += 1
   }
-  ret String::from(&buf)
+  String::from(&buf)
 }
 
 fn _join_path(a String&, b String&) String {
@@ -804,13 +804,13 @@ fn dirname(path String&) String {
   if s == 0 {
     ret _cps_range(path, 0, 1)
   }
-  ret _cps_range(path, 0, s)
+  _cps_range(path, 0, s)
 }
 
 fn exists(path String&) bool {
   #Mut let wide Array<u16> = _to_wide(path)
   let attr u32 = _GetFileAttributesW(wide)
-  ret attr != _INVALID_FILE_ATTRIBUTES
+  attr != _INVALID_FILE_ATTRIBUTES
 }
 
 fn remove(path String&) ! IoErr {
@@ -823,7 +823,7 @@ fn remove(path String&) ! IoErr {
   if okd != 0 {
     ret;
   }
-  ret _map_last_err()
+  _map_last_err()
 }
 
 fn mkdir(path String&) ! IoErr {
@@ -852,7 +852,7 @@ fn cwd() String ! IoErr {
   if got == 0 {
     ret _map_last_err()
   }
-  ret _from_u16(&buf, got.to_usize())
+  _from_u16(&buf, got.to_usize())
 }
 
 fn env(name String&) String? {
@@ -874,7 +874,7 @@ fn env(name String&) String? {
   if got == 0 {
     ret null
   }
-  ret _from_u16(&buf, got.to_usize())
+  _from_u16(&buf, got.to_usize())
 }
 
 fn _find_name(data [u8 * 592]&) String {
@@ -893,7 +893,7 @@ fn _find_name(data [u8 * 592]&) String {
     w.push(x)
     off += 2
   }
-  ret _from_u16(&w, w.len())
+  _from_u16(&w, w.len())
 }
 
 fn list_dir(path String&) Array<String> ! IoErr {
@@ -921,12 +921,12 @@ fn list_dir(path String&) Array<String> ! IoErr {
     }
   }
   _FindClose(h);
-  ret out
+  out
 }
 
 fn _attrs(path String&) u32 {
   #Mut let wide Array<u16> = _to_wide(path)
-  ret _GetFileAttributesW(wide)
+  _GetFileAttributesW(wide)
 }
 
 fn _clear_readonly(path String&) {
@@ -963,7 +963,7 @@ fn _wide_bytes(w Array<u16>&) usize {
   if w.len() == 0 {
     ret 0
   }
-  ret (w.len() - 1) * 2
+  (w.len() - 1) * 2
 }
 
 fn basename(path String&) String {
@@ -996,22 +996,22 @@ fn basename(path String&) String {
   if start >= end {
     ret path.to_string()
   }
-  ret _cps_range(path, start, end)
+  _cps_range(path, start, end)
 }
 
 fn is_dir(path String&) bool {
   let attr u32 = _attrs(path)
-  ret attr != _INVALID_FILE_ATTRIBUTES && (attr & _FILE_ATTRIBUTE_DIRECTORY) != 0
+  attr != _INVALID_FILE_ATTRIBUTES && (attr & _FILE_ATTRIBUTE_DIRECTORY) != 0
 }
 
 fn is_file(path String&) bool {
   let attr u32 = _attrs(path)
-  ret attr != _INVALID_FILE_ATTRIBUTES && (attr & _FILE_ATTRIBUTE_DIRECTORY) == 0
+  attr != _INVALID_FILE_ATTRIBUTES && (attr & _FILE_ATTRIBUTE_DIRECTORY) == 0
 }
 
 fn is_link(path String&) bool {
   let attr u32 = _attrs(path)
-  ret attr != _INVALID_FILE_ATTRIBUTES && (attr & _FILE_ATTRIBUTE_REPARSE_POINT) != 0
+  attr != _INVALID_FILE_ATTRIBUTES && (attr & _FILE_ATTRIBUTE_REPARSE_POINT) != 0
 }
 
 fn abs(path String&) String ! IoErr {
@@ -1033,7 +1033,7 @@ fn abs(path String&) String ! IoErr {
   if got == 0 {
     ret _map_last_err()
   }
-  ret _from_u16(&buf, got.to_usize())
+  _from_u16(&buf, got.to_usize())
 }
 
 fn remove_all(path String&) ! IoErr {
@@ -1126,7 +1126,7 @@ fn _win32_absolute(path String&) String ! IoErr {
     }
     buf.pop()
   }
-  ret String::from(&buf)
+  String::from(&buf)
 }
 
 fn _write_junction(target String&, link String&) ! IoErr {

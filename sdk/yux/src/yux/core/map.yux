@@ -10,18 +10,18 @@ struct Map<K, V> {
 
   #Static
   fn make() Self {
-    ret Self {
+    Self {
       ._keys = Array:<K>::with_capacity(0usize)
       ._vals = Array:<V>::with_capacity(0usize)
     }
   }
 
   fn len() usize {
-    ret $._keys.len()
+    $._keys.len()
   }
 
   fn is_empty() bool {
-    ret $._keys.is_empty()
+    $._keys.is_empty()
   }
 
   ; 线性查找；未命中返回 null
@@ -35,7 +35,7 @@ struct Map<K, V> {
       }
       i += 1
     }
-    ret null
+    null
   }
 
   ; 已有键则覆盖值（旧值释放）；否则追加
@@ -87,15 +87,15 @@ struct Map<K, V> {
     }
     $._keys.pop()
     $._vals.pop()
-    ret out
+    out
   }
 
   fn keys() Array<K> {
-    ret $._keys.clone()
+    $._keys.clone()
   }
 
   fn values() Array<V> {
-    ret $._vals.clone()
+    $._vals.clone()
   }
 
   fn clear() {

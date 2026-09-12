@@ -661,7 +661,7 @@ fn args() Array<String> {
     i += 1
   }
   LocalFree(argv);
-  ret out
+  out
 }
 
 ; 自开机起的毫秒（GetTickCount，约 49 天回绕）。CLI 种子用，不承诺单调高精度。

@@ -18,7 +18,7 @@ struct String {
   fn empty() String {
     let a Array<u32> = []                  ; 先构造空 Array<u32>
     let buf Rc<Array<u32>> = move(a)       ; 再装箱到 Rc
-    ret Self {
+    Self {
       ._buf = move(buf)                    ; 转移所有权
     }
   }
@@ -30,7 +30,7 @@ struct String {
   fn from(buf Array<u32>&) String {
     #Mut let copy Array<u32> = buf.clone()
     let rc Rc<Array<u32>> = move(copy)   ; 接管拷贝的所有权
-    ret Self {
+    Self {
       ._buf = move(rc)                   ; 转移所有权
     }
   }
@@ -41,7 +41,7 @@ struct String {
   #Static
   fn _take_buf(buf Array<u32>) String {
     let rc Rc<Array<u32>> = move(buf)    ; 接管所有权
-    ret Self {
+    Self {
       ._buf = move(rc)                   ; 转移 Rc 所有权到 struct
     }
   }
@@ -136,7 +136,7 @@ struct String {
     if !any {
       ret null
     }
-    ret acc
+    acc
   }
 
   fn len() usize {
@@ -331,7 +331,7 @@ struct String {
     if !$.ends_with(&suffix) {
       ret null
     }
-    ret $.slice(0, $.len() - suffix.len())
+    $.slice(0, $.len() - suffix.len())
   }
 
   ; ASCII 大写：a-z → A-Z，其余码点不变（含非 ASCII）；返回新 String
@@ -462,7 +462,7 @@ struct String {
     if start < hlen {
       parts.push(String::_from_range(&a, start, hlen))
     }
-    ret parts
+    parts
   }
 
   ; 按 sep 切分；空 sep 按码点切开；连续 / 首尾 sep 产生空段
@@ -498,7 +498,7 @@ struct String {
       }
     }
     parts.push(String::_from_range(&a, start, hlen))
-    ret parts
+    parts
   }
 
   ; 全部替换非重叠 from；空 from 返回自身（避免无限插入）
@@ -598,7 +598,7 @@ struct String {
     if v > max_pos {
       ret null
     }
-    ret v.to_i64()
+    v.to_i64()
   }
 
   fn _parse_unsigned_u64() u64? {
@@ -654,7 +654,7 @@ struct String {
     if x > usize::MAX.to_u64() {
       ret null
     }
-    ret x.to_usize()
+    x.to_usize()
   }
 
   ; 精确 `"true"` / `"false"`；其余 → null
@@ -665,7 +665,7 @@ struct String {
     if $ == "false" {
       ret false
     }
-    ret null
+    null
   }
 
   ; 转为 UTF-8 字节数组

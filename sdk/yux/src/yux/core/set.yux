@@ -8,7 +8,7 @@ struct Set<T> {
 
   #Static
   fn make() Self {
-    ret Self {
+    Self {
       ._items = Map:<T, bool>::make()
     }
   }
@@ -18,23 +18,23 @@ struct Set<T> {
   }
 
   fn contains(item T&) bool {
-    ret $._items.contains(item)
+    $._items.contains(item)
   }
 
   fn remove(item T&) bool {
-    ret $._items.remove(item).has()
+    $._items.remove(item).has()
   }
 
   fn len() usize {
-    ret $._items.len()
+    $._items.len()
   }
 
   fn is_empty() bool {
-    ret $._items.is_empty()
+    $._items.is_empty()
   }
 
   fn keys() Array<T> {
-    ret $._items.keys()
+    $._items.keys()
   }
 
   fn clear() {
