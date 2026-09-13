@@ -438,6 +438,12 @@ void SemaPass::visitFn(FnNode* fn) {
 
     // Bucket 1 (CURRENT-check.md): 把 0-LLVM analyzer 接入 sema, 让 yux-check
     // 也能覆盖 borrow / const-mut / NoReturn 流终止 检查.
+    // getType 可能在 visitExpr 之前走到 match 臂（如 let 的声明类型比对），
+    // 须先把 payload 绑定类型写进 arm scope。
+    for (auto& stmt : fn->body()) {
+        fillMatchBindingsInStmt(stmt);
+    }
+
     checkBorrows(fn, _currentStructName);
     checkConstMut(fn);
     checkFlowTerminate(fn);

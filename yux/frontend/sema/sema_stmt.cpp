@@ -826,6 +826,7 @@ void SemaPass::visitStmt(StatementNode* stmt) {
             }
         }
         if (da->expr()) visitExpr(da->expr(), daExpPtr);
+        refreshInferredLetType(da);
         // Phase C：句柄声明形态必须在 visitExpr 带靶向类型之后——
         // if/match 块末尾数组字面量先走 E3009，再查非 Array 的 E3064。
         if (da->varType() && _currentFn && da->expr()) {

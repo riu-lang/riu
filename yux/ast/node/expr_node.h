@@ -674,6 +674,8 @@ public:
     [[nodiscard]] ExprNode* body() const { return _body; }
     [[nodiscard]] StatementBlockNode* block() const { return _block; }
     [[nodiscard]] bool hasBlock() const { return _block != nullptr; }
+    void setBody(ExprNode* body) { _body = body; }
+    void setBlock(StatementBlockNode* block) { _block = block; }
     [[nodiscard]] TypeInfo resultType() const;
     [[nodiscard]] bool skipsTypeMerge() const;
     [[nodiscard]] int resultLine() const;

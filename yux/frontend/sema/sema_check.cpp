@@ -266,6 +266,235 @@ void SemaPass::tryValidateFieldChain(const TypeInfo& start, const vector<string>
     }
 }
 
+void SemaPass::fillMatchArmBindingTypes(ExprMatchNode* n) {
+    if (!n) return;
+    for (auto* arm : n->arms()) {
+        if (!arm) continue;
+        auto* pat = arm->pattern();
+        if (!pat || pat->isElse() || pat->binds().empty()) continue;
+        EnumDeclNode* enumDecl = nullptr;
+        try {
+            auto r = sema::resolveExprTypeLhs(_file, _yux, pat->enumPath(), pat->getLineNumber(), pat->getColumn());
+            enumDecl = r.enumDecl;
+            if (!enumDecl) enumDecl = _names.lookupEnum(r.type);
+        } catch (const YuxError&) {
+            throw;
+        } catch (...) { // NOLINT(bugprone-empty-catch)
+            continue;
+        }
+        EnumVariantNode* variant = enumDecl ? enumDecl->variant(pat->variantName().getText()) : nullptr;
+        for (size_t i = 0; i < pat->binds().size(); ++i) {
+            const string& bn = pat->binds()[i].getText();
+            TypeInfo bindType;
+            if (variant && i < variant->payloadArity() && variant->payloadTypes()[i]) {
+                try {
+                    bindType = applyInstSubst(variant->payloadTypes()[i]->getType());
+                } catch (const YuxError&) {
+                    throw;
+                } catch (...) { // NOLINT(bugprone-empty-catch)
+                }
+            }
+            arm->registerSymbol(bn, {SymbolKind::Variable, bn, bindType, false});
+        }
+    }
+}
+
+void SemaPass::fillMatchBindingsInBlock(StatementBlockNode* block) {
+    if (!block) return;
+    for (auto& s : block->statements())
+        fillMatchBindingsInStmt(s);
+    if (block->hasResult()) fillMatchBindingsInExpr(block->resultExpr());
+}
+
+void SemaPass::refreshInferredLetType(StatementDeclareAssignNode* da) {
+    if (!da || da->varType() || !da->expr()) return;
+    TypeInfo ty;
+    try {
+        ty = da->expr()->hasResolvedType() ? da->expr()->resolvedType() : da->expr()->getType();
+        ty = applyInstSubst(ty);
+    } catch (const YuxError&) {
+        return;
+    } catch (...) { // NOLINT(bugprone-empty-catch)
+        return;
+    }
+    if (ty.empty()) return;
+    auto* sc = da->findNearestScope();
+    if (!sc) return;
+    const string name = da->name().getText();
+    if (!sc->localSymbols().contains(name)) return;
+    if (auto* sym = sc->lookupSymbol(name)) {
+        if (sym->kind == SymbolKind::Variable) sym->type = std::move(ty);
+    }
+}
+
+void SemaPass::fillMatchBindingsInStmt(StatementNode* s) {
+    if (!s) return;
+    if (auto da = dynamic_cast<StatementDeclareAssignNode*>(s)) {
+        fillMatchBindingsInExpr(da->expr());
+        refreshInferredLetType(da);
+        return;
+    }
+    if (auto n = dynamic_cast<StatementSetNode*>(s)) {
+        fillMatchBindingsInExpr(n->arrayExpr());
+        for (auto& idx : n->indices())
+            fillMatchBindingsInExpr(idx);
+        fillMatchBindingsInExpr(n->valueExpr());
+        return;
+    }
+    if (auto n = dynamic_cast<StatementStaticFieldSetNode*>(s)) {
+        fillMatchBindingsInExpr(n->valueExpr());
+        return;
+    }
+    if (auto n = dynamic_cast<StatementLoopNode*>(s)) {
+        if (n->hasInit()) fillMatchBindingsInExpr(n->initExpr());
+        fillMatchBindingsInBlock(n->block());
+        return;
+    }
+    if (auto n = dynamic_cast<StatementForInNode*>(s)) {
+        fillMatchBindingsInExpr(n->expr());
+        fillMatchBindingsInBlock(n->block());
+        return;
+    }
+    if (auto n = dynamic_cast<StatementExprNode*>(s)) {
+        fillMatchBindingsInExpr(n->expr());
+    }
+}
+
+void SemaPass::fillMatchBindingsInExpr(ExprNode* e) {
+    if (!e) return;
+    if (auto n = dynamic_cast<ExprMatchNode*>(e)) {
+        fillMatchArmBindingTypes(n);
+        fillMatchBindingsInExpr(n->scrutinee());
+        for (auto& arm : n->arms()) {
+            if (!arm) continue;
+            if (arm->hasBlock())
+                fillMatchBindingsInBlock(arm->block());
+            else
+                fillMatchBindingsInExpr(arm->body());
+        }
+        return;
+    }
+    if (auto n = dynamic_cast<ExprIfElseNode*>(e)) {
+        fillMatchBindingsInExpr(n->condition());
+        fillMatchBindingsInBlock(n->thenBlock());
+        for (auto& elif : n->elifs()) {
+            if (!elif) continue;
+            fillMatchBindingsInExpr(elif->condition());
+            fillMatchBindingsInBlock(elif->block());
+        }
+        fillMatchBindingsInBlock(n->elseBlock());
+        return;
+    }
+    if (auto n = dynamic_cast<ExprOneLineIfElseNode*>(e)) {
+        fillMatchBindingsInExpr(n->condition());
+        fillMatchBindingsInExpr(n->trueValue());
+        fillMatchBindingsInExpr(n->falseValue());
+        return;
+    }
+    if (auto n = dynamic_cast<ExprTryCatchNode*>(e)) {
+        fillMatchBindingsInBlock(n->tryBlock());
+        for (auto& c : n->catches()) {
+            if (c) fillMatchBindingsInBlock(c->body());
+        }
+        return;
+    }
+    if (auto n = dynamic_cast<LambdaExprNode*>(e)) {
+        if (n->form() == LambdaExprNode::Form::Expr) {
+            fillMatchBindingsInExpr(n->bodyExpr());
+        } else {
+            for (auto& st : n->bodyStmts())
+                fillMatchBindingsInStmt(st);
+        }
+        return;
+    }
+    if (auto n = dynamic_cast<ExprCallNode*>(e)) {
+        fillMatchBindingsInExpr(n->getCalleeExpr());
+        for (auto& a : n->getArgs())
+            fillMatchBindingsInExpr(a);
+        return;
+    }
+    if (auto n = dynamic_cast<ExprPathCallNode*>(e)) {
+        for (auto& a : n->args())
+            fillMatchBindingsInExpr(a);
+        return;
+    }
+    if (auto n = dynamic_cast<ExprDotNode*>(e)) {
+        fillMatchBindingsInExpr(n->baseExpr());
+        return;
+    }
+    if (auto n = dynamic_cast<ExprAddSubNode*>(e)) {
+        fillMatchBindingsInExpr(n->left());
+        fillMatchBindingsInExpr(n->right());
+        return;
+    }
+    if (auto n = dynamic_cast<ExprMulDivModNode*>(e)) {
+        fillMatchBindingsInExpr(n->left());
+        fillMatchBindingsInExpr(n->right());
+        return;
+    }
+    if (auto n = dynamic_cast<ExprBinOpNode*>(e)) {
+        fillMatchBindingsInExpr(n->left());
+        fillMatchBindingsInExpr(n->right());
+        return;
+    }
+    if (auto n = dynamic_cast<ExprCompareNode*>(e)) {
+        fillMatchBindingsInExpr(n->left());
+        fillMatchBindingsInExpr(n->right());
+        return;
+    }
+    if (auto n = dynamic_cast<ExprParenNode*>(e)) {
+        fillMatchBindingsInExpr(n->expr());
+        return;
+    }
+    if (auto n = dynamic_cast<ExprUnaryNode*>(e)) {
+        fillMatchBindingsInExpr(n->right());
+        return;
+    }
+    if (auto n = dynamic_cast<ExprGetNode*>(e)) {
+        fillMatchBindingsInExpr(n->arrayExpr());
+        for (auto& idx : n->indices())
+            fillMatchBindingsInExpr(idx);
+        return;
+    }
+    if (auto n = dynamic_cast<ExprArrayNode*>(e)) {
+        for (auto& el : n->elements())
+            fillMatchBindingsInExpr(el);
+        return;
+    }
+    if (auto n = dynamic_cast<ExprTupleNode*>(e)) {
+        for (auto& el : n->elements())
+            fillMatchBindingsInExpr(el);
+        return;
+    }
+    if (auto n = dynamic_cast<ExprStructLitNode*>(e)) {
+        for (auto& f : n->fields()) {
+            if (f) fillMatchBindingsInExpr(f->value());
+        }
+        fillMatchBindingsInExpr(n->positional());
+        return;
+    }
+    if (auto n = dynamic_cast<ExprDynCtorNode*>(e)) {
+        fillMatchBindingsInExpr(n->arg());
+        return;
+    }
+    if (auto n = dynamic_cast<ExprMoveAssignNode*>(e)) {
+        fillMatchBindingsInExpr(n->left());
+        fillMatchBindingsInExpr(n->right());
+        return;
+    }
+    if (auto n = dynamic_cast<ExprNullElseNode*>(e)) {
+        fillMatchBindingsInExpr(n->left());
+        fillMatchBindingsInExpr(n->right());
+        return;
+    }
+    if (auto n = dynamic_cast<ExprLiteralNode*>(e)) {
+        if (auto tpl = dynamic_cast<StringTemplateNode*>(n->literal())) {
+            for (auto& interp : tpl->interps())
+                fillMatchBindingsInExpr(interp);
+        }
+    }
+}
+
 void SemaPass::tryValidateMatchScrut(ExprMatchNode* n) {
     // 与 compileMatchExpr 同款。模板形参等实例化后再查；先前只对 builtin / String
     // 报 E2022，用户 struct 与泛型体 subst 后的非 enum 会漏给 codegen。

@@ -2154,6 +2154,7 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
     }
     if (auto n = dynamic_cast<ExprMatchNode*>(expr)) {
         visitExpr(n->scrutinee());
+        fillMatchArmBindingTypes(n);
         for (auto& arm : n->arms()) {
             if (arm->hasBlock())
                 visitBlock(arm->block(), expected);

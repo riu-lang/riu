@@ -15,7 +15,6 @@
 #include "node/expr_node.h"
 #include "node/literal_node.h"
 #include "node/statement_node.h"
-#include "sema/name_resolver.h"
 #include "types.h"
 #include <algorithm>
 
@@ -804,69 +803,32 @@ std::any ASTBuilder::visitPatternElse(yux::yuxParser::PatternElseContext* ctx) {
 }
 
 // match arm: pattern => body
-// 先 visit pattern（不依赖 binding），构造 MatchArmNode 作 ScopeNode，
-// 把 pattern 中的 binding 注册到 arm scope（类型暂用占位 enum 名字 — codegen
-// 阶段才能拿到 variant payload 的精确类型）。然后 push arm scope 再 visit body，
-// 让 body 内对 binding 的 ObjLiteral::getType 能解析到 arm scope。
-//
-// 占位类型说明：v1 grammar 没把 binding 携带类型注解；spec §5.5 要求绑定类型
-// 严格等于 payload 元素类型。binding 类型在 codegen 用 EnumDecl 的
-// payloadTypes 拿到；ast 解析期 getType 仅用作"被某表达式引用时的类型推断"，
-// 例如 `r * r` 中 r 的类型决定外层 `*` 的判定。占位空 TypeInfo 会导致
-// `r * r` 类型推不出来。所以 ast_builder 必须填出真实类型 —— 这里通过 enum
-// 声明回查 EnumDecl，找不到则放空 TypeInfo（codegen 仍会报 E2019）。
+// 先 visit pattern，构造 MatchArmNode 作 ScopeNode，把 binding 注册成空类型槽
+// （payload 精确类型由 Sema visit match 时填）。同一节点 push 后再 visit body，
+// 让 body 的 parent / findNearestScope 就是 Match 存的这条 arm。
 std::any ASTBuilder::visitMatchArm(yux::yuxParser::MatchArmContext* ctx) {
     DEBUG_LOG("    MatchArm");
     auto outer = currentScope();
     auto pattern = any_cast_p<EnumPatternNode>(visit(ctx->pattern));
 
-    // 先建空 body 的 arm 节点（body 占位 nullptr 不便），但 createWithLine 要参数齐全；
-    // 改用先 push 临时 arm，然后 visit body 拿到真实 body 节点
     auto arm = createWithLine<MatchArmNode>(ctx, outer, pattern, static_cast<ExprNode*>(nullptr));
     arm->setParentScope(outer);
 
-    // 给 pattern 的 binding 在 arm scope 上注册符号（按 payload 元素类型）
     if (!pattern->isElse() && !pattern->binds().empty()) {
-        // 找 enum decl：本文件 -> SDK -> 别名解析后再尝试
-        auto file = _scopeStack.empty() ? nullptr : dynamic_cast<FileNode*>(_scopeStack[0]);
-        EnumDeclNode* enumDecl = nullptr;
-        auto r =
-            sema::resolveExprTypeLhs(file, &_yux, pattern->enumPath(), pattern->getLineNumber(), pattern->getColumn());
-        enumDecl = r.enumDecl;
-        if (!enumDecl && file) {
-            enumDecl = sema::NameResolver(file, _yux.sdkFile()).lookupEnum(r.type);
-        }
-
-        EnumVariantNode* variant = enumDecl ? enumDecl->variant(pattern->variantName().getText()) : nullptr;
-        for (size_t i = 0; i < pattern->binds().size(); ++i) {
-            const string& bn = pattern->binds()[i].getText();
-            TypeInfo bindType;
-            if (variant && i < variant->payloadArity()) {
-                bindType = variant->payloadTypes()[i]->getType();
-            }
-            arm->registerSymbol(bn, {SymbolKind::Variable, bn, bindType, false});
+        for (auto& tk : pattern->binds()) {
+            const string& bn = tk.getText();
+            arm->registerSymbol(bn, {SymbolKind::Variable, bn, TypeInfo(), false});
         }
     }
 
-    // 在 arm scope 下 visit body，使其内部 binding 引用走 arm scope -> outer 链
     _scopeStack.push_back(arm);
-    ExprNode* body = nullptr;
-    StatementBlockNode* block = nullptr;
     if (auto* blk = ctx->statementBlock()) {
-        block = any_cast_p<StatementBlockNode>(visit(blk));
+        arm->setBlock(any_cast_p<StatementBlockNode>(visit(blk)));
     } else if (ctx->body) {
-        body = any_cast_p<ExprNode>(visit(ctx->body));
+        arm->setBody(any_cast_p<ExprNode>(visit(ctx->body)));
     }
     _scopeStack.pop_back();
-
-    // 修正 arm 的 body / block
-    auto fullArm = createWithLine<MatchArmNode>(ctx, outer, pattern, body, block);
-    fullArm->setParentScope(outer);
-    // 把刚才在 arm scope 注册的 binding 复制过去
-    for (auto& [n, sym] : arm->localSymbols()) {
-        fullArm->registerSymbol(n, sym);
-    }
-    return fullArm;
+    return arm;
 }
 
 // match 表达式：scrutinee + arms

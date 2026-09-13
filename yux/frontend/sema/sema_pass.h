@@ -190,6 +190,17 @@ private:
     // 直接 match → E2022；非 enum（含用户 struct）→ E2022。模板形参跳过。
     // 实例化为 enum 后走 validateMatchArms。与 compileMatchExpr 对齐。
     void tryValidateMatchScrut(class ExprMatchNode* n);
+    // match arm 绑定：builder 只注册空槽；此处按 pattern 路径的 variant payload 填
+    // SymbolInfo.type。visitFn 入口先扫整棵函数（getType 可能早于 visitExpr）；
+    // visit match 再填一次（幂等）。找不到 enum/variant 则保持空槽，
+    // E2019/E2020 仍由 tryValidateMatchScrut 抛。
+    void fillMatchArmBindingTypes(class ExprMatchNode* n);
+    void fillMatchBindingsInExpr(class ExprNode* e);
+    void fillMatchBindingsInStmt(class StatementNode* s);
+    void fillMatchBindingsInBlock(class StatementBlockNode* b);
+    // 无类型注解的 let：builder 用当时的 getType 登记符号。match 绑定延后填类型后，
+    // 把符号类型按 init 再推一遍（`let rr = r * r` 依赖 payload 绑定）。
+    void refreshInferredLetType(class StatementDeclareAssignNode* da);
 
     // 插值 / String+ 叶子：subst 后须是 String 或有 `<T>.to_string`，否则 E3026。
     // 模板形参跳过。与 compileStringTemplate / compileStringPlusChain 对齐。
