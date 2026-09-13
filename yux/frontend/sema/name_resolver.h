@@ -5,6 +5,7 @@
 #define YUX_LANG_SEMA_NAME_RESOLVER_H
 
 #include "ast/node/file_node.h"
+#include "ast/type_path.h"
 
 class AliasDeclNode;
 class EnumDeclNode;
@@ -57,20 +58,9 @@ struct NameResolver {
 // SemaPass::run 起始处调一次；Compiler 不再双跑。
 void validateAliases(FileNode* file, FileNode* sdkFile = nullptr);
 
-// 类型路径解析（对称 resolveModuleFnCall）。不调用 loadModule：只走已 use/load
-// 的模块别名与 packageChild。裸名 L1 本文件 → L2 具名导入 → L3 通配（含默认
-// yux.core.*）。同层多候选（身份去重后）抛 E5015。
-// 未解析时 type 仅末段短名、ownerModule 空（与 T2 前 getType 行为兼容）。
-struct TypePathResult {
-    TypeInfo type;
-    FileNode* owner = nullptr;
-    StructDeclNode* structDecl = nullptr;
-    EnumDeclNode* enumDecl = nullptr;
-    AliasDeclNode* aliasDecl = nullptr;
-    bool resolved = false;
-};
-
-TypePathResult resolveTypePath(FileNode* file, Yux* yux, const TypePath& path, int line = 0, int col = 0);
+// 实现在 ast/type_path.cpp（已加载模块图，不含 arity / 重载）。此处转发给 Sema。
+using ::resolveTypePath;
+using ::TypePathResult;
 
 // 表达式 LHS：resolveTypePath 后再展开别名，填 structDecl / enumDecl。
 // Self 由调用方处理，不要把 "Self" 丢进来当路径。

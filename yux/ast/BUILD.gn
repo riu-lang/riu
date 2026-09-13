@@ -28,6 +28,7 @@ static_library("yux_ast") {
     "yux.cpp",
     "mod_decl.cpp",
     "mangler.cpp",
+    "type_path.cpp",
     "node/expr_node.cpp",
     "node/file_node.cpp",
     "node/fn_node.cpp",

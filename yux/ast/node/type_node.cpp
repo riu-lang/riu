@@ -3,8 +3,8 @@
 
 #include "type_node.h"
 
+#include "ast/type_path.h"
 #include "file_node.h"
-#include "sema/name_resolver.h"
 
 TypeInfo TypeSelfNode::getType() const {
     // structName 为空 (typically spec 体内): 返回名为 "Self" 的占位 TypeInfo,
@@ -23,12 +23,12 @@ TypeInfo TypeSelfNode::getType() const {
 
 TypeInfo TypeNormalNode::getType() const {
     // 不 loadModule：resolveTypePath 只走已 use/load 的别名与 packageChild
-    auto r = sema::resolveTypePath(enclosingFile(), nullptr, _path, getLineNumber(), getColumn());
+    auto r = resolveTypePath(enclosingFile(), nullptr, _path, getLineNumber(), getColumn());
     return r.type;
 }
 
 TypeInfo TypeGenericNode::getType() const {
-    auto r = sema::resolveTypePath(enclosingFile(), nullptr, _path, getLineNumber(), getColumn());
+    auto r = resolveTypePath(enclosingFile(), nullptr, _path, getLineNumber(), getColumn());
     vector<sp<TypeInfo>> args;
     args.reserve(_typeArgs.size());
     for (auto& typeArg : _typeArgs) {
