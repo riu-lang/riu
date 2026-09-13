@@ -354,6 +354,65 @@ struct Array<T> {
   fn drop(n usize) Array<T>
 }
 
+; Array 是 `#Builtin` 布局，yux 方法发不出去；排序 / 对换走自由函数。
+; T 须可 `copy_of` 且可 `<` / `<=`（标量或 `#Impl(Ord)`，如 String）。
+
+fn swap<T>(arr Array<T>&, i usize, j usize) {
+  if i == j {
+    ret;
+  }
+  #Mut let tmp T = copy_of:<T>(arr[i])
+  arr[i] = copy_of:<T>(arr[j])
+  arr[j] = tmp
+}
+
+fn sort<T>(arr Array<T>&) {
+  let n usize = arr.len()
+  loop i usize = 1 {
+    if i >= n {
+      break;
+    }
+    #Mut let j usize = i
+    loop {
+      if j == 0 {
+        break;
+      }
+      if arr[j - 1] <= arr[j] {
+        break;
+      }
+      #Mut let tmp T = copy_of:<T>(arr[j - 1])
+      arr[j - 1] = copy_of:<T>(arr[j])
+      arr[j] = tmp
+      j -= 1
+    }
+    i += 1
+  }
+}
+
+; less(a, b) 为 true 时 a 排在 b 前
+fn sort_by<T>(arr Array<T>&, less Function<T&, T&, bool>) {
+  let n usize = arr.len()
+  loop i usize = 1 {
+    if i >= n {
+      break;
+    }
+    #Mut let j usize = i
+    loop {
+      if j == 0 {
+        break;
+      }
+      if !less(arr[j], arr[j - 1]) {
+        break;
+      }
+      #Mut let tmp T = copy_of:<T>(arr[j - 1])
+      arr[j - 1] = copy_of:<T>(arr[j])
+      arr[j] = tmp
+      j -= 1
+    }
+    i += 1
+  }
+}
+
 ; Nullable<T> - 可空包装类型
 ; T? 是 Nullable<T> 的语法糖（编译器解糖）
 ; 当前实现为简单包装；性能优化（指针类退化、sentinel 等）后置

@@ -12,7 +12,7 @@
 | `BUGS.md` | 与当前任务无关 / 需大量排查的 bug | 否 |
 | `MILESTONE.md` | 稳定版目标 | 是 |
 
-多步任务写入 `CURRENT.md`，阶段更新，完成后删条目；单步小修不写。新 bug 用 `BUGS.md` 模板。进度和 bug 不混。语言面变更才写 `docs/dev/<topic>-impl-log.md`（里面把 BUGS 改写成 TODO 简述）；纯工程进度归 MILESTONE.md。
+多步任务写入 `CURRENT.md`，阶段更新，完成简单保留；单步小修不写。新 bug 用 `BUGS.md` 模板。进度和 bug 不混。语言面变更才写 `docs/dev/<topic>-impl-log.md`（里面把 BUGS 改写成 TODO 简述）；纯工程进度归 MILESTONE.md。
 
 继续旧任务：读 CURRENT + BUGS，确认能编过。撞到可能是旧 bug：`git stash` → `./build.ps1` → 跑相关测试。基线也挂 → 记 BUGS.md 后绕过；基线过 → 当前引入，修掉。工作区干净 + CURRENT/BUGS 空 = 上一任务已完结。质量优先，不强制关 CURRENT。
 

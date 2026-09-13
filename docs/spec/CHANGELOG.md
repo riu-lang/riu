@@ -15,6 +15,12 @@
 
 ---
 
+## 2026-09-13 —— SDK 常用 API：路径 / 字节 / 浮点解析 / 排序
+
+- **修改 §9.1.4.5 / §9.2.3.6 / §9.3.3 / §9.3.4 / §9.3.4.6**：`u32` ASCII 分类；`swap` / `sort` / `sort_by` 为 Array 自由函数；`String::from_bytes`、`split_once` / `rsplit_once`、`parse_f32` / `parse_f64`、`String.is_ascii`。
+- **修改 §10.4.1.4**：`FileInfo.mtime`；`Path` / 路径 facade 的 `extension` / `stem` / `with_extension`；`mkdir_all` / `copy_file` / `rename` / `chdir` / `set_env` / `unset_env` / `temp_dir` / `read_bytes` / `write_bytes`。
+- **冲突 / 兼容**：纯增。v1 仍无 printf `format("{:04}")`、正则、`Command` / JSON。
+
 ## 2026-09-12 —— 整数字面量按类型范围校验
 
 - **修改 §1.6.1.3 / §3.2.4.3**：字面量不得超出其类型（推断或显式）的值范围，**E3103**。一元负号计入（`i32`/`i64` 最小值合法）。`assert_eq` 等泛型调用按推断后的 `T` 回填灵活整数；两侧皆灵活且超出 `i32` 但落入 `i64` 时升到 `i64`。

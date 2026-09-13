@@ -958,3 +958,89 @@ fn test_parse_bool() {
   assert_false("1".parse_bool().has())
   assert_false("".parse_bool().has())
 }
+
+#Test
+fn test_parse_f64_basic() {
+  let z f64? = "0".parse_f64()
+  assert_eq(z.get(), 0.0f64)
+  let p f64? = "1.5".parse_f64()
+  assert_eq(p.get(), 1.5f64)
+  let n f64? = "-2".parse_f64()
+  assert_eq(n.get(), -2.0f64)
+  let frac f64? = "0.5".parse_f64()
+  assert_eq(frac.get(), 0.5f64)
+  let exp f64? = "1e2".parse_f64()
+  assert_eq(exp.get(), 100.0f64)
+  let negexp f64? = "25e-1".parse_f64()
+  assert_eq(negexp.get(), 2.5f64)
+}
+
+#Test
+fn test_parse_f64_specials_invalid() {
+  assert_false("".parse_f64().has())
+  assert_false(".".parse_f64().has())
+  assert_false("e10".parse_f64().has())
+  assert_false("1e".parse_f64().has())
+  assert_false("1.2.3".parse_f64().has())
+  assert_false(" 1".parse_f64().has())
+  assert_false("inf".parse_f64().has())
+  assert_false("nan".parse_f64().has())
+}
+
+#Test
+fn test_parse_f32() {
+  let v f32? = "2.5".parse_f32()
+  assert_eq(v.get(), 2.5f32)
+  assert_false("x".parse_f32().has())
+}
+
+#Test
+fn test_split_once_rsplit() {
+  let p (String, String)? = "a=b=c".split_once("=")
+  assert_true(p.has())
+  let pair (String, String) = p.get()
+  assert_eq(pair.0, "a")
+  assert_eq(pair.1, "b=c")
+  let r (String, String)? = "a=b=c".rsplit_once("=")
+  let rp (String, String) = r.get()
+  assert_eq(rp.0, "a=b")
+  assert_eq(rp.1, "c")
+  assert_false("abc".split_once("=").has())
+  assert_false("abc".split_once("").has())
+}
+
+#Test
+fn test_from_bytes_roundtrip() {
+  let s String = "hello 你好"
+  let b Array<u8> = s.to_bytes()
+  let back String? = String::from_bytes(&b)
+  assert_eq(back.get(), s)
+  let none Array<u8> = []
+  let empty String? = String::from_bytes(&none)
+  assert_eq(empty.get(), "")
+  let hi String = "hi"
+  let hb Array<u8> = hi.to_bytes()
+  assert_eq(String::from_bytes(&hb).get(), hi)
+  let z String = "z"
+  let zb Array<u8> = z.to_bytes()
+  assert_eq(String::from_bytes(&zb).get(), z)
+}
+
+#Test
+fn test_from_bytes_invalid() {
+  let bad Array<u8> = [255u8]
+  assert_false(String::from_bytes(&bad).has())
+  let trunc Array<u8> = [226u8, 152u8]
+  assert_false(String::from_bytes(&trunc).has())
+}
+
+#Test
+fn test_string_is_ascii() {
+  assert_true("abc".is_ascii())
+  assert_true("".is_ascii())
+  assert_false("你好".is_ascii())
+  assert_true(c'A'.is_ascii_alpha())
+  assert_true(c'0'.is_ascii_digit())
+  assert_true(32u32.is_ascii_ws())
+  assert_false(200u32.is_ascii())
+}

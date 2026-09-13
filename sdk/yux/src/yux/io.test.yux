@@ -123,6 +123,26 @@ fn test_write_read_roundtrip() {
   assert_eq(s, "hello")
 }
 
+; 短内容（1–2 字节）经 String::from_bytes 跨模块往返
+#Test
+fn test_write_read_short() {
+  let path String = "_yux_io_short.txt"
+  try {
+    write_file(&path, "hi")
+  } catch e IoErr {
+    _fail_io("write_short", e)
+  }
+  let s String = try {
+    read_file(&path)
+  } catch e IoErr {
+    _cleanup(&path);
+    _fail_io("read_short", e);
+    ""
+  }
+  _cleanup(&path);
+  assert_eq(s, "hi")
+}
+
 ; 验证：中文内容按 UTF-8 往返
 #Test
 fn test_write_read_chinese() {
@@ -1156,4 +1176,150 @@ fn test_io_err_text_win32() {
   let s1314 String = io_err_text(IoErr::Other(1314u32))
   assert_true(s1314.len() > 0)
   assert_false(s1314.starts_with("Win32 "))
+}
+
+#Test
+fn test_mkdir_all_copy_rename() {
+  let root String = "_yux_io_mkdir_all"
+  let nested String = join(&root, "a")
+  let deep String = join(&nested, "b")
+  let src String = join(&deep, "x.txt")
+  let copied String = join(&deep, "y.txt")
+  let renamed String = join(&deep, "z.txt")
+  _cleanup_all(&root)
+  try {
+    mkdir_all(&deep)
+    write_file(&src, "hi")
+    copy_file(&src, &copied)
+    rename(&copied, &renamed)
+  } catch e IoErr {
+    _cleanup_all(&root)
+    _fail_io("mkdir_all_copy_rename", e)
+  }
+  assert_true(is_dir(&deep))
+  let got String = try {
+    read_file(&renamed)
+  } catch e IoErr {
+    _cleanup_all(&root)
+    _fail_io("read_renamed", e)
+    ""
+  }
+  assert_eq(got, "hi")
+  assert_true(exists(&src))
+  assert_false(exists(&copied))
+  _cleanup_all(&root)
+}
+
+#Test
+fn test_read_write_bytes_and_mtime() {
+  let path String = "_yux_io_bytes.bin"
+  _cleanup(&path)
+  #Mut let raw Array<u8> = []
+  raw.push(0u8)
+  raw.push(255u8)
+  raw.push(10u8)
+  try {
+    write_bytes(&path, &raw)
+  } catch e IoErr {
+    _fail_io("write_bytes", e)
+  }
+  let got Array<u8> = try {
+    read_bytes(&path)
+  } catch e IoErr {
+    _cleanup(&path)
+    _fail_io("read_bytes", e)
+    ret;
+  }
+  assert_eq(got.len(), 3)
+  assert_eq(copy_of(got[0]), 0u8)
+  assert_eq(copy_of(got[1]), 255u8)
+  let info FileInfo = try {
+    File::from(&path).info()
+  } catch e IoErr {
+    _cleanup(&path)
+    _fail_io("mtime_info", e)
+    ret;
+  }
+  assert_true(info.mtime > 1600000000)
+  _cleanup(&path)
+}
+
+#Test
+fn test_path_extension_stem() {
+  assert_eq(extension("a.txt"), "txt")
+  assert_eq(stem("a.txt"), "a")
+  assert_eq(extension("a.tar.gz"), "gz")
+  assert_eq(stem("a.tar.gz"), "a.tar")
+  assert_eq(extension(".gitignore"), "")
+  assert_eq(stem(".gitignore"), ".gitignore")
+  assert_eq(with_extension("a.txt", "md"), "a.md")
+  assert_eq(with_extension("a", "txt"), "a.txt")
+  assert_eq(with_extension("a.txt", ""), "a")
+  let raw String = "dir/foo.rs"
+  let p Path = Path::from(&raw)
+  assert_eq(p.extension(), "rs")
+  assert_eq(p.stem(), "foo")
+}
+
+#Test
+fn test_set_env_and_temp_dir() {
+  let name String = "_YUX_SDK_TEST_ENV"
+  try {
+    set_env(&name, "ok")
+  } catch e IoErr {
+    _fail_io("set_env", e)
+  }
+  let v String? = env(&name)
+  assert_eq(v.get(), "ok")
+  try {
+    unset_env(&name)
+  } catch e IoErr {
+    _fail_io("unset_env", e)
+  }
+  assert_false(env(&name).has())
+  let tmp String = try {
+    temp_dir()
+  } catch e IoErr {
+    _fail_io("temp_dir", e)
+    ""
+  }
+  assert_true(is_dir(&tmp))
+}
+
+#Test
+fn test_chdir_restore() {
+  let old String = try {
+    cwd()
+  } catch e IoErr {
+    _fail_io("cwd_old", e)
+    ""
+  }
+  let dir String = "_yux_io_chdir"
+  _cleanup_all(&dir)
+  try {
+    mkdir(&dir)
+    chdir(&dir)
+  } catch e IoErr {
+    _cleanup_all(&dir)
+    _fail_io("chdir", e)
+  }
+  let now String = try {
+    cwd()
+  } catch e IoErr {
+    try {
+      chdir(&old)
+    } catch e2 IoErr {
+    }
+    _cleanup_all(&dir)
+    _fail_io("cwd_new", e)
+    ""
+  }
+  try {
+    chdir(&old)
+  } catch e IoErr {
+    _cleanup_all(&dir)
+    _fail_io("chdir_back", e)
+  }
+  assert_true(now.contains("_yux_io_chdir"))
+  _cleanup_all(&dir)
 }

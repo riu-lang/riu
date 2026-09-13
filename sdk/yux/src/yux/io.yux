@@ -50,6 +50,16 @@ extern {
   fn _DeviceIoControl(hDevice Ptr, dwIoControlCode u32, lpInBuffer Ptr, nInBufferSize u32, lpOutBuffer Ptr, nOutBufferSize u32, lpBytesReturned Ptr, lpOverlapped Ptr) i32
   #CName("FormatMessageW")
   fn _FormatMessageW(dwFlags u32, lpSource Ptr, dwMessageId u32, dwLanguageId u32, lpBuffer Ptr, nSize u32, arguments Ptr) u32
+  #CName("CopyFileW")
+  fn _CopyFileW(lpExistingFileName Ptr, lpNewFileName Ptr, bFailIfExists i32) i32
+  #CName("MoveFileW")
+  fn _MoveFileW(lpExistingFileName Ptr, lpNewFileName Ptr) i32
+  #CName("SetCurrentDirectoryW")
+  fn _SetCurrentDirectoryW(lpPathName Ptr) i32
+  #CName("SetEnvironmentVariableW")
+  fn _SetEnvironmentVariableW(lpName Ptr, lpValue Ptr) i32
+  #CName("GetTempPathW")
+  fn _GetTempPathW(nBufferLength u32, lpBuffer Ptr) u32
 }
 
 ; Win32 常量（文件作用域）
@@ -113,6 +123,10 @@ let _FSCTL_SET_REPARSE_POINT u32 = 0x000900A4
 let _FORMAT_MESSAGE_FROM_SYSTEM u32 = 0x00001000
 #Cval
 let _FORMAT_MESSAGE_IGNORE_INSERTS u32 = 0x00000200
+#Cval
+let _UNIX_FT_EPOCH u64 = 116444736000000000
+#Cval
+let _HNS_PER_SEC u64 = 10000000u64
 
 enum IoErr {
   Eof
@@ -198,6 +212,7 @@ fn _to_wide(path String&) Array<u16> {
 }
 
 fn _from_utf8(bytes Array<u8>&) String ! IoErr {
+  ; 与 String::from_bytes 同算法。不要跨模块调 from_bytes：短内容 / junction 读取会坏（BUGS）。
   #Mut let cps Array<u32> = []
   #Mut let i usize = 0
   let n usize = bytes.len()
@@ -401,6 +416,8 @@ struct FileInfo {
   size u64
   #Val
   readonly bool
+  #Val
+  mtime i64
 }
 
 #Impl(ToString)
@@ -468,6 +485,32 @@ struct Path {
     }
     a.to_lower() == b.to_lower()
   }
+
+  fn extension() String {
+    let raw String = $._raw.to_string()
+    let name String = basename(&raw)
+    let d usize? = _name_last_dot(&name)
+    if !d.has() {
+      ret ""
+    }
+    _cps_range(&name, d.get() + 1, name.len())
+  }
+
+  fn stem() String {
+    let raw String = $._raw.to_string()
+    let name String = basename(&raw)
+    let d usize? = _name_last_dot(&name)
+    if !d.has() {
+      ret name.to_string()
+    }
+    _cps_range(&name, 0, d.get())
+  }
+
+  fn with_extension(ext String&) Path {
+    let raw String = $._raw.to_string()
+    let next String = with_extension(&raw, ext)
+    Path { move(next) }
+  }
 }
 
 ; 按 Win32 文件属性结构的小端布局读取字段。
@@ -481,6 +524,16 @@ fn _read_u32_le(data [u8 * 36]&, offset usize) u32 {
 
 fn _combine_file_size(high u32, low u32) u64 {
   high.to_u64().shl(32u64).or(low.to_u64())
+}
+
+fn _ft_to_unix(ft u64) i64 {
+  let epoch u64 = _UNIX_FT_EPOCH
+  let step u64 = _HNS_PER_SEC
+  if ft >= epoch {
+    ((ft - epoch) / step).to_i64()
+  } else {
+    0 - ((epoch - ft) / step).to_i64()
+  }
 }
 
 fn _file_info(path String&) FileInfo ! IoErr {
@@ -500,10 +553,13 @@ fn _file_info(path String&) FileInfo ! IoErr {
   }
   let high u32 = _read_u32_le(&data, 28usize)
   let low u32 = _read_u32_le(&data, 32usize)
+  let mtime_low u32 = _read_u32_le(&data, 20usize)
+  let mtime_high u32 = _read_u32_le(&data, 24usize)
   FileInfo {
     .kind = kind
     .size = _combine_file_size(high, low)
     .readonly = attrs.and(_FILE_ATTRIBUTE_READONLY) != 0
+    .mtime = _ft_to_unix(_combine_file_size(mtime_high, mtime_low))
   }
 }
 
@@ -573,6 +629,33 @@ struct File {
   fn mkdir() ! IoErr {
     let raw String = $._path.to_string()
     mkdir(&raw)!
+  }
+
+  fn mkdir_all() ! IoErr {
+    let raw String = $._path.to_string()
+    mkdir_all(&raw)!
+  }
+
+  fn copy_to(dest File&) ! IoErr {
+    let src String = $._path.to_string()
+    let dst String = dest._path.to_string()
+    copy_file(&src, &dst)!
+  }
+
+  fn rename_to(dest File&) ! IoErr {
+    let src String = $._path.to_string()
+    let dst String = dest._path.to_string()
+    rename(&src, &dst)!
+  }
+
+  fn read_bytes() Array<u8> ! IoErr {
+    let raw String = $._path.to_string()
+    read_bytes(&raw)!
+  }
+
+  fn write_bytes(bytes Array<u8>&) ! IoErr {
+    let raw String = $._path.to_string()
+    write_bytes(&raw, bytes)!
   }
 
   fn remove() ! IoErr {
@@ -939,6 +1022,21 @@ fn cwd() String ! IoErr {
   _from_u16(&buf, got.to_usize())
 }
 
+fn set_env(name String&, value String&) ! IoErr {
+  #Mut let wname Array<u16> = _to_wide(name)
+  #Mut let wval Array<u16> = _to_wide(value)
+  if _SetEnvironmentVariableW(wname, wval) == 0 {
+    ret _map_last_err()
+  }
+}
+
+fn unset_env(name String&) ! IoErr {
+  #Mut let wname Array<u16> = _to_wide(name)
+  if _SetEnvironmentVariableW(wname, null) == 0 {
+    ret _map_last_err()
+  }
+}
+
 fn env(name String&) String? {
   #Mut let wname Array<u16> = _to_wide(name)
   let need u32 = _GetEnvironmentVariableW(wname, null, 0)
@@ -959,6 +1057,152 @@ fn env(name String&) String? {
     ret null
   }
   _from_u16(&buf, got.to_usize())
+}
+
+fn chdir(path String&) ! IoErr {
+  #Mut let wide Array<u16> = _to_wide(path)
+  if _SetCurrentDirectoryW(wide) == 0 {
+    ret _map_last_err()
+  }
+}
+
+fn temp_dir() String ! IoErr {
+  let need u32 = _GetTempPathW(0, null)
+  if need == 0 {
+    ret _map_last_err()
+  }
+  let n usize = need.to_usize()
+  #Mut let buf Array<u16> = Array:<u16>::with_capacity(n)
+  loop i usize = 0 {
+    if i >= n {
+      break;
+    }
+    buf.push(0u16)
+    i += 1
+  }
+  let got u32 = _GetTempPathW(need, buf)
+  if got == 0 {
+    ret _map_last_err()
+  }
+  _from_u16(&buf, got.to_usize())
+}
+
+fn read_bytes(path String&) Array<u8> ! IoErr {
+  let p Path = Path::from(&path)
+  let stream FileInputStream = try {
+    FileInputStream::open(&p)
+  } catch e IoErr {
+    ret e
+  }
+  let out Array<u8> = stream.read_to_end()!
+  stream.close()!
+  out
+}
+
+fn write_bytes(path String&, bytes Array<u8>&) ! IoErr {
+  let p Path = Path::from(&path)
+  let stream FileOutputStream = try {
+    FileOutputStream::create(&p)
+  } catch e IoErr {
+    ret e
+  }
+  stream.write(bytes)!
+  stream.close()!
+}
+
+fn mkdir_all(path String&) ! IoErr {
+  if path.is_empty() || path == "." || path == ".." {
+    ret;
+  }
+  if exists(path) {
+    if is_dir(path) {
+      ret;
+    }
+    ret IoErr::AccessDenied
+  }
+  let parent String = dirname(path)
+  if parent != path {
+    mkdir_all(&parent)!
+  }
+  try {
+    mkdir(path)
+  } catch e IoErr {
+    if exists(path) && is_dir(path) {
+      ret;
+    }
+    ret e
+  }
+}
+
+fn copy_file(src String&, dst String&) ! IoErr {
+  if is_dir(src) {
+    ret IoErr::AccessDenied
+  }
+  #Mut let from Array<u16> = _to_wide(src)
+  #Mut let to Array<u16> = _to_wide(dst)
+  if _CopyFileW(from, to, 0) == 0 {
+    ret _map_last_err()
+  }
+}
+
+fn rename(from String&, to String&) ! IoErr {
+  #Mut let src Array<u16> = _to_wide(from)
+  #Mut let dst Array<u16> = _to_wide(to)
+  if _MoveFileW(src, dst) == 0 {
+    ret _map_last_err()
+  }
+}
+
+fn _name_last_dot(name String&) usize? {
+  #Mut let dot usize? = null
+  loop i usize = 0 {
+    if i >= name.len() {
+      break;
+    }
+    if name.get(i) == c'.' {
+      dot = i
+    }
+    i += 1
+  }
+  if !dot.has() {
+    ret null
+  }
+  let d usize = dot.get()
+  if d == 0 {
+    ret null
+  }
+  d
+}
+
+fn extension(path String&) String {
+  let name String = basename(path)
+  let d usize? = _name_last_dot(&name)
+  if !d.has() {
+    ret ""
+  }
+  _cps_range(&name, d.get() + 1, name.len())
+}
+
+fn stem(path String&) String {
+  let name String = basename(path)
+  let d usize? = _name_last_dot(&name)
+  if !d.has() {
+    ret name.to_string()
+  }
+  _cps_range(&name, 0, d.get())
+}
+
+fn with_extension(path String&, ext String&) String {
+  let dir String = dirname(path)
+  let st String = stem(path)
+  #Mut let new_name String = st.to_string()
+  if !ext.is_empty() {
+    new_name = st + "." + ext.to_string()
+  }
+  if dir == "." {
+    ret new_name
+  }
+  join(&dir, &new_name)
 }
 
 fn _find_name(data [u8 * 592]&) String {

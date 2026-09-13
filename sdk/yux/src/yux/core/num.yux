@@ -741,6 +741,23 @@ struct u32 {
   fn to_string() String {
     $.to_u64().to_string()
   }
+
+  fn is_ascii() bool {
+    $ < 128u32
+  }
+
+  fn is_ascii_digit() bool {
+    $ >= c'0' && $ <= c'9'
+  }
+
+  fn is_ascii_alpha() bool {
+    ($ >= c'A' && $ <= c'Z') || ($ >= c'a' && $ <= c'z')
+  }
+
+  ; U+0009..U+000D 与空格 U+0020
+  fn is_ascii_ws() bool {
+    ($ >= 9u32 && $ <= 13u32) || $ == 32u32
+  }
 }
 
 #Impl(Number)

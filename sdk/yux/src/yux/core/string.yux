@@ -62,6 +62,76 @@ struct String {
     String::_take_buf(move(buf))
   }
 
+  ; 严格 UTF-8 → String；非法序列 / 过长编码 / 代理对 → null
+  ; 收尾走 String::from（深拷贝）；_take_buf + String? 跨模块调用会弄坏短串（见 BUGS）
+  #Static
+  fn from_bytes(bytes Array<u8>&) String? {
+    #Mut let cps Array<u32> = []
+    #Mut let i usize = 0
+    let n usize = bytes.len()
+    loop {
+      if i >= n {
+        break;
+      }
+      let b0 u8 = copy_of(bytes[i])
+      if b0 < 128u8 {
+        cps.push(b0.to_u32())
+        i += 1
+      } elif b0 >= 194u8 && b0 < 224u8 {
+        if i + 1 >= n {
+          ret null
+        }
+        let b1 u8 = copy_of(bytes[i + 1])
+        if b1 < 128u8 || b1 >= 192u8 {
+          ret null
+        }
+        let cp u32 = (b0.to_u32() - 192u32).shl(6u32) + (b1.to_u32() - 128u32)
+        cps.push(cp)
+        i += 2
+      } elif b0 >= 224u8 && b0 < 240u8 {
+        if i + 2 >= n {
+          ret null
+        }
+        let b1 u8 = copy_of(bytes[i + 1])
+        let b2 u8 = copy_of(bytes[i + 2])
+        if b1 < 128u8 || b1 >= 192u8 || b2 < 128u8 || b2 >= 192u8 {
+          ret null
+        }
+        if b0 == 224u8 && b1 < 160u8 {
+          ret null
+        }
+        if b0 == 237u8 && b1 >= 160u8 {
+          ret null
+        }
+        let cp u32 = (b0.to_u32() - 224u32).shl(12u32) + (b1.to_u32() - 128u32).shl(6u32) + (b2.to_u32() - 128u32)
+        cps.push(cp)
+        i += 3
+      } elif b0 >= 240u8 && b0 < 245u8 {
+        if i + 3 >= n {
+          ret null
+        }
+        let b1 u8 = copy_of(bytes[i + 1])
+        let b2 u8 = copy_of(bytes[i + 2])
+        let b3 u8 = copy_of(bytes[i + 3])
+        if b1 < 128u8 || b1 >= 192u8 || b2 < 128u8 || b2 >= 192u8 || b3 < 128u8 || b3 >= 192u8 {
+          ret null
+        }
+        if b0 == 240u8 && b1 < 144u8 {
+          ret null
+        }
+        if b0 == 244u8 && b1 >= 144u8 {
+          ret null
+        }
+        let cp u32 = (b0.to_u32() - 240u32).shl(18u32) + (b1.to_u32() - 128u32).shl(12u32) + (b2.to_u32() - 128u32).shl(6u32) + (b3.to_u32() - 128u32)
+        cps.push(cp)
+        i += 4
+      } else {
+        ret null
+      }
+    }
+    String::from(&cps)
+  }
+
   ; 用 sep 拼接；空 parts → ""；单段不加 sep
   ; sep 按值：静态方法不自动取址，字面量 `","` 才能直接传入
   #Static
@@ -495,6 +565,32 @@ struct String {
     parts
   }
 
+  ; 第一次切开；未命中 / 空 sep → null
+  fn split_once(sep String&) (String, String)? {
+    if sep.is_empty() {
+      ret null
+    }
+    let i usize? = $.index_of(&sep)
+    if !i.has() {
+      ret null
+    }
+    let at usize = i.get()
+    ($.slice(0, at), $.slice_from(at + sep.len()))
+  }
+
+  ; 最后一次切开；未命中 / 空 sep → null
+  fn rsplit_once(sep String&) (String, String)? {
+    if sep.is_empty() {
+      ret null
+    }
+    let i usize? = $.last_index_of(&sep)
+    if !i.has() {
+      ret null
+    }
+    let at usize = i.get()
+    ($.slice(0, at), $.slice_from(at + sep.len()))
+  }
+
   ; 全部替换非重叠 from；空 from 返回自身（避免无限插入）
   fn replace(from String&, to String&) String {
     let a Array<u32>& = as_ref($._buf)
@@ -660,6 +756,143 @@ struct String {
       ret false
     }
     null
+  }
+
+  ; 十进制浮点。不吃空白；可选单一 `+` / `-`；须至少一位数字。
+  ; 溢出按 IEEE 变 ±inf。非法 / `inf` / `nan` → null。
+  fn parse_f64() f64? {
+    let a Array<u32>& = as_ref($._buf)
+    let n usize = a.len()
+    if n == 0 {
+      ret null
+    }
+    #Mut let i usize = 0
+    #Mut let neg bool = false
+    let first u32 = copy_of(a[0])
+    if first == c'-' {
+      neg = true
+      i = 1
+    } elif first == c'+' {
+      i = 1
+    }
+    if i >= n {
+      ret null
+    }
+    #Mut let acc f64 = 0.0f64
+    #Mut let any bool = false
+    loop {
+      if i >= n {
+        break;
+      }
+      let cp u32 = copy_of(a[i])
+      if cp < c'0' || cp > c'9' {
+        break;
+      }
+      any = true
+      acc = acc * 10.0f64 + (cp - c'0').to_f64()
+      i += 1
+    }
+    if i < n && copy_of(a[i]) == c'.' {
+      i += 1
+      #Mut let place f64 = 0.1f64
+      loop {
+        if i >= n {
+          break;
+        }
+        let cp u32 = copy_of(a[i])
+        if cp < c'0' || cp > c'9' {
+          break;
+        }
+        any = true
+        acc = acc + (cp - c'0').to_f64() * place
+        place = place * 0.1f64
+        i += 1
+      }
+    }
+    if !any {
+      ret null
+    }
+    if i < n {
+      let ecp u32 = copy_of(a[i])
+      if ecp == c'e' || ecp == c'E' {
+        i += 1
+        if i >= n {
+          ret null
+        }
+        #Mut let exp_neg bool = false
+        let es u32 = copy_of(a[i])
+        if es == c'-' {
+          exp_neg = true
+          i += 1
+        } elif es == c'+' {
+          i += 1
+        }
+        if i >= n {
+          ret null
+        }
+        #Mut let exp i32 = 0
+        #Mut let exp_any bool = false
+        loop {
+          if i >= n {
+            break;
+          }
+          let cp u32 = copy_of(a[i])
+          if cp < c'0' || cp > c'9' {
+            ret null
+          }
+          exp_any = true
+          if exp < 10000 {
+            exp = exp * 10 + (cp - c'0').to_i32()
+          }
+          i += 1
+        }
+        if !exp_any {
+          ret null
+        }
+        #Mut let k i32 = 0
+        loop {
+          if k >= exp {
+            break;
+          }
+          if exp_neg {
+            acc = acc / 10.0f64
+          } else {
+            acc = acc * 10.0f64
+          }
+          k += 1
+        }
+      }
+    }
+    if i != n {
+      ret null
+    }
+    if neg {
+      ret -acc
+    }
+    acc
+  }
+
+  fn parse_f32() f32? {
+    let v f64? = $.parse_f64()
+    if !v.has() {
+      ret null
+    }
+    v.get().to_f32()
+  }
+
+  ; 全部码点 < 128；空串为 true
+  fn is_ascii() bool {
+    let a Array<u32>& = as_ref($._buf)
+    loop i usize = 0 {
+      if i >= a.len() {
+        ret true
+      }
+      if copy_of(a[i]) >= 128u32 {
+        ret false
+      }
+      i += 1
+    }
+    true
   }
 
   ; 转为 UTF-8 字节数组
