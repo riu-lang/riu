@@ -10,9 +10,15 @@
 |------|------|-----|
 | `CURRENT.md` / `CURRENT-*.md` | 多步任务计划 | 否 |
 | `BUGS.md` | 与当前任务无关 / 需大量排查的 bug | 否 |
-| `MILESTONE.md` | 稳定版目标 | 是 |
+| `notes/<ver>.md` | 本版落地（加 / 修），一份记录 | 是 |
+| `notes/_模板.md` | 切小版本时复制为 `notes/<ver>.md` | 是 |
+| `MILESTONE.md` | 大版本目标（草稿）v1 / v2 | 是 |
+| `docs/spec/prop/` | 新语法/规范提议（#N，不绑版本） | 是 |
+| `docs/spec/CHANGELOG.md` | spec 条款 diff | 是 |
 
-多步任务写入 `CURRENT.md`，阶段更新，完成简单保留；单步小修不写。新 bug 用 `BUGS.md` 模板。进度和 bug 不混。语言面变更才写 `docs/dev/<topic>-impl-log.md`（里面把 BUGS 改写成 TODO 简述）；纯工程进度归 MILESTONE.md。
+落地只追加 `notes/<ver>.md`（`ver` = `build/version.gni` 的 `x.y`）。切版复制 `notes/_模板.md`。新语法/规范复制 `docs/spec/prop/_模板.md`，状态写在提议文件头部（同步 `prop/README.md` 表）。提案不绑实现版本；切片写 notes，全部完成才改 `已落地`。不要再抄进 MILESTONE。不要再改 `docs/spec/draft/`。改 spec 才写 spec CHANGELOG。
+
+多步任务写入 `CURRENT.md`，阶段更新，完成简单保留；单步小修不写。新 bug 用 `BUGS.md` 模板。进度和 bug 不混。修完可把 BUGS 条删掉，回归路径写进 notes。
 
 继续旧任务：读 CURRENT + BUGS，确认能编过。撞到可能是旧 bug：`git stash` → `./build.ps1` → 跑相关测试。基线也挂 → 记 BUGS.md 后绕过；基线过 → 当前引入，修掉。工作区干净 + CURRENT/BUGS 空 = 上一任务已完结。质量优先，不强制关 CURRENT。
 

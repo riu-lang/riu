@@ -1,11 +1,14 @@
 # 语言规范回写
 
-`docs/spec/draft/DRAFT-*.md` 入库，但不等于规范（不一定实施）。冲突以 spec + g4 + 编译器为准。新建从 `docs/spec/draft/_模板.md` 复制；定型后迁入 spec 正文与 CHANGELOG。
+新语法 / 规范只走 [`docs/spec/prop/`](../docs/spec/prop/README.md)：`提议` → `评估` → `待实施` 或 `关闭`。未到 `待实施` 不要改 spec 正文。旧 `DRAFT-*` 冻结，见 [`docs/spec/archive.md`](../docs/spec/archive.md)。
 
-改语言面（特性 / 语法 / 语义 / ABI / 内置类型）落地前先与用户确认措辞，然后：
+冲突以 spec 正文 + g4 + 编译器为准（冲突时改 docs）。改 g4 必须先停下来拍板。
 
-1. `docs/spec/` 对应章节（§N.M.K + Open Issues）
-2. `docs/spec/CHANGELOG.md` 顶部追加（日期 / 摘要 / 影响章节）
-3. 改语法 → 附录 A/B 对齐 g4；改术语 → 附录 C
+落地前先与用户确认措辞。提案不绑实现版本，实施可跨多个版本：
 
-用户写 yux 能观察到差别才回写。纯实现细节（性能、缓存、报错措辞、内部重命名）不回写。
+1. 切片：`notes/<ver>.md` 一条；提议「落地」追加一行；状态保持 `实施中`（同步目录表）
+2. 全部完成：状态 → `已落地`
+3. 用户可见语义：`docs/spec/` 对应章节 + `CHANGELOG.md` 顶部一条
+4. 改语法 → 附录 A/B 对齐 g4；改术语 → 附录 C
+
+用户写 yux 能观察到差别才回写 spec。纯实现细节不回写。新未决项开提议，不往章节 Open Issues 堆。
