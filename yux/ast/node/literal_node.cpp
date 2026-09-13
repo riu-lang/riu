@@ -2,7 +2,6 @@
 // MPL-2.0
 
 #include "literal_node.h"
-#include "analyzer/symbol_suggest.h"
 #include "file_node.h"
 
 #include <regex>
@@ -98,8 +97,8 @@ TypeInfo LiteralObjNode::getType() const {
         return TypeInfo(FnTag{}, {}, nullptr);
     }
 
-    SymbolSuggest::throwSymbolNotFound(scope, static_cast<int>(_value.getLine()),
-                                       static_cast<int>(_value.getCharPositionInLine()) + 1, ErrorCode::E3030, name);
+    throw YuxError(static_cast<int>(_value.getLine()), static_cast<int>(_value.getCharPositionInLine()) + 1,
+                   ErrorCode::E3030, name);
 }
 
 string LiteralObjNode::getLocation() const {

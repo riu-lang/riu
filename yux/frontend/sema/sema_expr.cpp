@@ -31,6 +31,7 @@
 #include "analyzer/flow_terminate_checker.h"
 #include "analyzer/spec_impl_checker.h"
 #include "analyzer/spec_registry.h"
+#include "analyzer/symbol_suggest.h"
 #include "ast/node/enum_node.h"
 #include "ast/node/expr_node.h"
 #include "ast/node/file_node.h"
@@ -74,6 +75,21 @@ FileNode* fnDeclFile(FnNode* fn, FileNode* fallback) {
         if (auto* f = fn->enclosingFile()) return f;
     }
     return fallback;
+}
+
+// getType 不再附拼写建议；E3030 重抛前在 Sema 补 hint。
+[[noreturn]] void rethrowGetType(ExprNode* n, YuxError e) {
+    if (e.getCode() && std::string_view(e.getCode()) == "E3030" && e.hints().empty()) {
+        string name;
+        string_view msg = e.what();
+        constexpr string_view suffix = "' not found";
+        if (msg.size() > suffix.size() + 1 && msg.front() == '\'' && msg.ends_with(suffix)) {
+            name.assign(msg.substr(1, msg.size() - 1 - suffix.size()));
+        }
+        auto h = SymbolSuggest::buildHint(n->findNearestScope(), name);
+        if (!h.empty()) e.withHint(std::move(h));
+    }
+    throw e;
 }
 
 } // namespace
@@ -170,7 +186,7 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
                 isMethodPointCall(n) && e.getCode() && std::string_view(e.getCode()) == "E3095";
             const bool swallow =
                 methodPointE3095 || (!_currentTypeParams.empty() && !isMorphologicalGenericCode(e.getCode()));
-            if (!swallow) throw;
+            if (!swallow) rethrowGetType(n, e);
             if (methodPointE3095) deferredMethodE3095 = e;
         } catch (...) { // NOLINT(bugprone-empty-catch) — release 仍吞非 YuxError；debug 下 assert
 #ifndef NDEBUG

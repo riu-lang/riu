@@ -8,7 +8,6 @@
 #include <map>
 #include <set>
 
-#include "analyzer/symbol_suggest.h"
 #include "file_node.h"
 #include "fn_node.h"
 #include "sema/call_resolve.h"
@@ -1941,8 +1940,7 @@ TypeInfo ExprGetRefNode::getType() const {
 
     auto sym = scope->lookupSymbol(_obj.getText());
     if (!sym) {
-        SymbolSuggest::throwSymbolNotFound(scope, resolveLineNumber(), resolveColumn(), ErrorCode::E3030,
-                                           _obj.getText());
+        throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3030, _obj.getText());
     }
 
     TypeInfo baseType = sym->type;
