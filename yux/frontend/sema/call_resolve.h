@@ -8,7 +8,7 @@
 #include "ast/node/file_node.h"
 #include "ast/node/fn_node.h"
 #include "ast/node/spec_node.h"
-#include "sema/builtin_methods.h"
+#include "builtin_methods.h"
 #include "sema/name_resolver.h"
 
 #include <map>

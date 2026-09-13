@@ -3,7 +3,7 @@
 
 // 语句语义检查：visitStmt（loop / for-in / break / continue / 声明 / 赋值 / ret / 表达式语句）。
 
-#include "sema/builtin_methods.h"
+#include "builtin_methods.h"
 #include "sema/call_resolve.h"
 #include "sema/name_resolver.h"
 #include "sema/sema_pass.h"

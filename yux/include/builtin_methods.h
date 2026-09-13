@@ -1,8 +1,8 @@
 // Copyright (c) 2026. Yin-Jinlong@github
 // MPL-2.0
 
-#ifndef YUX_LANG_SEMA_BUILTIN_METHODS_H
-#define YUX_LANG_SEMA_BUILTIN_METHODS_H
+#ifndef YUX_LANG_BUILTIN_METHODS_H
+#define YUX_LANG_BUILTIN_METHODS_H
 
 #include "error_code.h"
 #include "types.h"
@@ -11,7 +11,8 @@
 #include <string_view>
 
 // Array（及预留 String）`#Builtin` 方法表：类型谓词 × 方法名 → arity + lowering id。
-// 0 LLVM。SemaPass / getType / 符号表 / codegen 共用一份。
+// 0 LLVM。AST 符号表 / SemaPass / codegen 共用一份。
+// 放在 include/：纯数据 + TypeInfo 查询，不属于 sema 实现。仍用 namespace sema，调用点不改名。
 // String 方法当前是 yux 实现，表里占 BuiltinRecv::String，无行。
 namespace sema {
 
@@ -487,4 +488,4 @@ inline void validateBuiltinMethodCall(const BuiltinMethodSpec& spec, const TypeI
 
 } // namespace sema
 
-#endif // YUX_LANG_SEMA_BUILTIN_METHODS_H
+#endif // YUX_LANG_BUILTIN_METHODS_H

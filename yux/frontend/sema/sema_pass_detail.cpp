@@ -4,7 +4,7 @@
 // SemaPass 内部 helpers。实现原位于 sema_pass.cpp 匿名命名空间。
 
 #include "sema/sema_pass_detail.h"
-#include "sema/builtin_methods.h"
+#include "builtin_methods.h"
 #include "sema/call_resolve.h"
 #include "sema/name_resolver.h"
 

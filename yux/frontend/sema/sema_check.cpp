@@ -4,7 +4,7 @@
 // 形态校验入口：tryValidate*（运算符 / 索引 / 成员链 / match / ?. / if / to_string）
 // 以及带靶向类型的数组字面量 / 填充检查。
 
-#include "sema/builtin_methods.h"
+#include "builtin_methods.h"
 #include "sema/call_resolve.h"
 #include "sema/name_resolver.h"
 #include "sema/sema_pass.h"

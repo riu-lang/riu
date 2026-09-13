@@ -10,7 +10,7 @@
 // 字段非 Fn 值由 Dot 分支直接报 E3095。ID-literal 的 E3095 仍立即重抛。
 // 非 YuxError 在 debug 下 assert，禁止静默吞。
 
-#include "sema/builtin_methods.h"
+#include "builtin_methods.h"
 #include "sema/call_resolve.h"
 #include "sema/name_resolver.h"
 #include "sema/sema_pass.h"

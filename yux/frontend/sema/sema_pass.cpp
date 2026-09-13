@@ -6,7 +6,7 @@
 // tryValidate* / 数组字面量 → sema_check.cpp；共享 helpers → sema_pass_detail.cpp。
 
 #include "sema/sema_pass.h"
-#include "sema/builtin_methods.h"
+#include "builtin_methods.h"
 #include "sema/call_resolve.h"
 #include "sema/name_resolver.h"
 #include "sema/sema_pass_detail.h"

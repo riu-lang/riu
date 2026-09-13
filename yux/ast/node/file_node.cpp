@@ -2,7 +2,7 @@
 // MPL-2.0
 
 #include "file_node.h"
-#include "sema/builtin_methods.h"
+#include "builtin_methods.h"
 
 FileNode::FileNode(string moduleName) : ScopeNode(nullptr), _moduleName(std::move(moduleName)) {
     // 注册基本类型为 struct 占位符，并预声明方法符号
