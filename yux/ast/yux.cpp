@@ -11,8 +11,6 @@
 
 #include <toml.hpp>
 
-#include "analyzer/spec_impl_checker.h"
-#include "analyzer/spec_registry.h"
 #include "ast_builder.h"
 #include "mod_decl.h"
 #include "tools/syntax_error_listener.h"
@@ -25,17 +23,6 @@
 #ifdef _DEBUG
 bool debug = false;
 #endif
-
-Yux::Yux() : _sdkFile(nullptr) {}
-
-Yux::~Yux() {
-    _moduleBuilders.clear();
-    _declOwners.clear();
-    for (auto file : _files) {
-        delete file;
-    }
-    delete _sdkFile;
-}
 
 void Yux::keepBuilder(std::unique_ptr<ASTBuilder> builder) {
     _moduleBuilders.push_back(std::move(builder));
@@ -60,35 +47,6 @@ void Yux::registerModulePath(const string& absPath, const string& moduleName) {
 void Yux::addFile(FileNode* file) {
     if (file) file->setYux(this);
     _files.push_back(file);
-}
-
-SpecRegistry& Yux::specRegistry() {
-    if (!_specRegistry) {
-        _specRegistry = std::make_unique<SpecRegistry>(this);
-        _specRegistry->buildFromAllFiles();
-    }
-    return *_specRegistry;
-}
-
-void Yux::rebuildSpecRegistry() {
-    if (!_specRegistry) {
-        _specRegistry = std::make_unique<SpecRegistry>(this);
-    }
-    _specRegistry->buildFromAllFiles();
-}
-
-void Yux::validateSpecImpls() {
-    if (_specImplValidated) return;
-    if (!_specImplChecker) {
-        _specImplChecker = std::make_unique<SpecImplChecker>(this);
-    }
-    _specImplChecker->validate();
-    _specImplValidated = true;
-}
-
-SpecImplChecker& Yux::specImplChecker() {
-    validateSpecImpls();
-    return *_specImplChecker;
 }
 
 FileNode* Yux::createFile(const string& moduleName) {

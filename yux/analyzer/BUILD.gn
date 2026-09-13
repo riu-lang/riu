@@ -18,5 +18,6 @@ static_library("yux_analyzer") {
     "spec_impl_checker.cpp",
     "spec_registry.cpp",
     "symbol_suggest.cpp",
+    "yux_spec.cpp",
   ]
 }

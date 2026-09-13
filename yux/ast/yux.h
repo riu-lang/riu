@@ -69,6 +69,8 @@ class Yux {
     vector<string> _projectLinkLibDirs;
 
 public:
+    // 构造/析构都在 analyzer/yux_spec.cpp：unique_ptr<SpecRegistry /
+    // SpecImplChecker> 的构造期 unwind 与析构都需要完整类型。
     Yux();
     ~Yux();
 
@@ -92,12 +94,13 @@ public:
 
     // draft 注册表 (spec §12). 首次访问时按当前已加载的 _files + _sdkFile
     // 全量索引一次. 后续如新增动态加载模块, 调用 rebuildSpecRegistry().
+    // 实现在 analyzer/yux_spec.cpp，yux.cpp 不 include analyzer/。
     SpecRegistry& specRegistry();
     void rebuildSpecRegistry();
 
     // §12.2 / §12.3 / §12.5 显式 draft 实现校验 (Phase 3.2.e).
     // 首次调用时构造 SpecImplChecker 跑全套校验, 后续调用直接返回.
-    // 由 Compiler::compile() 起始处调用, SDK 与用户文件统一一次.
+    // SemaPass::run 起始处兜底；Compiler::compile / yux-check 仍可显式调用.
     void validateSpecImpls();
 
     // 拿到长生命周期的 SpecImplChecker (Phase 3.3 边界匹配需要复用其

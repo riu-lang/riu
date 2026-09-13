@@ -169,6 +169,9 @@ SemaPass::SemaPass(FileNode* file, Yux* yux)
 
 void SemaPass::run() {
     if (!_file) return;
+    // §12 spec/impl：Yux::validateSpecImpls 幂等。Compiler / yux-check 会先调一次；
+    // 此处兜底，避免只跑 SemaPass 的路径漏检。
+    if (_yux) _yux->validateSpecImpls();
     // 顶层类型别名一次性校验 (E2017 / E2016) + fn 符号表归一化
     sema::validateAliases(_file, _sdkFile);
     validateExternFns();
