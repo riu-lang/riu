@@ -73,8 +73,16 @@ bool Compiler::returnValue(llvm::Value* val, const TypeInfo& type, ExprNode* exp
         takeOwnership(val, type, expr);
         return true;
     }
-    if (typeNeedsDestructor(type) && isFreshHandleExpr(expr)) {
+    if (!typeNeedsDestructor(type)) return false;
+    if (isFreshHandleExpr(expr)) {
         consumeTemp(val);
+        return false;
+    }
+    // 非 fresh 可拷类型（String 等含 RC 字段）：复制 retain，跳过 peephole。
+    // 随后局部析构 release，与 move 净 rc 相同。`ret $._value`（Nullable.get）靠这条。
+    // #NoCopy / Array / 未处理的 Nullable 仍靠 peephole 移出局部。
+    if (retainHandleAtCallSite(val, type)) {
+        return true;
     }
     return false;
 }

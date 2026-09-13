@@ -212,71 +212,12 @@ fn _to_wide(path String&) Array<u16> {
 }
 
 fn _from_utf8(bytes Array<u8>&) String ! IoErr {
-  ; 与 String::from_bytes 同算法。不要跨模块调 from_bytes：短内容 / junction 读取会坏（BUGS）。
-  #Mut let cps Array<u32> = []
-  #Mut let i usize = 0
-  let n usize = bytes.len()
-  loop {
-    if i >= n {
-      break;
-    }
-    let b0 u8 = copy_of(bytes[i])
-    if b0 < 128u8 {
-      cps.push(b0.to_u32())
-      i += 1
-    } elif b0 >= 194u8 && b0 < 224u8 {
-      if i + 1 >= n {
-        ret IoErr::InvalidUtf8
-      }
-      let b1 u8 = copy_of(bytes[i + 1])
-      if b1 < 128u8 || b1 >= 192u8 {
-        ret IoErr::InvalidUtf8
-      }
-      let cp u32 = (b0.to_u32() - 192u32).shl(6u32) + (b1.to_u32() - 128u32)
-      cps.push(cp)
-      i += 2
-    } elif b0 >= 224u8 && b0 < 240u8 {
-      if i + 2 >= n {
-        ret IoErr::InvalidUtf8
-      }
-      let b1 u8 = copy_of(bytes[i + 1])
-      let b2 u8 = copy_of(bytes[i + 2])
-      if b1 < 128u8 || b1 >= 192u8 || b2 < 128u8 || b2 >= 192u8 {
-        ret IoErr::InvalidUtf8
-      }
-      if b0 == 224u8 && b1 < 160u8 {
-        ret IoErr::InvalidUtf8
-      }
-      if b0 == 237u8 && b1 >= 160u8 {
-        ret IoErr::InvalidUtf8
-      }
-      let cp u32 = (b0.to_u32() - 224u32).shl(12u32) + (b1.to_u32() - 128u32).shl(6u32) + (b2.to_u32() - 128u32)
-      cps.push(cp)
-      i += 3
-    } elif b0 >= 240u8 && b0 < 245u8 {
-      if i + 3 >= n {
-        ret IoErr::InvalidUtf8
-      }
-      let b1 u8 = copy_of(bytes[i + 1])
-      let b2 u8 = copy_of(bytes[i + 2])
-      let b3 u8 = copy_of(bytes[i + 3])
-      if b1 < 128u8 || b1 >= 192u8 || b2 < 128u8 || b2 >= 192u8 || b3 < 128u8 || b3 >= 192u8 {
-        ret IoErr::InvalidUtf8
-      }
-      if b0 == 240u8 && b1 < 144u8 {
-        ret IoErr::InvalidUtf8
-      }
-      if b0 == 244u8 && b1 >= 144u8 {
-        ret IoErr::InvalidUtf8
-      }
-      let cp u32 = (b0.to_u32() - 240u32).shl(18u32) + (b1.to_u32() - 128u32).shl(12u32) + (b2.to_u32() - 128u32).shl(6u32) + (b3.to_u32() - 128u32)
-      cps.push(cp)
-      i += 4
-    } else {
-      ret IoErr::InvalidUtf8
-    }
+  ; 已是 Array<u8>&，不能再 &bytes（E3131）
+  let got String? = String::from_bytes(bytes)
+  if !got.has() {
+    ret IoErr::InvalidUtf8
   }
-  String::from(&cps)
+  got.get()
 }
 
 fn _open(path String&, access u32, disp u32) Ptr ! IoErr {

@@ -341,7 +341,8 @@ private:
     // 按形参 ABI：T& → pointerForRefParam；struct 指针 ABI → alloca 暂存；其余原值。
     llvm::Value* abiValueForParam(ExprNode* argExpr, llvm::Value* compiledVal, const TypeInfo& formal);
     // retainHandle=true：Rc/Weak（及非 Fallible 的 Fn）走 takeOwnership，返回 true。
-    // 否则仅在需析构且 fresh 时 consumeTemp，返回 false。
+    // 否则需析构时：fresh → consumeTemp；非 fresh 可拷 struct → retain 并返回 true
+    // （跳过 peephole；#NoCopy / Array 仍 false，靠 peephole 移出局部）。
     bool returnValue(llvm::Value* val, const TypeInfo& type, ExprNode* expr, bool retainHandle);
 
     // Phase 3a: callee-clean 调用约定

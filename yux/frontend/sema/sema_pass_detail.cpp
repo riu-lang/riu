@@ -924,6 +924,23 @@ void checkCallArgAgainst(ExprNode* arg, const TypeInfo& want, int line, int col,
         .withHint(std::format("实参类型 `{}` 与形参类型 `{}` 不匹配", g0.getFullName(), w0.getFullName()));
 }
 
+// T& 标识符在值上下文 getType 自解为 T。#Static 形参 T& 仍匹配该借用（不把值自动取址）。
+bool argIsRefIdentMatching(ExprNode* arg, const TypeInfo& wantRef) {
+    if (!arg || !wantRef.isRef()) return false;
+    auto inner = wantRef.refElementType();
+    if (!inner) return false;
+    auto* lit = dynamic_cast<ExprLiteralNode*>(arg);
+    if (!lit) return false;
+    auto* obj = dynamic_cast<LiteralObjNode*>(lit->literal());
+    if (!obj) return false;
+    auto* sc = arg->findNearestScope();
+    if (!sc) return false;
+    auto* sym = sc->lookupSymbol(obj->getValue().getText());
+    if (!sym || !sym->type.isRef()) return false;
+    auto se = sym->type.refElementType();
+    return se && *se == *inner;
+}
+
 bool fillSubstFromTypeNodes(const vector<string>& typeParams, const vector<TypeNode*>& typeArgNodes,
                             map<string, TypeInfo>& subst) {
     if (typeParams.size() != typeArgNodes.size()) return false;

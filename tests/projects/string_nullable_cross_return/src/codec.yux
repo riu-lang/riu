@@ -1,0 +1,11 @@
+use yux.core.*
+
+; 跨模块转发 String::from_bytes（T? 原样返回）
+fn decode(bytes Array<u8>&) String? {
+  String::from_bytes(bytes)
+}
+
+; 跨模块把堆上 String 包装成 String?（T → T?）
+fn wrap_cp(cp u32) String? {
+  String::from_codepoint(cp)
+}

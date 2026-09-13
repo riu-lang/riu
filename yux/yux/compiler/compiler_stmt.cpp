@@ -58,8 +58,12 @@ void Compiler::compileRetStatement(StatementRetNode* node) {
         // 推断 tuple 字面量中灵活整数的类型（含泛型别名展开）
         inferFlexibleInts(node->expr(), declRetType);
     }
+    // 泛型实例（Nullable<String>::get 的 `T`）必须先 subst，否则 typeNeedsDestructor / retain 都按形参 T 跳过。
+    if (hasDeclaredRetType) {
+        declRetType = applySubst(declRetType);
+    }
 
-    TypeInfo retType = node->expr()->getType();
+    TypeInfo retType = applySubst(node->expr()->getType());
     // 数组字面量 getType 是 `[T * N]` / `[__empty * 0]`；靶向 Array<T> 时用 resolved / 声明类型。
     if (node->expr()->hasResolvedType()) {
         const auto& resolved = node->expr()->resolvedType();
@@ -310,6 +314,9 @@ void Compiler::compileRetStatement(StatementRetNode* node) {
             _builder.CreateStore(llvm::Constant::getNullValue(innerLLVMType), valueField);
         } else {
             auto innerVal = compileExpr(node->expr());
+            // T → T?：把 inner 收进包装。fresh（String::from / _take_buf）走 consumeTemp，
+            // 否则 retain。否则随后 popAndReleaseTempFrame 会析掉临时 String，返回悬空 String?。
+            takeOwnership(innerVal, *innerType, node->expr());
             _builder.CreateStore(_builder.getInt1(true), hasField);
             _builder.CreateStore(innerVal, valueField);
         }
@@ -321,6 +328,7 @@ void Compiler::compileRetStatement(StatementRetNode* node) {
     }
 
     // Phase 3b: move-return — Rc/Weak/Fn 走 takeOwnership；其余需析构且 fresh 只 consumeTemp
+    // nullableWrap 已对 inner T 做过 takeOwnership，包装后的 T? 不再走一遍。
     bool didMoveRetainHandle = false;
     if (retVal && hasDeclaredRetType && !nullableWrap) {
         didMoveRetainHandle = returnValue(retVal, declRetType, node->expr(),

@@ -2084,6 +2084,11 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
                                         if (inner && *inner == argTypes[i]) nullableMatch = true;
                                     }
                                     if (!nullableMatch) {
+                                        // T& 标识符 getType 自解为 T；形参 T& 仍匹配（不自动给值取址）。
+                                        if (paramTypes[i].isRef() &&
+                                            argIsRefIdentMatching(n->args()[i], paramTypes[i])) {
+                                            continue;
+                                        }
                                         throw YuxError(line, col, ErrorCode::E3131, lhsName, rhsName, paramTypes.size(),
                                                        renderTypes(paramTypes), argTypes.size(), renderTypes(argTypes));
                                     }

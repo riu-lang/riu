@@ -336,7 +336,23 @@ llvm::Value* Compiler::compileEnumCtorExpr(ExprPathCallNode* node) {
                 for (size_t i = 0; i < node->args().size(); ++i) {
                     auto actualTy = applySubst(node->args()[i]->getType());
                     if (!actualTy.empty() && !(actualTy == paramTypes[i])) {
-                        throwSemaGap(line, col);
+                        // T& 标识符 getType 自解为 T；与 SemaPass argIsRefIdentMatching 对齐。
+                        bool refIdent = false;
+                        if (paramTypes[i].isRef()) {
+                            auto inner = paramTypes[i].refElementType();
+                            if (inner && actualTy == *inner) {
+                                if (auto* lit = dynamic_cast<ExprLiteralNode*>(node->args()[i])) {
+                                    if (auto* obj = dynamic_cast<LiteralObjNode*>(lit->literal())) {
+                                        auto* sym = lookupVarSymbol(obj->getValue().getText(), node);
+                                        if (sym && sym->type.isRef()) {
+                                            auto se = sym->type.refElementType();
+                                            if (se && *se == *inner) refIdent = true;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if (!refIdent) throwSemaGap(line, col);
                     }
                 }
                 for (auto& a : node->args()) {

@@ -206,6 +206,9 @@ void checkCallArgAgainst(ExprNode* arg, const TypeInfo& want, int line, int col,
                          const std::set<std::string>& typeParams,
                          const std::map<std::string, TypeInfo>* subst = nullptr);
 
+// T& 标识符 getType 自解为 T；#Static 形参 T& 仍应按借用匹配。
+bool argIsRefIdentMatching(ExprNode* arg, const TypeInfo& wantRef);
+
 bool fillSubstFromTypeNodes(const vector<string>& typeParams, const vector<TypeNode*>& typeArgNodes,
                             map<string, TypeInfo>& subst);
 

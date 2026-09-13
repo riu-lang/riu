@@ -63,7 +63,7 @@ struct String {
   }
 
   ; 严格 UTF-8 → String；非法序列 / 过长编码 / 代理对 → null
-  ; 收尾走 String::from（深拷贝）；_take_buf + String? 跨模块调用会弄坏短串（见 BUGS）
+  ; 自建 cps 后 _take_buf 零拷贝接管
   #Static
   fn from_bytes(bytes Array<u8>&) String? {
     #Mut let cps Array<u32> = []
@@ -129,7 +129,7 @@ struct String {
         ret null
       }
     }
-    String::from(&cps)
+    String::_take_buf(move(cps))
   }
 
   ; 用 sep 拼接；空 parts → ""；单段不加 sep
