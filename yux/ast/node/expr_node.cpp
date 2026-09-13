@@ -80,6 +80,10 @@ static sema::NameResolver namesFromFile(FileNode* file) {
     return {file, sdk};
 }
 
+TypeInfo ExprNode::structuralType() const {
+    return getType();
+}
+
 static void unwrapRecvType(TypeInfo& t) {
     if (t.isRef()) {
         if (auto e = t.refElementType()) t = *e;
@@ -553,11 +557,16 @@ bool isFlexibleNullExpr(ExprNode* expr) {
 }
 
 bool tryInferNullType(ExprNode* expr, const TypeInfo& nullableTarget) {
-    if (!nullableTarget.isNullable()) return false;
-    expr = unwrapParen(expr);
+    if (!expr || !nullableTarget.isNullable()) return false;
+    if (auto paren = dynamic_cast<ExprParenNode*>(expr)) {
+        bool ok = tryInferNullType(paren->expr(), nullableTarget);
+        if (ok) paren->setResolvedType(nullableTarget);
+        return ok;
+    }
     if (auto lit = dynamic_cast<ExprLiteralNode*>(expr)) {
         if (auto nullLit = dynamic_cast<LiteralNullNode*>(lit->literal())) {
             nullLit->setType(nullableTarget);
+            lit->setResolvedType(nullableTarget);
             return true;
         }
     }
@@ -789,6 +798,12 @@ LiteralNode* ExprLiteralNode::literal() const {
 }
 
 TypeInfo ExprLiteralNode::getType() const {
+    // 空槽 = 尚未推断（lambda 形参回填前），不是 void；继续走 structuralType。
+    if (hasResolvedType() && !resolvedType().empty()) return resolvedType();
+    return structuralType();
+}
+
+TypeInfo ExprLiteralNode::structuralType() const {
     return _literal->getType();
 }
 
@@ -941,6 +956,11 @@ ExprNode* ExprParenNode::expr() const {
 }
 
 TypeInfo ExprParenNode::getType() const {
+    if (hasResolvedType() && !resolvedType().empty()) return resolvedType();
+    return structuralType();
+}
+
+TypeInfo ExprParenNode::structuralType() const {
     return _inner->getType();
 }
 
@@ -1812,6 +1832,11 @@ const vector<ExprNode*>& ExprArrayNode::elements() const {
 }
 
 TypeInfo ExprArrayNode::getType() const {
+    if (hasResolvedType() && !resolvedType().empty()) return resolvedType();
+    return structuralType();
+}
+
+TypeInfo ExprArrayNode::structuralType() const {
     if (_elements.empty()) {
         return {make_shared<TypeInfo>("__empty"), 0};
     }
@@ -1877,6 +1902,11 @@ TypeInfo LambdaExprNode::getType() const {
 
 // 元组构造表达式：把每个元素类型组合为 TupleTag TypeInfo
 TypeInfo ExprTupleNode::getType() const {
+    if (hasResolvedType() && !resolvedType().empty()) return resolvedType();
+    return structuralType();
+}
+
+TypeInfo ExprTupleNode::structuralType() const {
     vector<sp<TypeInfo>> elems;
     elems.reserve(_elements.size());
     for (auto& e : _elements) {
@@ -1914,12 +1944,16 @@ TypeNode* ExprArrayInitNode::explicitType() const {
 }
 
 TypeInfo ExprArrayInitNode::getType() const {
+    if (hasResolvedType() && !resolvedType().empty()) return resolvedType();
+    return structuralType();
+}
+
+TypeInfo ExprArrayInitNode::structuralType() const {
     TypeInfo elementType;
     if (_explicitType) {
         elementType = _explicitType->getType();
         // Phase 3.4.f.1: explicitType 与 value 字面量类型不匹配抛 E3009.
-        // 不依赖目标 targetType (那条留 E3010 在 codegen 兜底), 可在 AST 层判定;
-        // 进 kMigratedCodes 后由 SemaPass.visitExpr 顶部自动重抛.
+        // Sema 无靶向时走 checkArrayInit；此处留给 builder / 泛型 codegen 回退。
         auto valueType = _value->getType();
         if (valueType != elementType) {
             throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3009, valueType.name, elementType.name);

@@ -45,14 +45,15 @@ TypeInfo Compiler::resolvedOrInferredType(ExprNode* node) const {
     if (node->hasResolvedType()) {
         // 泛型 AST 会被多个具体实例复用，节点上的 resolvedType 只保存最近一次
         // SemaPass 复查结果；当前 codegen 帧能替换出类型时以本帧为准。
+        // 1.7 已搬迁的族 getType() 读槽，这里用 structuralType() 做无槽重算。
         if (!_substStack.empty()) {
-            auto inferred = node->getType();
+            auto inferred = node->structuralType();
             auto instantiated = applySubst(inferred);
             if (resolveAlias(inferred) != resolveAlias(instantiated)) return instantiated;
         }
 #ifndef NDEBUG
         const auto& resolved = node->resolvedType();
-        auto inferred = node->getType();
+        auto inferred = node->structuralType();
         auto instantiatedInferred = applySubst(inferred);
         // 数组字面量 getType 是 `[T * N]` / `[__empty * 0]`；SemaPass 按靶向可写成 Array<T>。
         const bool arrayLitToGeneric = inferred.isArray() && resolved.isArrayGeneric();

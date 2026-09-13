@@ -17,14 +17,11 @@ class StructDeclNode;
 
 class ExprNode : public Node, public Typed {
 protected:
-    // Phase 2 Sema/Codegen 拆分：表达式经语义检查后的解析型类型槽位。
-    // 与 getType() 并行：getType() 仍是各子类自行就地推导的"无副作用"查询，
-    // 用于 ast 层任意时刻调用；resolvedType 是 SemaPass / compileExpr 走过后
-    // 留下的"已确认"类型，供后续 pass（codegen / LSP）直接读取，避免重复计算。
-    //
-    // 当前过渡期：Compiler::compileExpr 在入口写入；行为与 getType() 等价。
-    // 后续把推断从 codegen 抽到独立 SemaPass 时，此槽位由 SemaPass 写入，
-    // codegen 改为读取（并在 debug 构建里 assert 与 getType() 一致）。
+    // Phase 2 / 1.7 Sema/Codegen 拆分：表达式经语义检查后的解析型类型槽位。
+    // 1.7 已搬迁的族：getType() 有槽则返回槽，否则 structuralType() 廉价回退。
+    // 未搬迁的族：getType() 仍就地推导；structuralType() 默认等于 getType()。
+    // codegen 的 resolvedOrInferredType 在泛型 subst 帧里读 structuralType()，
+    // 避免复用模板 AST 时槽停留在上一次实例的具体类型。
     //
     // 空 optional = 尚未解析（区别于 TypeInfo::empty() 表示的 void 类型）。
     std::optional<TypeInfo> _resolvedType;
@@ -46,6 +43,10 @@ public:
     // 块值汇合（if / match / try）优先读 SemaPass 靶向后的 resolved，避免 `[]` 的
     // getType `[__empty * 0]` 与 `Array<T>` 假阳性失配。
     [[nodiscard]] TypeInfo resolvedOrGetType() const { return hasResolvedType() ? resolvedType() : getType(); }
+
+    // 不读 resolved 槽。1.7 已搬迁的族是廉价结构回退（字面量 / 已填子节点）；
+    // 未搬迁的族等同 getType()。
+    [[nodiscard]] virtual TypeInfo structuralType() const;
 
     void setResolvedSymbol(ResolvedSymbol s) { _resolvedSymbol = s; }
     void setResolvedVar(SymbolInfo* v) { _resolvedSymbol = ResolvedSymbol{.var = v, .fn = nullptr}; }
@@ -135,6 +136,7 @@ public:
 
     [[nodiscard]] LiteralNode* literal() const;
     [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] TypeInfo structuralType() const override;
 };
 
 class ExprAddSubNode : public ExprNode {
@@ -208,6 +210,7 @@ public:
 
     [[nodiscard]] ExprNode* expr() const;
     [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] TypeInfo structuralType() const override;
 };
 
 class ExprDotNode : public ExprNode {
@@ -364,6 +367,7 @@ public:
 
     [[nodiscard]] const vector<ExprNode*>& elements() const;
     [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] TypeInfo structuralType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
     [[nodiscard]] int resolveColumn() const override;
 };
@@ -379,6 +383,7 @@ public:
     [[nodiscard]] LiteralNode* value() const;
     [[nodiscard]] TypeNode* explicitType() const;
     [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] TypeInfo structuralType() const override;
 };
 
 class ExprGetRefNode : public ExprNode {
@@ -533,6 +538,7 @@ public:
 
     [[nodiscard]] const vector<ExprNode*>& elements() const { return _elements; }
     [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] TypeInfo structuralType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
     [[nodiscard]] int resolveColumn() const override;
 };

@@ -290,7 +290,7 @@ private:
     llvm::Value* compileExpr(ExprNode* node); // 编译表达式 (主入口)
     // Phase 2.4 / Phase B：codegen 读类型的统一入口。
     // 优先返回 SemaPass / compile<Foo>Expr 已写入的 resolvedType；尚未走过该路径
-    // 的节点回退到 getType()。debug 构建下若两者均可得，校验一致。
+    // 的节点回退到 getType()。debug / 泛型 subst 帧用 structuralType() 做无槽重算。
     [[nodiscard]] TypeInfo resolvedOrInferredType(ExprNode* node) const;
     llvm::Value* compileArrayInitExpr(ExprArrayInitNode* node, const TypeInfo& targetType,
                                       llvm::Value* destPtr = nullptr);                           // 编译数组初始化表达式
