@@ -8,6 +8,7 @@
 #include "sema/sema_pass.h"
 #include "builtin_methods.h"
 #include "sema/call_resolve.h"
+#include "sema/const_eval.h"
 #include "sema/name_resolver.h"
 #include "sema/sema_pass_detail.h"
 
@@ -216,6 +217,10 @@ void SemaPass::run() {
         }
         _currentTypeParams = std::move(savedFieldParams);
     }
+    // 全局 #Cval / #Mut / val init：builder 只建节点；此处求值。
+    // #Cval 失败 → E3140；#Mut / val 成功则写 constValue（codegen ConstantInitializer）。
+    ConstEvaluator cvalEv;
+    cvalEv.setFile(_file);
     for (auto& gc : _file->getGlobalConsts()) {
         if (!gc) continue;
         try {
@@ -225,6 +230,14 @@ void SemaPass::run() {
             noteConcreteGenericType(gc->getType());
             if (gc->value()) {
                 TypeInfo ty = gc->getType();
+                inferFlexibleIntForType(gc->value(), ty);
+                auto value = cvalEv.eval(gc->value());
+                Token nm = gc->name();
+                if (!value) {
+                    throw YuxError(static_cast<int>(nm.getLine()), static_cast<int>(nm.getCharPositionInLine()) + 1,
+                                   ErrorCode::E3140, nm.getText());
+                }
+                cvalEv.setNamedConst(nm.getText(), *value);
                 visitExpr(gc->value(), &ty);
                 flushIntLiteralRangeChecks();
             }
@@ -242,6 +255,10 @@ void SemaPass::run() {
             noteConcreteGenericType(gv->getType());
             if (gv->value()) {
                 TypeInfo ty = gv->getType();
+                inferFlexibleIntForType(gv->value(), ty);
+                if (auto cv = cvalEv.eval(gv->value())) {
+                    gv->setConstValue(std::move(*cv));
+                }
                 visitExpr(gv->value(), &ty);
                 flushIntLiteralRangeChecks();
             }

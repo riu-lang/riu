@@ -310,7 +310,7 @@ void Compiler::emitTestRegistrations() {
 // 全局常量在编译时确定值，存储在模块的全局变量表中
 //
 // DRAFT-const-eval Phase 2: RHS 已升 expr。复用 ConstEvaluator 求值后映射到 llvm::Constant。
-// ast_builder 已先行验证 const-evaluable 并报 E3140；此处理论上不应失败，作防御性兜底。
+// SemaPass 已先行验证 const-evaluable 并报 E3140；此处理论上不应失败，作防御性兜底。
 void Compiler::compileGlobalConsts() {
     ConstEvaluator ev;
     ev.setFile(_file);
@@ -324,7 +324,7 @@ void Compiler::compileGlobalConsts() {
         inferFlexibleIntForType(globalConst->value(), type);
         auto value = ev.eval(globalConst->value());
         if (!value) {
-            // E3140 由 ASTBuilder::visitLetGlobal 先抛；此处防再求值失败。
+            // E3140 由 SemaPass 先抛；此处防再求值失败。
             throwSemaGap(globalConst->getLineNumber(), globalConst->getColumn());
         }
         // 后续 globals 可引用本 const
@@ -352,7 +352,7 @@ void Compiler::compileGlobalConsts() {
         }
         case ConstantValue::Kind::Null:
         case ConstantValue::Kind::String:
-            // 全局 #Cval 的 String / null 字面量 ConstEvaluator 尚未求值（→ AST E3140）。
+            // 全局 #Cval 的 String / null 字面量 ConstEvaluator 尚未求值（→ Sema E3140）。
             // 此处若仍走到说明求值器与 emit 不一致。
             throwSemaGap(globalConst->getLineNumber(), globalConst->getColumn());
         }

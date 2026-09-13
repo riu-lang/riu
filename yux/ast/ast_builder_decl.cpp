@@ -12,7 +12,6 @@
 #include "node/global_var_node.h"
 #include "node/literal_node.h"
 #include "node/statement_node.h"
-#include "sema/const_eval.h"
 #include "types.h"
 #include <algorithm>
 
@@ -235,27 +234,14 @@ std::any ASTBuilder::visitLetGlobal(yux::yuxParser::LetGlobalContext* ctx) {
 
         auto globalVar = createWithLine<GlobalVarNode>(ctx, file, name, typeNode, expr, /*isMutable=*/true);
         globalVar->setSourceText(ctxSource(ctx));
-
-        // Phase 3: const-eval 优先分流 —— #Mut 初始化器也试 const-eval
-        // 成功 → ConstantInitializer（零运行期开销）；失败 → 降级 runtime init
-        ConstEvaluator ev;
-        ev.setFile(file);
-        for (const auto& prior : file->getGlobalConsts()) {
-            auto v = ev.eval(prior->value());
-            if (v) ev.setNamedConst(prior->name().getText(), *v);
-        }
-        if (auto cv = ev.eval(expr)) {
-            globalVar->setConstValue(std::move(*cv));
-            DEBUG_LOG_VAL("  LetGlobal #Mut (const-eval)", name->getText());
-        }
-
+        // const-eval / E3140 在 SemaPass（成功则写 constValue，失败降级 runtime init）
         file->addGlobalVar(globalVar);
 
         DEBUG_LOG_VAL("  LetGlobal #Mut", name->getText() << " : " << typeNode->getType().name);
         return globalVar;
     }
 
-    // #Cval 档：走既有 const-eval 通路
+    // #Cval 档：建 GlobalConstNode；求值 / E3140 在 SemaPass
     if (flags.isCval) {
         if (!ctx->type()) {
             throw YuxError(static_cast<int>(name->getLine()), static_cast<int>(name->getCharPositionInLine()) + 1,
@@ -269,19 +255,7 @@ std::any ASTBuilder::visitLetGlobal(yux::yuxParser::LetGlobalContext* ctx) {
         auto typeNode = any_cast_p<TypeNode>(visit(ctx->type()));
         auto expr = any_cast_p<ExprNode>(visit(ctx->expr()));
         inferFlexibleIntForType(expr, typeNode->getType());
-
-        // DRAFT-const-eval Phase 2: RHS 必须 const-evaluable。失败抛 E3140；溢出 / 除 0 抛 E3143。
-        ConstEvaluator ev;
-        ev.setFile(file);
-        for (const auto& prior : file->getGlobalConsts()) {
-            auto v = ev.eval(prior->value());
-            if (v) ev.setNamedConst(prior->name().getText(), *v);
-        }
-        auto value = ev.eval(expr);
-        if (!value) {
-            throw YuxError(static_cast<int>(name->getLine()), static_cast<int>(name->getCharPositionInLine()) + 1,
-                           ErrorCode::E3140, name->getText());
-        }
+        // RHS 求值 / E3140 在 SemaPass（builder 只建节点）
 
         auto globalConst = createWithLine<GlobalConstNode>(ctx, file, name, typeNode, expr, flags.isInline);
         globalConst->setSourceText(ctxSource(ctx));
@@ -321,21 +295,7 @@ std::any ASTBuilder::visitLetGlobal(yux::yuxParser::LetGlobalContext* ctx) {
 
     auto globalVar = createWithLine<GlobalVarNode>(ctx, file, name, typeNode, expr);
     globalVar->setSourceText(ctxSource(ctx));
-
-    // Phase 3: const-eval 优先分流 —— 先试 ConstEvaluator
-    // 成功 → ConstantInitializer（零运行期开销，不进 _yux_global_init）；
-    // 失败 → 降级 runtime init（Phase 1 路径）
-    ConstEvaluator ev;
-    ev.setFile(file);
-    for (const auto& prior : file->getGlobalConsts()) {
-        auto v = ev.eval(prior->value());
-        if (v) ev.setNamedConst(prior->name().getText(), *v);
-    }
-    if (auto cv = ev.eval(expr)) {
-        globalVar->setConstValue(std::move(*cv));
-        DEBUG_LOG_VAL("  LetGlobal val (const-eval)", name->getText());
-    }
-
+    // const-eval 优先分流在 SemaPass（成功写 constValue，失败降级 runtime init）
     file->addGlobalVar(globalVar);
 
     DEBUG_LOG_VAL("  LetGlobal val", name->getText() << " : " << typeNode->getType().name);

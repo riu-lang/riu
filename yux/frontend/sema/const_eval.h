@@ -36,8 +36,8 @@ class FileNode;
 //   - struct 字面量 → Phase 5
 //   - 控制流（ExprIfElse / ExprOneLineIfElse）→ Phase 3
 //
-// 错误处理：本 Phase **不抛错码**；失败统一返回 nullopt。Phase 2 caller 在
-// visitLetGlobal 内据 nullopt 抛 E3140（非 const 子表达式）。
+// 错误处理：本 Phase **不抛错码**；失败统一返回 nullopt。SemaPass 对全局
+// `#Cval` 据 nullopt 抛 E3140（非 const 子表达式）。
 //
 // TODO: 区分 E3140（非 const）与 E3143（算术错：溢出 / 除 0）。当前所有失败统一
 // 报 E3140；E3143 已在 error_code.h 注册，未触发；引入 lastError 字段或 result
@@ -52,7 +52,7 @@ class FileNode;
 
 // ConstEvaluator —— 单次求值会话。
 //
-// 用法（Phase 2 typical caller）：
+// 用法（SemaPass / codegen typical caller）：
 //   ConstEvaluator ev;
 //   ev.setNamedConst("MAX", ConstantValue::makeInt(100, TypeInfo("i32")));
 //   auto v = ev.eval(rhsExpr);
