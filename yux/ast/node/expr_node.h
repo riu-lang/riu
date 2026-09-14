@@ -18,8 +18,8 @@ class StructDeclNode;
 class ExprNode : public Node, public Typed {
 protected:
     // Phase 2 / 1.7 Sema/Codegen 拆分：表达式经语义检查后的解析型类型槽位。
-    // 1.7 已搬迁的族：getType() 有槽则返回槽，否则 structuralType() 廉价回退。
-    // 未搬迁的族：getType() 仍就地推导；structuralType() 默认等于 getType()。
+    // 1.7：getType() 有槽则返回槽，否则 structuralType() 廉价回退。
+    // Call / Dot / PathCall / TypeName 字面量的 structuralType 仍可能查 NameResolver。
     // codegen 的 resolvedOrInferredType 在泛型 subst 帧里读 structuralType()，
     // 避免复用模板 AST 时槽停留在上一次实例的具体类型。
     //
@@ -537,6 +537,7 @@ public:
 
     // 返回 Fn TypeInfo；缺失槽位用 empty TypeInfo 占位，等 Phase 2b 上下文反推回填
     [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] TypeInfo structuralType() const override;
 };
 
 // 元组构造表达式 (e1, e2, ...)
@@ -642,6 +643,7 @@ public:
     [[nodiscard]] const vector<FieldInitNode*>& fields() const { return _fields; }
     [[nodiscard]] ExprNode* positional() const { return _positional; }
     [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] TypeInfo structuralType() const override;
 };
 
 // match arm 模式 v1 子集：
@@ -774,6 +776,7 @@ public:
     [[nodiscard]] ExprNode* arg() const { return _arg; }
     [[nodiscard]] bool isBorrow() const { return _isBorrow; }
     [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] TypeInfo structuralType() const override;
 };
 
 // Heap:<T>(arg) 堆作用域句柄构造（DRAFT-heap-types §8.3a）
@@ -788,6 +791,7 @@ public:
     [[nodiscard]] ExprNode* left() const { return _left; }
     [[nodiscard]] ExprNode* right() const { return _right; }
     [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] TypeInfo structuralType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
     [[nodiscard]] int resolveColumn() const override;
 };

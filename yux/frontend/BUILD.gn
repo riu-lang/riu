@@ -34,6 +34,7 @@ static_library("yux_frontend") {
     "sema/type_of_dot.cpp",
     "sema/type_of_name.cpp",
     "sema/type_of_ops.cpp",
+    "sema/type_of_rest.cpp",
     "sema/type_of_struct.cpp",
     "tools/diagnostic.cpp",
     "tools/pkg_cache.cpp",

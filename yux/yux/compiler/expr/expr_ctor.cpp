@@ -487,7 +487,6 @@ llvm::Value* Compiler::compileEnumCtorExpr(ExprPathCallNode* node) {
 // 真路由（构造消费 Rc）随 vtable 落地一起补，所以这里 Rc 句柄"裸抽"——Phase 1c
 // 的 smoke 只看编译能否过、IR 是否成型，不验运行时所有权。
 llvm::Value* Compiler::compileDynCtorExpr(ExprDynCtorNode* node) {
-    if (!node->hasResolvedType()) node->setResolvedType(node->getType());
     auto resultType = resolvedOrInferredType(node);
     int line = node->getLineNumber();
     int col = node->getColumn();

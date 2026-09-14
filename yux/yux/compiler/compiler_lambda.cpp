@@ -327,7 +327,6 @@ llvm::Function* Compiler::emitCapturesDtorFunction(LambdaExprNode* node, const s
 // 含堆句柄 captures：调用站点 retain 后写入槽位；strong 归零时 _box_release_dtor
 // 调 dtor 释放每个堆句柄字段，再 free。多 fat-ptr 副本共享 Rc 时不会过早析构。
 llvm::Value* Compiler::compileLambdaExpr(LambdaExprNode* node) {
-    if (!node->hasResolvedType()) node->setResolvedType(node->getType());
     // 静态类型即 Fn TypeInfo（lambda 形参类型可能缺）
     auto fnType = node->getType();
     auto func = emitLambdaFunction(node, fnType);

@@ -4,7 +4,7 @@
 // 表达式语义检查：visitExpr / visitExprList。
 // Phase 3.2a：每个表达式节点写 setResolvedType(getType())。
 // 1.7a 结构叶 / 1.7b Get·GetRef / 1.7c 运算 / 1.7d 调用 / 1.7e Dot / 1.7f 控制流
-// 改为 type_of_* 在下钻之后写槽。
+// / 1.7g Lambda·StructLit·DynCtor·MoveAssign 改为 type_of_* 在下钻之后写槽。
 // Phase B：SemaPass 为 getType 诊断的权威抛出点。默认重抛所有 YuxError。
 // Phase C：泛型 fn/impl 体再吞一批依赖 T 具体化的码（见 isMorphologicalGenericCode）。
 // 方法点 callee 的 E3095：getType 会把找不到的方法回落成基类型再抛「不是函数」，
@@ -22,6 +22,7 @@
 #include "sema/type_of_dot.h"
 #include "sema/type_of_name.h"
 #include "sema/type_of_ops.h"
+#include "sema/type_of_rest.h"
 #include "sema/type_of_struct.h"
 
 #include <algorithm>
@@ -186,7 +187,7 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
     std::optional<YuxError> deferredMethodE3095;
     const bool delayCtrlResolved = dynamic_cast<ExprIfElseNode*>(expr) || dynamic_cast<ExprOneLineIfElseNode*>(expr) ||
                                    dynamic_cast<ExprMatchNode*>(expr) || dynamic_cast<ExprTryCatchNode*>(expr);
-    // 1.7a–1.7f：先下钻子节点再写槽，避免父节点 getType 在子槽未填时递归计算。
+    // 1.7a–1.7g：先下钻子节点再写槽，避免父节点 getType 在子槽未填时递归计算。
     // GetRef 无子表达式，分支内写槽。NullElse 下钻后再写，不走 finishCtrlResolved 的 Array 靶向。
     const bool delayLeafResolved = dynamic_cast<ExprParenNode*>(expr) || dynamic_cast<ExprTupleNode*>(expr) ||
                                    dynamic_cast<ExprArrayNode*>(expr) || dynamic_cast<ExprArrayInitNode*>(expr) ||
@@ -195,7 +196,9 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
                                    dynamic_cast<ExprAddSubNode*>(expr) || dynamic_cast<ExprMulDivModNode*>(expr) ||
                                    dynamic_cast<ExprBinOpNode*>(expr) || dynamic_cast<ExprCompareNode*>(expr) ||
                                    dynamic_cast<ExprCallNode*>(expr) || dynamic_cast<ExprPathCallNode*>(expr) ||
-                                   dynamic_cast<ExprDotNode*>(expr) || dynamic_cast<ExprNullElseNode*>(expr);
+                                   dynamic_cast<ExprDotNode*>(expr) || dynamic_cast<ExprNullElseNode*>(expr) ||
+                                   dynamic_cast<LambdaExprNode*>(expr) || dynamic_cast<ExprStructLitNode*>(expr) ||
+                                   dynamic_cast<ExprDynCtorNode*>(expr) || dynamic_cast<ExprMoveAssignNode*>(expr);
     auto writeResolved = [&](ExprNode* n, auto&& compute) {
         try {
             TypeInfo t = compute();
@@ -1754,6 +1757,8 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
             rejectEscapingRefCaptureLambda(n->bodyExpr());
         }
 
+        writeResolved(n, [&] { return sema::typeOfLambda(n); });
+
         _currentLambda = savedLambda;
         _currentLambdaHasRefCapture = savedHasRef;
         _currentLambdaHasHandleCapture = savedHasHandle;
@@ -1807,6 +1812,7 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
             }
             visitExpr(n->positional(), fieldExpPtr);
             rejectEscapingRefCaptureLambda(n->positional());
+            writeResolved(n, [&] { return sema::typeOfStructLit(n); });
             if (isNoCopyTypeIn(f->getType(), _file, _sdkFile)) {
                 if (!isFreshHandleExpr(n->positional())) {
                     throw YuxError(line, col, ErrorCode::E4031, f->getType().name, "struct 字面量字段初始化",
@@ -1852,6 +1858,7 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
                 }
             }
         }
+        writeResolved(n, [&] { return sema::typeOfStructLit(n); });
         if (seen.size() != decl->fields().size()) {
             for (auto& f : decl->fields()) {
                 if (!seen.count(f->name().getText())) {
@@ -2277,6 +2284,7 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
     }
     if (auto n = dynamic_cast<ExprDynCtorNode*>(expr)) {
         visitExpr(n->arg());
+        writeResolved(n, [&] { return sema::typeOfDynCtor(n); });
         // Bucket 4 收口 (CURRENT-check.md): Dyn<D>(x) 构造的 E1131/E1132/E1134/E1133
         // 接管. 镜像 compiler_expr.cpp::compileDynCtorExpr 顶部 (line 2497-2576).
         // 仅在 _yux 就绪时校验 (spec 注册表 + impl 检查器都从 Yux 取); SDK 自构建
@@ -2409,6 +2417,7 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
             rightExp = &leftTy;
         }
         visitExpr(n->right(), rightExp);
+        writeResolved(n, [&] { return sema::typeOfMoveAssign(n); });
         // 类型兼容：right 须能赋给 left（相同或灵活整数字面量）。
         // LHS 形态已在上方按 compileLvalueAddr 查过（E4036）。
         try {

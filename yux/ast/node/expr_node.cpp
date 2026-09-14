@@ -1914,6 +1914,11 @@ int ExprArrayNode::resolveLineNumber() const {
 // 返回类型：显式标注用之；否则从 body / 期望类型推断
 // 调用点 / 赋值点反推后 _inferredFnType 持完整类型，优先返回
 TypeInfo LambdaExprNode::getType() const {
+    if (hasResolvedType() && !resolvedType().empty()) return resolvedType();
+    return structuralType();
+}
+
+TypeInfo LambdaExprNode::structuralType() const {
     if (_inferredFnType.isFn()) return _inferredFnType;
     vector<sp<TypeInfo>> ps;
     ps.reserve(_params.size());
@@ -2147,6 +2152,11 @@ int ExprUnaryNode::resolveColumn() const {
 // 移出旧值、替换新值、返回旧值。
 // 类型：left 的类型（即旧值的类型），与 left / right 是否匹配无关（由 sema 校验）
 TypeInfo ExprMoveAssignNode::getType() const {
+    if (hasResolvedType() && !resolvedType().empty()) return resolvedType();
+    return structuralType();
+}
+
+TypeInfo ExprMoveAssignNode::structuralType() const {
     return _left->getType();
 }
 
@@ -2295,6 +2305,11 @@ TypeInfo ExprTryCatchNode::structuralType() const {
 // Dyn<D>(x) / Dyn<D&>(x) 的整体类型 = `Dyn<D>` 或 `Dyn<D&>`。
 // 内层 TypeNode 已携带借用形态（Ref<D>），这里直接包一层 `Dyn` 即可。
 TypeInfo ExprDynCtorNode::getType() const {
+    if (hasResolvedType() && !resolvedType().empty()) return resolvedType();
+    return structuralType();
+}
+
+TypeInfo ExprDynCtorNode::structuralType() const {
     if (!_specType) return {};
     auto inner = make_shared<TypeInfo>(_specType->getType());
     return TypeInfo("Dyn", {inner});
@@ -2302,6 +2317,11 @@ TypeInfo ExprDynCtorNode::getType() const {
 
 // Phase 3b: 类型 = 所属结构体, structName 由 ast_builder 扫 _scopeStack 时填入
 TypeInfo ExprStructLitNode::getType() const {
+    if (hasResolvedType() && !resolvedType().empty()) return resolvedType();
+    return structuralType();
+}
+
+TypeInfo ExprStructLitNode::structuralType() const {
     if (_isSelfForm) {
         if (_structName.empty()) return {};
         TypeInfo t(_structName);
