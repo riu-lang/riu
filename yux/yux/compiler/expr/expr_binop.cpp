@@ -221,7 +221,7 @@ llvm::Value* Compiler::compileCustomTypeBinaryOp(ExprNode* leftExpr, ExprNode* r
 }
 
 llvm::Value* Compiler::compileAddSubExpr(ExprAddSubNode* node) {
-    if (!node->hasResolvedType()) node->setResolvedType(node->getType());
+    // 槽只由 Sema 写，避免复用 AST 时锁死上次类型。
     // v0.6 Phase 2b: 透明别名解析，使 `A = i32` 后 `A + A` 仍走内置算子路径
     auto type = applySubst(node->getType());
     auto leftType = applySubst(node->left()->getType());
@@ -316,7 +316,7 @@ llvm::Value* Compiler::compileAddSubExpr(ExprAddSubNode* node) {
 }
 
 llvm::Value* Compiler::compileMulDivModExpr(ExprMulDivModNode* node) {
-    if (!node->hasResolvedType()) node->setResolvedType(node->getType());
+    // 槽只由 Sema 写，避免复用 AST 时锁死上次类型。
     auto type = applySubst(node->getType());
     auto leftType = applySubst(node->left()->getType());
     auto rightType = applySubst(node->right()->getType());
@@ -440,7 +440,7 @@ llvm::Value* Compiler::compileMulDivModExpr(ExprMulDivModNode* node) {
 }
 
 llvm::Value* Compiler::compileBinOpExpr(ExprBinOpNode* node) {
-    if (!node->hasResolvedType()) node->setResolvedType(node->getType());
+    // 槽只由 Sema 写，避免复用 AST 时锁死上次类型。
     auto type = applySubst(node->getType());
     auto leftType = applySubst(node->left()->getType());
     auto rightType = applySubst(node->right()->getType());
@@ -566,7 +566,7 @@ llvm::Value* Compiler::compileBinOpExpr(ExprBinOpNode* node) {
 }
 
 llvm::Value* Compiler::compileCompareExpr(ExprCompareNode* node) {
-    if (!node->hasResolvedType()) node->setResolvedType(node->getType());
+    // 槽只由 Sema 写，避免复用 AST 时锁死上次类型。
     (void)node->getType();
     auto leftType = applySubst(node->left()->getType());
     auto rightType = applySubst(node->right()->getType());

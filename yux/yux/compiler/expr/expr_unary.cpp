@@ -207,7 +207,7 @@ llvm::Value* Compiler::compileGetRefExpr(ExprGetRefNode* node) {
 }
 
 llvm::Value* Compiler::compileUnaryExpr(ExprUnaryNode* node) {
-    if (!node->hasResolvedType()) node->setResolvedType(node->getType());
+    // 槽只由 Sema 写，避免复用 AST 时锁死上次类型。
     auto type = node->getType();
     auto rightType = node->right()->getType();
     // v0.16: [] 返回 T&——标量操作符自动剥 Ref

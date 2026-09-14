@@ -3,7 +3,7 @@
 
 // 表达式语义检查：visitExpr / visitExprList。
 // Phase 3.2a：每个表达式节点写 setResolvedType(getType())。
-// 1.7a 结构叶 / 1.7b Get·GetRef 改为 type_of_* 在下钻（或分支内）之后写槽。
+// 1.7a 结构叶 / 1.7b Get·GetRef / 1.7c 运算族改为 type_of_* 在下钻之后写槽。
 // Phase B：SemaPass 为 getType 诊断的权威抛出点。默认重抛所有 YuxError。
 // Phase C：泛型 fn/impl 体再吞一批依赖 T 具体化的码（见 isMorphologicalGenericCode）。
 // 方法点 callee 的 E3095：getType 会把找不到的方法回落成基类型再抛「不是函数」，
@@ -17,6 +17,7 @@
 #include "sema/sema_pass.h"
 #include "sema/sema_pass_detail.h"
 #include "sema/type_of_name.h"
+#include "sema/type_of_ops.h"
 #include "sema/type_of_struct.h"
 
 #include <algorithm>
@@ -181,12 +182,14 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
     std::optional<YuxError> deferredMethodE3095;
     const bool delayCtrlResolved = dynamic_cast<ExprIfElseNode*>(expr) || dynamic_cast<ExprOneLineIfElseNode*>(expr) ||
                                    dynamic_cast<ExprMatchNode*>(expr) || dynamic_cast<ExprTryCatchNode*>(expr);
-    // 1.7a 结构叶 / 1.7b Get·GetRef：先下钻（Get 有子节点）再写槽，避免父节点
+    // 1.7a 结构叶 / 1.7b Get·GetRef / 1.7c 运算：先下钻子节点再写槽，避免父节点
     // getType 在子槽未填时递归计算。GetRef 无子表达式，分支内写槽。
     const bool delayLeafResolved = dynamic_cast<ExprParenNode*>(expr) || dynamic_cast<ExprTupleNode*>(expr) ||
                                    dynamic_cast<ExprArrayNode*>(expr) || dynamic_cast<ExprArrayInitNode*>(expr) ||
                                    dynamic_cast<ExprLiteralNode*>(expr) || dynamic_cast<ExprGetNode*>(expr) ||
-                                   dynamic_cast<ExprGetRefNode*>(expr);
+                                   dynamic_cast<ExprGetRefNode*>(expr) || dynamic_cast<ExprUnaryNode*>(expr) ||
+                                   dynamic_cast<ExprAddSubNode*>(expr) || dynamic_cast<ExprMulDivModNode*>(expr) ||
+                                   dynamic_cast<ExprBinOpNode*>(expr) || dynamic_cast<ExprCompareNode*>(expr);
     auto writeResolved = [&](ExprNode* n, auto&& compute) {
         try {
             TypeInfo t = compute();
@@ -357,6 +360,7 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
     if (auto n = dynamic_cast<ExprAddSubNode*>(expr)) {
         visitExpr(n->left());
         visitExpr(n->right());
+        writeResolved(n, [&] { return sema::typeOfAddSub(n); });
         // Bucket 6 单点: 自定义 struct 二元运算符方法解析 (E3073 + byval hint).
         string m = (n->op() == ExprAddSubNode::Op::Add) ? "plus" : "minus";
         tryValidateBinOpMethod(n->left(), n->right(), m, n->getLineNumber(), n->getColumn());
@@ -366,6 +370,7 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
     if (auto n = dynamic_cast<ExprMulDivModNode*>(expr)) {
         visitExpr(n->left());
         visitExpr(n->right());
+        writeResolved(n, [&] { return sema::typeOfMulDiv(n); });
         string m;
         switch (n->op()) {
         case ExprMulDivModNode::Op::Mul:
@@ -384,6 +389,7 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
     if (auto n = dynamic_cast<ExprBinOpNode*>(expr)) {
         visitExpr(n->left());
         visitExpr(n->right());
+        writeResolved(n, [&] { return sema::typeOfBinOp(n); });
         string m;
         switch (n->op()) {
         case ExprBinOpNode::Op::And:
@@ -408,6 +414,7 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
     if (auto n = dynamic_cast<ExprCompareNode*>(expr)) {
         visitExpr(n->left());
         visitExpr(n->right());
+        writeResolved(n, [&] { return sema::typeOfCompare(n); });
         // Phase C：subst 后再查 Weak ==/!= / Ptr 排序 / &&·|| 两侧类型（模板形参跳过）。
         tryValidateCompareForm(n);
         // Bucket 6 单点: 自定义 struct 比较运算符方法解析 (E3073 + byval hint).
@@ -1616,6 +1623,7 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
     if (auto n = dynamic_cast<ExprUnaryNode*>(expr)) {
         visitExpr(n->right());
         if (n->op() == ExprUnaryNode::Op::Neg) applyUnaryNegToIntLits(n->right());
+        writeResolved(n, [&] { return sema::typeOfUnary(n); });
         string m;
         switch (n->op()) {
         case ExprUnaryNode::Op::Neg:

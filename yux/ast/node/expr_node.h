@@ -156,6 +156,7 @@ public:
     [[nodiscard]] ExprNode* left() const;
     [[nodiscard]] ExprNode* right() const;
     [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] TypeInfo structuralType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
     [[nodiscard]] int resolveColumn() const override;
 };
@@ -177,6 +178,7 @@ public:
     [[nodiscard]] ExprNode* left() const;
     [[nodiscard]] ExprNode* right() const;
     [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] TypeInfo structuralType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
     [[nodiscard]] int resolveColumn() const override;
 };
@@ -198,6 +200,7 @@ public:
     [[nodiscard]] ExprNode* left() const;
     [[nodiscard]] ExprNode* right() const;
     [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] TypeInfo structuralType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
     [[nodiscard]] int resolveColumn() const override;
 };
@@ -277,6 +280,7 @@ public:
     [[nodiscard]] ExprNode* left() const;
     [[nodiscard]] ExprNode* right() const;
     [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] TypeInfo structuralType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
     [[nodiscard]] int resolveColumn() const override;
 };
@@ -417,6 +421,7 @@ public:
     [[nodiscard]] Op op() const;
     [[nodiscard]] ExprNode* right() const;
     [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] TypeInfo structuralType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
     [[nodiscard]] int resolveColumn() const override;
 };

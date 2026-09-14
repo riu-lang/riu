@@ -820,6 +820,11 @@ ExprNode* ExprAddSubNode::right() const {
 }
 
 TypeInfo ExprAddSubNode::getType() const {
+    if (hasResolvedType() && !resolvedType().empty()) return resolvedType();
+    return structuralType();
+}
+
+TypeInfo ExprAddSubNode::structuralType() const {
     auto leftType = _left->getType().peelAutoDeref();
     auto rightType = _right->getType().peelAutoDeref();
     // v0.6 Phase 2c：`+` 任一操作数为 String 时整链结果即 String，
@@ -872,6 +877,11 @@ ExprNode* ExprMulDivModNode::right() const {
 }
 
 TypeInfo ExprMulDivModNode::getType() const {
+    if (hasResolvedType() && !resolvedType().empty()) return resolvedType();
+    return structuralType();
+}
+
+TypeInfo ExprMulDivModNode::structuralType() const {
     auto leftType = _left->getType().peelAutoDeref();
     auto rightType = _right->getType().peelAutoDeref();
     if (leftType != rightType) {
@@ -918,6 +928,11 @@ ExprNode* ExprBinOpNode::right() const {
 }
 
 TypeInfo ExprBinOpNode::getType() const {
+    if (hasResolvedType() && !resolvedType().empty()) return resolvedType();
+    return structuralType();
+}
+
+TypeInfo ExprBinOpNode::structuralType() const {
     auto leftType = _left->getType().peelAutoDeref();
     auto rightType = _right->getType().peelAutoDeref();
     if (leftType != rightType) {
@@ -1557,6 +1572,11 @@ ExprNode* ExprCompareNode::right() const {
 }
 
 TypeInfo ExprCompareNode::getType() const {
+    if (hasResolvedType() && !resolvedType().empty()) return resolvedType();
+    return structuralType();
+}
+
+TypeInfo ExprCompareNode::structuralType() const {
     auto leftType = _left->getType().peelAutoDeref();
     auto rightType = _right->getType().peelAutoDeref();
     if (leftType != rightType) {
@@ -2062,6 +2082,11 @@ ExprNode* ExprUnaryNode::right() const {
 }
 
 TypeInfo ExprUnaryNode::getType() const {
+    if (hasResolvedType() && !resolvedType().empty()) return resolvedType();
+    return structuralType();
+}
+
+TypeInfo ExprUnaryNode::structuralType() const {
     auto rightType = _right->getType();
     // Heap<T> → T：一元运算符穿透 Heap wrapper，结果类型为内部 T
     if (rightType.isHeap()) {
