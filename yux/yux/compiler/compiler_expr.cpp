@@ -42,19 +42,26 @@
 // 其余 compile<Foo>Expr 内部对 node->getType() 的现地复读保持原样，留待 Phase 3
 // 按子系统迁移到 SemaPass 时统一切换。
 TypeInfo Compiler::resolvedOrInferredType(ExprNode* node) const {
-    if (node->hasResolvedType()) {
-        // 泛型 AST 会被多个具体实例复用，节点上的 resolvedType 只保存最近一次
-        // SemaPass 复查结果；当前 codegen 帧能替换出类型时以本帧为准。
-        // 1.7 已搬迁的族 getType() 读槽，这里用 structuralType() 做无槽重算。
-        if (!_substStack.empty()) {
-            auto inferred = node->structuralType();
-            auto instantiated = applySubst(inferred);
-            if (resolveAlias(inferred) != resolveAlias(instantiated)) return instantiated;
+    // 泛型 AST 会被多个具体实例复用，节点上的 resolvedType 只保存最近一次
+    // SemaPass 复查结果。subst 帧里始终用 structuralType() 再替换，不读槽。
+    if (!_substStack.empty()) {
+        auto inferred = node->structuralType();
+        if (node->hasResolvedType()) {
+            const auto& resolved = node->resolvedType();
+            // 数组字面量 structural 是 `[T * N]` / `[__empty * 0]`；Sema 按靶向写成 Array<T>。
+            const bool arrayLitToGeneric = inferred.isArray() && resolved.isArrayGeneric();
+            const bool ctrlArrayTarget =
+                resolved.isArrayGeneric() && inferred.isArray() &&
+                (dynamic_cast<const ExprIfElseNode*>(node) || dynamic_cast<const ExprOneLineIfElseNode*>(node) ||
+                 dynamic_cast<const ExprMatchNode*>(node) || dynamic_cast<const ExprTryCatchNode*>(node));
+            if (arrayLitToGeneric || ctrlArrayTarget) return applySubst(resolved);
         }
+        return applySubst(inferred);
+    }
+    if (node->hasResolvedType()) {
 #ifndef NDEBUG
         const auto& resolved = node->resolvedType();
         auto inferred = node->structuralType();
-        auto instantiatedInferred = applySubst(inferred);
         // 数组字面量 getType 是 `[T * N]` / `[__empty * 0]`；SemaPass 按靶向可写成 Array<T>。
         const bool arrayLitToGeneric = inferred.isArray() && resolved.isArrayGeneric();
         // if / match / try 汇合：子节点已按靶向写成 Array，节点自身 getType 在写 resolved 前
@@ -66,9 +73,8 @@ TypeInfo Compiler::resolvedOrInferredType(ExprNode* node) const {
         // 透明 alias (spec §3.9.1.2 / §3.9.3.1): SemaPass 缓存的 resolvedType 与 codegen
         // 阶段 getType() 重新计算的结果, 在字面上可能一侧是别名名 (`IPair`), 另一侧已被
         // 解开 (`(i32,i32)`). 两者按 alias 归一后应一致; 仅当归一后仍不等才视为真冲突.
-        const bool consistent = resolveAlias(resolved) == resolveAlias(inferred) ||
-                                resolveAlias(resolved) == resolveAlias(instantiatedInferred) || arrayLitToGeneric ||
-                                ctrlArrayTarget;
+        const bool consistent =
+            resolveAlias(resolved) == resolveAlias(inferred) || arrayLitToGeneric || ctrlArrayTarget;
         assert(consistent && "resolvedType / getType inconsistent");
 #endif
         return node->resolvedType();
@@ -211,7 +217,6 @@ llvm::Value* Compiler::compileExpr(ExprNode* node) {
         // Phase 8d.1: 调用结果若为 fresh RC 句柄（Rc/Array/Weak），登记到当前语句临时帧
         auto val = compileCallExpr(callNode);
         if (val) {
-            // Phase 2.4: compileCallExpr 入口已写 resolvedType，优先读它
             recordTemp(val, resolvedOrInferredType(node));
         }
         return val;

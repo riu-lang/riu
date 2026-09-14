@@ -232,7 +232,7 @@ bool Compiler::isBuiltinMethod(const string& structName, const string& methodNam
 // `vector<string>* tryBlockSeenErrs` 解开 Compiler::TryCatchCtx 的 LLVM 耦合.
 
 llvm::Value* Compiler::compileCallExpr(ExprCallNode* node) {
-    if (!node->hasResolvedType()) node->setResolvedType(node->getType());
+    // 槽只由 Sema 写，避免复用 AST 时锁死上次类型。
     auto calleeExpr = node->getCalleeExpr();
 
     // Phase 10e：错误传播语义校验（仅 ID-callee 路径；方法 / fn-value 推 10f）

@@ -63,7 +63,9 @@ void Compiler::compileRetStatement(StatementRetNode* node) {
         declRetType = applySubst(declRetType);
     }
 
-    TypeInfo retType = applySubst(node->expr()->getType());
+    // 1.7：泛型实例复用模板 AST，Call 槽可能停在上一实例的具体类型。
+    // resolvedOrInferredType 在 subst 帧里用 structuralType 重算再替换。
+    TypeInfo retType = resolvedOrInferredType(node->expr());
     // 数组字面量 getType 是 `[T * N]` / `[__empty * 0]`；靶向 Array<T> 时用 resolved / 声明类型。
     if (node->expr()->hasResolvedType()) {
         const auto& resolved = node->expr()->resolvedType();
@@ -104,7 +106,7 @@ void Compiler::compileRetStatement(StatementRetNode* node) {
         // 灵活整数：成功通道按 declRetType 推断（与下方非 Fallible 路径同型）
         if (hasDeclaredRetType && isIntTypeName(declRetType.name) && isFlexibleIntExpr(node->expr())) {
             tryInferIntType(node->expr(), declRetType);
-            retType = node->expr()->getType();
+            retType = resolvedOrInferredType(node->expr());
         }
         bool isSuccess = hasDeclaredRetType && (resolveAlias(retType) == resolveAlias(declRetType));
         bool isError = (resolveAlias(retType).name == fallibleErrName);
@@ -271,7 +273,7 @@ void Compiler::compileRetStatement(StatementRetNode* node) {
             if (!nullableWrap) {
                 if (isIntTypeName(innerType->name) && isFlexibleIntExpr(node->expr())) {
                     tryInferIntType(node->expr(), *innerType);
-                    retType = node->expr()->getType();
+                    retType = resolvedOrInferredType(node->expr());
                 }
                 if (resolveAlias(retType) == resolveAlias(*innerType)) {
                     nullableWrap = true;

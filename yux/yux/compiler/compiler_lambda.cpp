@@ -82,16 +82,16 @@ llvm::Function* Compiler::emitLambdaFunction(LambdaExprNode* node, const TypeInf
         retType = expectedFnType.fnReturnType()->withoutFallible();
         fallibleErr = expectedFnType.fnReturnType()->fallibleErr;
     } else if (node->bodyExpr()) {
-        auto bt = node->bodyExpr()->getType();
+        auto bt = resolvedOrInferredType(node->bodyExpr());
         if (!bt.empty()) retType = bt;
     } else if (!node->bodyStmts().empty()) {
         auto* last = node->bodyStmts().back();
         if (auto retStmt = dynamic_cast<StatementRetNode*>(last)) {
-            auto bt = retStmt->expr()->getType();
+            auto bt = resolvedOrInferredType(retStmt->expr());
             if (!bt.empty()) retType = bt;
         } else if (auto exprStmt = dynamic_cast<StatementExprNode*>(last)) {
             if (!exprStmt->hasSemicolon()) {
-                auto bt = exprStmt->expr()->getType();
+                auto bt = resolvedOrInferredType(exprStmt->expr());
                 if (!bt.empty()) retType = bt;
             }
         }

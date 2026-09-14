@@ -123,6 +123,7 @@ public:
     [[nodiscard]] const std::vector<ExprNode*>& getArgs() const;
 
     [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] TypeInfo structuralType() const override;
 };
 
 class ExprLiteralNode : public ExprNode {
@@ -593,6 +594,7 @@ public:
     // 限定路径走 resolveExprTypeLhs（含 ownerModule）；Self 用 enclosing struct。
     [[nodiscard]] TypeInfo resolvedLhsType() const;
     [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] TypeInfo structuralType() const override;
 };
 
 // 字段初始化项：.name = value（仅出现在 ExprStructLitNode 内）

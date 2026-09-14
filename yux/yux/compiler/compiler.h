@@ -288,9 +288,9 @@ private:
 
     // ==================== 表达式编译 ====================
     llvm::Value* compileExpr(ExprNode* node); // 编译表达式 (主入口)
-    // Phase 2.4 / Phase B：codegen 读类型的统一入口。
-    // 优先返回 SemaPass / compile<Foo>Expr 已写入的 resolvedType；尚未走过该路径
-    // 的节点回退到 getType()。debug / 泛型 subst 帧用 structuralType() 做无槽重算。
+    // Phase 2.4 / 1.7：codegen 读类型的统一入口。
+    // 无 subst 时优先读 Sema 槽，否则 getType()。泛型 subst 帧用 structuralType()
+    // 再 applySubst，避免复用模板 AST 时槽停留在上一实例。
     [[nodiscard]] TypeInfo resolvedOrInferredType(ExprNode* node) const;
     llvm::Value* compileArrayInitExpr(ExprArrayInitNode* node, const TypeInfo& targetType,
                                       llvm::Value* destPtr = nullptr);                           // 编译数组初始化表达式

@@ -8,6 +8,7 @@
 #include <map>
 #include <set>
 
+#include "builtin_methods.h"
 #include "file_node.h"
 #include "fn_node.h"
 #include "sema/call_resolve.h"
@@ -582,6 +583,11 @@ const std::vector<ExprNode*>& ExprCallNode::getArgs() const {
 }
 
 TypeInfo ExprCallNode::getType() const {
+    if (hasResolvedType() && !resolvedType().empty()) return resolvedType();
+    return structuralType();
+}
+
+TypeInfo ExprCallNode::structuralType() const {
     auto type = _calleeExpr->getType();
 
     // Array.map<U> 的返回类型依赖方法自己的 U；方法点只编码占位返回，
@@ -2300,6 +2306,11 @@ TypeInfo ExprPathCallNode::resolvedLhsType() const {
 }
 
 TypeInfo ExprPathCallNode::getType() const {
+    if (hasResolvedType() && !resolvedType().empty()) return resolvedType();
+    return structuralType();
+}
+
+TypeInfo ExprPathCallNode::structuralType() const {
     TypeInfo lhs = resolvedLhsType();
     string n = lhs.name;
     FileNode* file = enclosingFile();

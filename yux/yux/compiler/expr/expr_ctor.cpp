@@ -101,7 +101,7 @@ llvm::Constant* Compiler::evalInlineFieldInit(ExprNode* init, const TypeInfo& fi
 // 6. 零参 variant 不动 payload buffer（spec §6.5）
 // 7. 加载整体 struct value 作为表达式结果返回
 llvm::Value* Compiler::compileEnumCtorExpr(ExprPathCallNode* node) {
-    if (!node->hasResolvedType()) node->setResolvedType(node->getType());
+    // 槽只由 Sema 写，避免复用 AST 时锁死上次类型。
     string enumName = node->getType().name; // 经别名解析后的真实 enum 名
     string variantName = node->variantName().getText();
     int line = node->getLineNumber();

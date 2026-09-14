@@ -3,7 +3,7 @@
 
 // 表达式语义检查：visitExpr / visitExprList。
 // Phase 3.2a：每个表达式节点写 setResolvedType(getType())。
-// 1.7a 结构叶 / 1.7b Get·GetRef / 1.7c 运算族改为 type_of_* 在下钻之后写槽。
+// 1.7a 结构叶 / 1.7b Get·GetRef / 1.7c 运算 / 1.7d 调用族改为 type_of_* 在下钻之后写槽。
 // Phase B：SemaPass 为 getType 诊断的权威抛出点。默认重抛所有 YuxError。
 // Phase C：泛型 fn/impl 体再吞一批依赖 T 具体化的码（见 isMorphologicalGenericCode）。
 // 方法点 callee 的 E3095：getType 会把找不到的方法回落成基类型再抛「不是函数」，
@@ -16,6 +16,7 @@
 #include "sema/name_resolver.h"
 #include "sema/sema_pass.h"
 #include "sema/sema_pass_detail.h"
+#include "sema/type_of_call.h"
 #include "sema/type_of_name.h"
 #include "sema/type_of_ops.h"
 #include "sema/type_of_struct.h"
@@ -182,14 +183,15 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
     std::optional<YuxError> deferredMethodE3095;
     const bool delayCtrlResolved = dynamic_cast<ExprIfElseNode*>(expr) || dynamic_cast<ExprOneLineIfElseNode*>(expr) ||
                                    dynamic_cast<ExprMatchNode*>(expr) || dynamic_cast<ExprTryCatchNode*>(expr);
-    // 1.7a 结构叶 / 1.7b Get·GetRef / 1.7c 运算：先下钻子节点再写槽，避免父节点
-    // getType 在子槽未填时递归计算。GetRef 无子表达式，分支内写槽。
+    // 1.7a 结构叶 / 1.7b Get·GetRef / 1.7c 运算 / 1.7d 调用：先下钻子节点再写槽，
+    // 避免父节点 getType 在子槽未填时递归计算。GetRef 无子表达式，分支内写槽。
     const bool delayLeafResolved = dynamic_cast<ExprParenNode*>(expr) || dynamic_cast<ExprTupleNode*>(expr) ||
                                    dynamic_cast<ExprArrayNode*>(expr) || dynamic_cast<ExprArrayInitNode*>(expr) ||
                                    dynamic_cast<ExprLiteralNode*>(expr) || dynamic_cast<ExprGetNode*>(expr) ||
                                    dynamic_cast<ExprGetRefNode*>(expr) || dynamic_cast<ExprUnaryNode*>(expr) ||
                                    dynamic_cast<ExprAddSubNode*>(expr) || dynamic_cast<ExprMulDivModNode*>(expr) ||
-                                   dynamic_cast<ExprBinOpNode*>(expr) || dynamic_cast<ExprCompareNode*>(expr);
+                                   dynamic_cast<ExprBinOpNode*>(expr) || dynamic_cast<ExprCompareNode*>(expr) ||
+                                   dynamic_cast<ExprCallNode*>(expr) || dynamic_cast<ExprPathCallNode*>(expr);
     auto writeResolved = [&](ExprNode* n, auto&& compute) {
         try {
             TypeInfo t = compute();
@@ -596,6 +598,7 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
             }
         }
         visitExprList(n->getArgs(), callArgExpPtr);
+        writeResolved(n, [&] { return sema::typeOfCall(n); });
 
         // E4025 (DRAFT-heap-types §8.3a.5.1): 容器构造 turbofish 内嵌 Heap 拦截.
         // 形态: `Rc:<Heap<T>>(...)` / `Weak:<Heap<T>>(...)` / `Array:<Heap<T>>(...)`
@@ -1885,6 +1888,7 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
             }
         }
         visitExprList(n->args(), pathArgExpPtr);
+        writeResolved(n, [&] { return sema::typeOfPathCall(n); });
 
         // §7.10.2.3：`Self::name` 仅 struct body 内合法。
         if (selfForm && lhsName == "Self") {
@@ -2167,8 +2171,7 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
         }
 
         // Phase 3.4.a: SemaPass 接管 E2019/E2020/E2021/E2032.
-        // node->setResolvedType 已在 visitExpr 顶部写好 (getType 抛错时已在白名单
-        // 重抛, 否则吞掉; 这里能跑到说明 getType 至少没抛已迁移码).
+        // typeOfPathCall 已在下钻实参后写槽 (getType 抛错时已在白名单重抛)。
         // 任一异常被 helper 内部 try/catch (E2032 路径) 吞掉; E2019/E2020/E2021
         // 由 helper 主动抛出, SemaPass 实际接管.
         try {
