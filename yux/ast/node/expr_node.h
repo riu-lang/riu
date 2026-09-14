@@ -355,6 +355,7 @@ public:
     [[nodiscard]] ExprNode* arrayExpr() const;
     [[nodiscard]] const vector<ExprNode*>& indices() const;
     [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] TypeInfo structuralType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
     [[nodiscard]] int resolveColumn() const override;
 };
@@ -397,6 +398,7 @@ public:
     [[nodiscard]] Token obj() const { return _obj; }
     [[nodiscard]] const vector<Token>& subs() const { return _subs; }
     [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] TypeInfo structuralType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
     [[nodiscard]] int resolveColumn() const override;
 };

@@ -107,7 +107,8 @@ llvm::Value* Compiler::compileParenExpr(ExprParenNode* node) {
 }
 
 llvm::Value* Compiler::compileGetRefExpr(ExprGetRefNode* node) {
-    if (!node->hasResolvedType()) node->setResolvedType(node->getType());
+    // 不在此写 resolved 槽：spec 默认体复用同一 AST，codegen 填槽会让后续
+    // impl 的 getType() 读到上一次的具体类型。无槽时 structuralType 现场查符号。
     auto objName = node->obj().getText();
     auto& subs = node->subs();
 

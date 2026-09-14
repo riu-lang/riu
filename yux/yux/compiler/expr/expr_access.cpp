@@ -21,7 +21,7 @@
 #include <set>
 
 llvm::Value* Compiler::compileArrayGetExpr(ExprGetNode* node) {
-    if (!node->hasResolvedType()) node->setResolvedType(node->getType());
+    // 与 compileGetRefExpr 同款：槽只由 Sema 写，避免复用 AST 时锁死上次类型。
     auto arrayExpr = node->arrayExpr();
     auto arrayType = arrayExpr->getType();
 

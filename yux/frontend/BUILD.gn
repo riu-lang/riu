@@ -29,6 +29,7 @@ static_library("yux_frontend") {
     "sema/sema_pass.cpp",
     "sema/sema_pass_detail.cpp",
     "sema/sema_stmt.cpp",
+    "sema/type_of_name.cpp",
     "sema/type_of_struct.cpp",
     "tools/diagnostic.cpp",
     "tools/pkg_cache.cpp",

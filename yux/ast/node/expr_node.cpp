@@ -1783,6 +1783,11 @@ const vector<ExprNode*>& ExprGetNode::indices() const {
 }
 
 TypeInfo ExprGetNode::getType() const {
+    if (hasResolvedType() && !resolvedType().empty()) return resolvedType();
+    return structuralType();
+}
+
+TypeInfo ExprGetNode::structuralType() const {
     auto arrayType = _arrayExpr->getType();
 
     // Auto-deref: [T * N]& → [T * N] (Ref<Array<...>>)
@@ -1967,6 +1972,11 @@ TypeInfo ExprArrayInitNode::structuralType() const {
 }
 
 TypeInfo ExprGetRefNode::getType() const {
+    if (hasResolvedType() && !resolvedType().empty()) return resolvedType();
+    return structuralType();
+}
+
+TypeInfo ExprGetRefNode::structuralType() const {
     auto scope = findNearestScope();
     if (!scope) {
         throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3097);
