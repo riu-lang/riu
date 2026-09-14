@@ -3,7 +3,7 @@
 
 // 表达式语义检查：visitExpr / visitExprList。
 // Phase 3.2a：每个表达式节点写 setResolvedType(getType())。
-// 1.7a 结构叶 / 1.7b Get·GetRef / 1.7c 运算 / 1.7d 调用族改为 type_of_* 在下钻之后写槽。
+// 1.7a 结构叶 / 1.7b Get·GetRef / 1.7c 运算 / 1.7d 调用 / 1.7e Dot 改为 type_of_* 在下钻之后写槽。
 // Phase B：SemaPass 为 getType 诊断的权威抛出点。默认重抛所有 YuxError。
 // Phase C：泛型 fn/impl 体再吞一批依赖 T 具体化的码（见 isMorphologicalGenericCode）。
 // 方法点 callee 的 E3095：getType 会把找不到的方法回落成基类型再抛「不是函数」，
@@ -17,6 +17,7 @@
 #include "sema/sema_pass.h"
 #include "sema/sema_pass_detail.h"
 #include "sema/type_of_call.h"
+#include "sema/type_of_dot.h"
 #include "sema/type_of_name.h"
 #include "sema/type_of_ops.h"
 #include "sema/type_of_struct.h"
@@ -183,7 +184,7 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
     std::optional<YuxError> deferredMethodE3095;
     const bool delayCtrlResolved = dynamic_cast<ExprIfElseNode*>(expr) || dynamic_cast<ExprOneLineIfElseNode*>(expr) ||
                                    dynamic_cast<ExprMatchNode*>(expr) || dynamic_cast<ExprTryCatchNode*>(expr);
-    // 1.7a 结构叶 / 1.7b Get·GetRef / 1.7c 运算 / 1.7d 调用：先下钻子节点再写槽，
+    // 1.7a 结构叶 / 1.7b Get·GetRef / 1.7c 运算 / 1.7d 调用 / 1.7e Dot：先下钻子节点再写槽，
     // 避免父节点 getType 在子槽未填时递归计算。GetRef 无子表达式，分支内写槽。
     const bool delayLeafResolved = dynamic_cast<ExprParenNode*>(expr) || dynamic_cast<ExprTupleNode*>(expr) ||
                                    dynamic_cast<ExprArrayNode*>(expr) || dynamic_cast<ExprArrayInitNode*>(expr) ||
@@ -191,7 +192,8 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
                                    dynamic_cast<ExprGetRefNode*>(expr) || dynamic_cast<ExprUnaryNode*>(expr) ||
                                    dynamic_cast<ExprAddSubNode*>(expr) || dynamic_cast<ExprMulDivModNode*>(expr) ||
                                    dynamic_cast<ExprBinOpNode*>(expr) || dynamic_cast<ExprCompareNode*>(expr) ||
-                                   dynamic_cast<ExprCallNode*>(expr) || dynamic_cast<ExprPathCallNode*>(expr);
+                                   dynamic_cast<ExprCallNode*>(expr) || dynamic_cast<ExprPathCallNode*>(expr) ||
+                                   dynamic_cast<ExprDotNode*>(expr);
     auto writeResolved = [&](ExprNode* n, auto&& compute) {
         try {
             TypeInfo t = compute();
@@ -1407,6 +1409,10 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
         } catch (...) { // NOLINT(bugprone-empty-catch)
             // 防御性
         }
+
+        // 1.7e：先下钻基表达式再写槽。Field.value 缓存在 structuralType 里填；
+        // 方法点 E3095 仍由外层 Call 的 writeResolved 记下。
+        writeResolved(n, [&] { return sema::typeOfDot(n); });
 
         // Phase C：`?.` 在 subst 后查 Nullable / 内层字段（getType 在模板体吞掉）。
         if (n->isSafe()) {

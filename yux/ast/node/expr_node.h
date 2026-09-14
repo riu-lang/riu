@@ -247,6 +247,7 @@ public:
     [[nodiscard]] const string& specQualifier() const { return _specQualifier; }
     [[nodiscard]] bool hasSpecQualifier() const { return !_specQualifier.empty(); }
     [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] TypeInfo structuralType() const override;
     // 点成员是否为结构体字段（非方法）。方法点 getType 也返回 TypeKind::Fn，
     // 但那只是调用结果编码；真正的 Fn 字段才走 fat-ptr 调用。
     [[nodiscard]] bool isFieldAccess() const;

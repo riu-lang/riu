@@ -517,7 +517,8 @@ bool tryInferIntType(ExprNode* expr, const TypeInfo& target) {
                 if (ok) {
                     call->setResolvedType(target);
                     try {
-                        dot->setResolvedType(dot->getType());
+                        // getType 读槽；基表达式刚被回填，必须 structuralType 重算方法点。
+                        dot->setResolvedType(dot->structuralType());
                     } catch (...) { // NOLINT(bugprone-empty-catch)
                     }
                 }
@@ -528,7 +529,8 @@ bool tryInferIntType(ExprNode* expr, const TypeInfo& target) {
                 if (ok) {
                     call->setResolvedType(target);
                     try {
-                        dot->setResolvedType(dot->getType());
+                        // 同上：and/or/xor/shl/shr 方法点随基/实参整数宽度一起更新。
+                        dot->setResolvedType(dot->structuralType());
                     } catch (...) { // NOLINT(bugprone-empty-catch)
                     }
                 }
@@ -1045,6 +1047,11 @@ bool ExprDotNode::isFieldAccess() const {
 }
 
 TypeInfo ExprDotNode::getType() const {
+    if (hasResolvedType() && !resolvedType().empty()) return resolvedType();
+    return structuralType();
+}
+
+TypeInfo ExprDotNode::structuralType() const {
     auto member = this->member();
     DEBUG_LOG_VAL("ExprDotNode::getType - member", member);
 

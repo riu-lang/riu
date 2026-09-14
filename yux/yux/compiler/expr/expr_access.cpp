@@ -129,7 +129,7 @@ llvm::Value* Compiler::compileArrayGetExpr(ExprGetNode* node) {
 }
 
 llvm::Value* Compiler::compileDotExpr(ExprDotNode* node) {
-    if (!node->hasResolvedType()) node->setResolvedType(node->getType());
+    // 槽只由 Sema 写，避免复用 AST 时锁死上次类型。
     // 安全访问 a?.b：单独走分支
     if (node->isSafe()) {
         return compileSafeDotExpr(node);
@@ -172,10 +172,8 @@ llvm::Value* Compiler::compileDotExpr(ExprDotNode* node) {
     }
 
     // DRAFT-spec-reflect §6: Field.value → compile-time field name rewrite.
-    // Resolution happens in ExprDotNode::getType() which caches {structDecl, fieldIndex}.
+    // Sema typeOfDot → structuralType 已缓存 {structDecl, fieldIndex}。
     // Here we just check the cached result and emit $.field_name.
-    // Trigger getType() to populate the cached metadata (mirrors compileEnumCtorExpr L38).
-    if (!node->hasResolvedType()) node->setResolvedType(node->getType());
     if (node->isReflectFieldValue()) {
         auto* sd = node->reflectStructDecl();
         int fieldIdx = node->reflectFieldIndex();
