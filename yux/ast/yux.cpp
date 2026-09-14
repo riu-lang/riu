@@ -13,6 +13,7 @@
 
 #include "ast_builder.h"
 #include "mod_decl.h"
+#include "parse_program.h"
 #include "tools/syntax_error_listener.h"
 #include "yux/yuxLexer.h"
 #include "yux/yuxParser.h"
@@ -196,7 +197,7 @@ FileNode* Yux::_parseFile(const string& absPath, const string& moduleName, int e
     yux::yuxParser parser(&tokenStream);
     parser.removeErrorListeners();
     parser.addErrorListener(&errListener);
-    auto program = parser.program();
+    auto program = parseYuxProgram(parser, tokenStream, &errListener);
     if (errListener.hasErrors() || parser.getNumberOfSyntaxErrors()) {
         // 用首个语法错误的实际错误码（E1001/E1002）+ 行号替代通用 E5010，
         // 使 yux-check test 的 ; check: 注解能精确匹配。

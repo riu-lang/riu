@@ -26,6 +26,7 @@ static_library("yux_ast") {
     "ast_builder_expr.cpp",
     "ast_builder_type.cpp",
     "yux.cpp",
+    "parse_program.cpp",
     "mod_decl.cpp",
     "mangler.cpp",
     "type_path.cpp",

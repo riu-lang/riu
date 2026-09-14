@@ -25,6 +25,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <iostream>
+#include <unordered_set>
 #include <vector>
 
 namespace sdk_loader {
@@ -104,12 +105,14 @@ std::vector<SdkExtraPkg> extraSdkPackages(const std::string& sdkDir) {
     for (const char* name : kNames) {
         fs::path f = parent / (std::string(name) + ".yux");
         if (!fs::is_regular_file(f)) continue;
-        out.push_back({.absPath = fs::absolute(f).string(), .moduleName = std::string("yux.") + name});
+        out.push_back(
+            {.absPath = fs::absolute(f).lexically_normal().generic_string(), .moduleName = std::string("yux.") + name});
     }
     return out;
 }
 
-void parseSdkDir(const std::string& sdkDir, Yux& yux, bool allowDecl) {
+void parseSdkDir(const std::string& sdkDir, Yux& yux, bool allowDecl,
+                 const std::unordered_set<std::string>* forceFullParseAbs) {
     auto pkgMap = readSdkPkg(sdkDir);
 
     auto extras = extraSdkPackages(sdkDir);
@@ -158,9 +161,10 @@ void parseSdkDir(const std::string& sdkDir, Yux& yux, bool allowDecl) {
     std::string declBuild = sdkRoot.empty() ? std::string() : (sdkRoot / "build").string();
 
     auto loadOne = [&](const std::string& yuxFile, const std::string& moduleName, bool flattenToCore) {
-        std::string abs = fs::absolute(yuxFile).string();
+        std::string abs = fs::absolute(yuxFile).lexically_normal().generic_string();
         FileNode* fileNode = nullptr;
-        if (allowDecl && !declRoot.empty()) {
+        const bool forceFull = forceFullParseAbs && forceFullParseAbs->contains(abs);
+        if (allowDecl && !forceFull && !declRoot.empty()) {
             auto dpath = mod_decl::pathFor(declRoot, declBuild, abs);
             fileNode = mod_decl::tryLoad(yux, dpath, abs, moduleName);
         }

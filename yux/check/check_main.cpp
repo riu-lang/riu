@@ -34,6 +34,7 @@
 #include "yux/yuxLexer.h"
 #include "yux/yuxParser.h"
 
+#include "ast/parse_program.h"
 #include "ast/yux.h"
 #include "sema/sema_pass.h"
 #include "tools/diagnostic.h"
@@ -317,7 +318,7 @@ static CheckResult runSemaOnFile(const string& absPath, const string& sdkPath) {
     parser.removeErrorListeners();
     parser.addErrorListener(&errListener);
 
-    auto* program = parser.program();
+    auto* program = parseYuxProgram(parser, tokens, &errListener);
     if (errListener.hasErrors() || parser.getNumberOfSyntaxErrors()) {
         cr.ok = false;
         cr.otherError = syntaxErrStream.str();
@@ -869,7 +870,7 @@ int main(int argc, char* argv[]) {
     parser.removeErrorListeners();
     parser.addErrorListener(&errListener);
 
-    auto* program = parser.program();
+    auto* program = parseYuxProgram(parser, tokens, &errListener);
     if (errListener.hasErrors() || parser.getNumberOfSyntaxErrors()) {
         return 1;
     }

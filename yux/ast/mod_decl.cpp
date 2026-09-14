@@ -16,6 +16,7 @@
 #include "node/spec_node.h"
 #include "node/struct_node.h"
 #include "node/type_node.h"
+#include "parse_program.h"
 #include "tools/syntax_error_listener.h"
 #include "yux.h"
 #include "yux/yuxLexer.h"
@@ -495,7 +496,7 @@ bool parseSkeletonInto(Yux& yux, FileNode* file, const string& src, const string
     yux::yuxParser parser(&tokens);
     parser.removeErrorListeners();
     parser.addErrorListener(&errListener);
-    auto* program = parser.program();
+    auto* program = parseYuxProgram(parser, tokens, &errListener);
     if (errListener.hasErrors() || parser.getNumberOfSyntaxErrors()) {
         DEBUG_LOG_VAL("  .decl skeleton syntax fail", absPath << " " << sink.str());
         return false;

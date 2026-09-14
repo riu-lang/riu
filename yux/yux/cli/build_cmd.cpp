@@ -39,6 +39,7 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -565,34 +566,27 @@ int runBuildCommand(const BuildCmdOptions& opts) {
         sdkLibPath = (sdkRoot / "build" / "yux.lib").string();
 
         // 解析 SDK 源码获取符号表（_sdkFile + 各模块 AST）
-        // SDK 自构建且 obj 过期时必须整文件 parse（.decl 无非泛型体，不能拿去 codegen）
-        bool allowDecl = true;
+        // .decl 无非泛型体，不能拿去 codegen：仅对 obj 过期的模块整文件 parse，其余读 .decl。
+        std::unordered_set<std::string> forceFullParse;
         if (isSdkSelfBuild) {
             PkgCacheRegistry probe(yux.projectRoot(), buildDir);
+            auto consider = [&](const std::string& abs) {
+                string obj = mirroredOutputBase(yux.projectRoot(), buildDir, abs) + ".obj";
+                if (!probe.isFresh(abs, obj)) forceFullParse.insert(abs);
+            };
             for (const auto& entry : fs::directory_iterator(sdkPath)) {
                 if (!entry.is_regular_file()) continue;
                 auto fname = entry.path().filename().string();
                 if (fname.size() <= 4 || !fname.ends_with(".yux")) continue;
                 if (fname.size() >= 9 && fname.ends_with(".test.yux")) continue;
-                string abs = fs::absolute(entry.path()).string();
-                string obj = mirroredOutputBase(yux.projectRoot(), buildDir, abs) + ".obj";
-                if (!probe.isFresh(abs, obj)) {
-                    allowDecl = false;
-                    break;
-                }
+                consider(fs::absolute(entry.path()).lexically_normal().generic_string());
             }
-            if (allowDecl) {
-                for (const auto& extra : sdk_loader::extraSdkPackages(sdkPath)) {
-                    string obj = mirroredOutputBase(yux.projectRoot(), buildDir, extra.absPath) + ".obj";
-                    if (!probe.isFresh(extra.absPath, obj)) {
-                        allowDecl = false;
-                        break;
-                    }
-                }
+            for (const auto& extra : sdk_loader::extraSdkPackages(sdkPath)) {
+                consider(extra.absPath);
             }
         }
         try {
-            sdk_loader::parseSdkDir(sdkPath, yux, allowDecl);
+            sdk_loader::parseSdkDir(sdkPath, yux, true, isSdkSelfBuild ? &forceFullParse : nullptr);
         } catch (std::runtime_error& e) {
             reportRuntimeError(sdkPath, e, "Error in SDK: ");
             return 1;

@@ -15,6 +15,7 @@
 
 #include <map>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 class Yux;
@@ -52,8 +53,10 @@ std::vector<SdkExtraPkg> extraSdkPackages(const std::string& sdkDir);
 
 // 把 sdkDir 下所有非 .test.yux 解析进 yux。出错抛 YuxError (含解析失败 / AST 错误)。
 // 错误时附带的 sourcePath 是触发错误的具体 .yux 文件。
-// allowDecl：true 时优先读 .decl（依赖方只要接口 + 泛型体）；false 时整文件 parse
-// （SDK 自构建且 obj 过期，需要非泛型体去做 codegen）。
-void parseSdkDir(const std::string& sdkDir, Yux& yux, bool allowDecl = true);
+// allowDecl：true 时优先读 .decl（依赖方只要接口 + 泛型体）；false 时整文件 parse。
+// forceFullParseAbs：这些源文件绝对路径（generic_string）跳过 .decl，整文件 parse
+// （SDK 自构建、对应 .obj 过期，需要函数体 codegen）。其余模块仍可读 .decl。
+void parseSdkDir(const std::string& sdkDir, Yux& yux, bool allowDecl = true,
+                 const std::unordered_set<std::string>* forceFullParseAbs = nullptr);
 
 } // namespace sdk_loader
