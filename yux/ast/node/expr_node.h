@@ -329,6 +329,7 @@ public:
     [[nodiscard]] const vector<ExprElIfNode*>& elifs() const;
     [[nodiscard]] StatementBlockNode* elseBlock() const;
     [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] TypeInfo structuralType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
     [[nodiscard]] int resolveColumn() const override;
 };
@@ -346,6 +347,7 @@ public:
     [[nodiscard]] ExprNode* trueValue() const { return _trueValue; }
     [[nodiscard]] ExprNode* falseValue() const { return _falseValue; }
     [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] TypeInfo structuralType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
     [[nodiscard]] int resolveColumn() const override;
 };
@@ -711,6 +713,7 @@ public:
     [[nodiscard]] ExprNode* scrutinee() const { return _scrutinee; }
     [[nodiscard]] const vector<MatchArmNode*>& arms() const { return _arms; }
     [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] TypeInfo structuralType() const override;
 };
 
 // catch arm: `catch <绑定名> <错误 enum 类型> { body }`
@@ -747,6 +750,7 @@ public:
     [[nodiscard]] StatementBlockNode* tryBlock() const { return _tryBlock; }
     [[nodiscard]] const vector<CatchArmNode*>& catches() const { return _catches; }
     [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] TypeInfo structuralType() const override;
 };
 
 // Dyn<D>(x) / Dyn<D&>(x) 构造表达式（DRAFT-dyn-draft / 拟 §12.9）
@@ -799,6 +803,7 @@ public:
     [[nodiscard]] ExprNode* left() const { return _left; }
     [[nodiscard]] ExprNode* right() const { return _right; }
     [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] TypeInfo structuralType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
     [[nodiscard]] int resolveColumn() const override;
 };

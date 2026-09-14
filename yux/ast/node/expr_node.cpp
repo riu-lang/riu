@@ -1736,6 +1736,11 @@ StatementBlockNode* ExprIfElseNode::elseBlock() const {
 }
 
 TypeInfo ExprIfElseNode::getType() const {
+    if (hasResolvedType() && !resolvedType().empty()) return resolvedType();
+    return structuralType();
+}
+
+TypeInfo ExprIfElseNode::structuralType() const {
     // §4.9.3.5：ret / #NoReturn 臂流终止，不参与类型合并；其余无尾值则整体 void。
     ScopeNode* sc = findNearestScope();
     TypeInfo resultType;
@@ -1781,6 +1786,11 @@ int ExprIfElseNode::resolveColumn() const {
 }
 
 TypeInfo ExprOneLineIfElseNode::getType() const {
+    if (hasResolvedType() && !resolvedType().empty()) return resolvedType();
+    return structuralType();
+}
+
+TypeInfo ExprOneLineIfElseNode::structuralType() const {
     ScopeNode* sc = findNearestScope();
     bool trueTerm = exprTerminatesFlow(sc, _trueValue);
     bool falseTerm = exprTerminatesFlow(sc, _falseValue);
@@ -2153,6 +2163,11 @@ int ExprMoveAssignNode::resolveColumn() const {
 // ExprNullElseNode: a ?? b
 // 类型规则：a 必须是 Nullable<T>，结果类型为 T；b 必须能转为 T
 TypeInfo ExprNullElseNode::getType() const {
+    if (hasResolvedType() && !resolvedType().empty()) return resolvedType();
+    return structuralType();
+}
+
+TypeInfo ExprNullElseNode::structuralType() const {
     auto leftType = _left->getType();
     // Ref<Nullable<T>> → 剥 Ref 取 Nullable（如 Array<Nullable<T>> 下标返回 T?&）
     if (leftType.isRef()) {
@@ -2218,6 +2233,11 @@ int MatchArmNode::resultCol() const {
 }
 
 TypeInfo ExprMatchNode::getType() const {
+    if (hasResolvedType() && !resolvedType().empty()) return resolvedType();
+    return structuralType();
+}
+
+TypeInfo ExprMatchNode::structuralType() const {
     TypeInfo first;
     bool firstSet = false;
     for (auto& arm : _arms) {
@@ -2240,8 +2260,13 @@ TypeInfo ExprMatchNode::getType() const {
 // try-catch 表达式：取 try block 末表达式 + 所有 catch arm body 末表达式的共同类型
 // 流终止 arm（body 末以 ret / panic 结尾，hasResult=false）不参与类型合并；
 // 与 if-else / match 同档：若任何参与方为 void 则整体 void，类型不一致返回首个，
-// 编译期再校验（保持与 ExprMatchNode::getType 一致风格）。
+// 编译期再校验（保持与 ExprMatchNode::structuralType 一致风格）。
 TypeInfo ExprTryCatchNode::getType() const {
+    if (hasResolvedType() && !resolvedType().empty()) return resolvedType();
+    return structuralType();
+}
+
+TypeInfo ExprTryCatchNode::structuralType() const {
     ScopeNode* sc = findNearestScope();
     if (!blockTerminatesFlow(sc, _tryBlock) && (!_tryBlock->hasResult() || !_tryBlock->resultExpr())) {
         return {};

@@ -21,7 +21,7 @@
 #include <set>
 
 llvm::Value* Compiler::compileIfElseExpr(ExprIfElseNode* node) {
-    if (!node->hasResolvedType()) node->setResolvedType(node->getType());
+    // 槽只由 Sema typeOfIfElse 写，避免复用 AST 时锁死上次类型。
     auto resultType = resolvedOrInferredType(node);
     bool hasResult = !resultType.empty();
 
@@ -127,7 +127,7 @@ llvm::Value* Compiler::compileIfElseExpr(ExprIfElseNode* node) {
 }
 
 llvm::Value* Compiler::compileOneLineIfElseExpr(ExprOneLineIfElseNode* node) {
-    if (!node->hasResolvedType()) node->setResolvedType(node->getType());
+    // 槽只由 Sema typeOfOneLineIfElse 写，避免复用 AST 时锁死上次类型。
     auto resultType = resolvedOrInferredType(node);
     bool hasResult = !resultType.empty();
 
@@ -218,7 +218,7 @@ llvm::Value* Compiler::compileOneLineIfElseExpr(ExprOneLineIfElseNode* node) {
 //   归一）
 // - arm body：`=> expr` 或 `=> { stmts }`（块末无 `;` 的表达式即块值，与 if 同）
 llvm::Value* Compiler::compileMatchExpr(ExprMatchNode* node) {
-    if (!node->hasResolvedType()) node->setResolvedType(node->getType());
+    // 槽只由 Sema typeOfMatch 写，避免复用 AST 时锁死上次类型。
     auto scrutinee = node->scrutinee();
     auto rawScrutType = scrutinee->getType();
     // applySubst 含别名展开；泛型体实例化后 T → Color 才能按 enum 编译。
@@ -568,7 +568,7 @@ llvm::Value* Compiler::compileMatchExpr(ExprMatchNode* node) {
 //   - lambda body 在 emitLambdaFunction 内有独立编译流，与外层 _tryCatchStack 隔离 →
 //     穷尽性自然不下钻 lambda 内部。
 llvm::Value* Compiler::compileTryCatchExpr(ExprTryCatchNode* node) {
-    if (!node->hasResolvedType()) node->setResolvedType(node->getType());
+    // 槽只由 Sema typeOfTryCatch 写，避免复用 AST 时锁死上次类型。
     int line = node->getLineNumber();
     int col = node->getColumn();
 

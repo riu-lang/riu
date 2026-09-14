@@ -3,7 +3,8 @@
 
 // 表达式语义检查：visitExpr / visitExprList。
 // Phase 3.2a：每个表达式节点写 setResolvedType(getType())。
-// 1.7a 结构叶 / 1.7b Get·GetRef / 1.7c 运算 / 1.7d 调用 / 1.7e Dot 改为 type_of_* 在下钻之后写槽。
+// 1.7a 结构叶 / 1.7b Get·GetRef / 1.7c 运算 / 1.7d 调用 / 1.7e Dot / 1.7f 控制流
+// 改为 type_of_* 在下钻之后写槽。
 // Phase B：SemaPass 为 getType 诊断的权威抛出点。默认重抛所有 YuxError。
 // Phase C：泛型 fn/impl 体再吞一批依赖 T 具体化的码（见 isMorphologicalGenericCode）。
 // 方法点 callee 的 E3095：getType 会把找不到的方法回落成基类型再抛「不是函数」，
@@ -17,6 +18,7 @@
 #include "sema/sema_pass.h"
 #include "sema/sema_pass_detail.h"
 #include "sema/type_of_call.h"
+#include "sema/type_of_ctrl.h"
 #include "sema/type_of_dot.h"
 #include "sema/type_of_name.h"
 #include "sema/type_of_ops.h"
@@ -179,13 +181,13 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
     // Phase B：getType 诊断默认由 SemaPass 重抛。
     // Phase C：泛型模板体内再吞依赖 T 具体化的码；形态检查仍重抛。
     // 方法点 E3095 先记下，给后面的 Dot 分支报 E1101/E1140；ID-literal 的 E3095 重抛。
-    // if / match / try：先下钻子树带靶向（空 `[]` → Array<T>），再 getType 汇合，
+    // if / match / try：先下钻子树带靶向（空 `[]` → Array<T>），再 type_of_ctrl 汇合，
     // 否则 `[]` 的 `[__empty * 0]` 会在子节点 resolved 写好之前假阳性 E3005/E7010。
     std::optional<YuxError> deferredMethodE3095;
     const bool delayCtrlResolved = dynamic_cast<ExprIfElseNode*>(expr) || dynamic_cast<ExprOneLineIfElseNode*>(expr) ||
                                    dynamic_cast<ExprMatchNode*>(expr) || dynamic_cast<ExprTryCatchNode*>(expr);
-    // 1.7a 结构叶 / 1.7b Get·GetRef / 1.7c 运算 / 1.7d 调用 / 1.7e Dot：先下钻子节点再写槽，
-    // 避免父节点 getType 在子槽未填时递归计算。GetRef 无子表达式，分支内写槽。
+    // 1.7a–1.7f：先下钻子节点再写槽，避免父节点 getType 在子槽未填时递归计算。
+    // GetRef 无子表达式，分支内写槽。NullElse 下钻后再写，不走 finishCtrlResolved 的 Array 靶向。
     const bool delayLeafResolved = dynamic_cast<ExprParenNode*>(expr) || dynamic_cast<ExprTupleNode*>(expr) ||
                                    dynamic_cast<ExprArrayNode*>(expr) || dynamic_cast<ExprArrayInitNode*>(expr) ||
                                    dynamic_cast<ExprLiteralNode*>(expr) || dynamic_cast<ExprGetNode*>(expr) ||
@@ -193,7 +195,7 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
                                    dynamic_cast<ExprAddSubNode*>(expr) || dynamic_cast<ExprMulDivModNode*>(expr) ||
                                    dynamic_cast<ExprBinOpNode*>(expr) || dynamic_cast<ExprCompareNode*>(expr) ||
                                    dynamic_cast<ExprCallNode*>(expr) || dynamic_cast<ExprPathCallNode*>(expr) ||
-                                   dynamic_cast<ExprDotNode*>(expr);
+                                   dynamic_cast<ExprDotNode*>(expr) || dynamic_cast<ExprNullElseNode*>(expr);
     auto writeResolved = [&](ExprNode* n, auto&& compute) {
         try {
             TypeInfo t = compute();
@@ -216,8 +218,8 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
         }
     };
     auto writeResolvedFromGetType = [&](ExprNode* n) { writeResolved(n, [&] { return n->getType(); }); };
-    auto finishCtrlResolved = [&](ExprNode* n) {
-        writeResolvedFromGetType(n);
+    auto finishCtrlResolved = [&](ExprNode* n, auto&& compute) {
+        writeResolved(n, compute);
         if (!expected || !n->hasResolvedType()) return;
         TypeInfo want = expected->peelRef();
         if (!want.isArrayGeneric()) return;
@@ -1578,7 +1580,7 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
         } else {
             _movedVars = std::move(afterThenMoved);
         }
-        finishCtrlResolved(n);
+        finishCtrlResolved(n, [&] { return sema::typeOfIfElse(n); });
         tryValidateIfElse(n);
         return;
     }
@@ -1586,7 +1588,7 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
         visitExpr(n->condition());
         visitExpr(n->trueValue(), expected);
         visitExpr(n->falseValue(), expected);
-        finishCtrlResolved(n);
+        finishCtrlResolved(n, [&] { return sema::typeOfOneLineIfElse(n); });
         tryValidateOneLineIfElse(n);
         return;
     }
@@ -2198,7 +2200,7 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
             else
                 visitExpr(arm->body(), expected);
         }
-        finishCtrlResolved(n);
+        finishCtrlResolved(n, [&] { return sema::typeOfMatch(n); });
         checkMatchArmTypes(n->arms(), _currentTypeParams, &_instSubst);
         tryValidateMatchScrut(n);
         return;
@@ -2249,7 +2251,7 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
         for (auto& c : n->catches())
             visitBlock(c->body(), expected);
 
-        finishCtrlResolved(n);
+        finishCtrlResolved(n, [&] { return sema::typeOfTryCatch(n); });
 
         // E7010：catch arm 末类型与 try 块一致。流终止臂（ret / #NoReturn）不参与。
         // 须用 resolved（空 `[]` 的 getType 是 `[__empty * 0]`，靶向后才是 Array<T>）。
@@ -2355,6 +2357,7 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
             }
         }
         visitExpr(n->right(), rightExp);
+        writeResolved(n, [&] { return sema::typeOfNullElse(n); });
         // Bucket 6 收口+ (CURRENT-check.md): E3024 (左侧非 Nullable) + E3014 (右侧
         // 类型不匹配). 镜像 compileNullElseExpr. 模板形参等实例化后再查.
         try {

@@ -449,7 +449,7 @@ llvm::Value* Compiler::compileSafeDotExpr(ExprDotNode* node) {
 //   else: %r = compile(b); br merge (carry %r)
 //   merge: phi T [%v, then] [%r, else]
 llvm::Value* Compiler::compileNullElseExpr(ExprNullElseNode* node) {
-    if (!node->hasResolvedType()) node->setResolvedType(node->getType());
+    // 槽只由 Sema typeOfNullElse 写，避免复用 AST 时锁死上次类型。
     auto leftType = node->left()->getType();
 
     // Array<Nullable<T>> 下标返回 Ref<Nullable<T>>（T?&）→ 需先 load Nullable struct
