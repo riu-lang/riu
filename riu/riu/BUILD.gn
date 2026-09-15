@@ -12,6 +12,7 @@ executable("riu") {
     "//build/llvm:llvm",
     "//build/third_party:zlib",
     "//riu/frontend:riu_frontend",
+    "//riu/generic:riu_generic",
     "//riu/rt:riurt",
   ]
   libs = [ "ntdll.lib" ]

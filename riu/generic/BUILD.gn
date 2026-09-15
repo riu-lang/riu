@@ -1,0 +1,15 @@
+# Copyright (c) 2026. Yin-Jinlong@github
+# MPL-2.0
+
+config("riu_generic_public") {
+  include_dirs = [
+    "//riu",
+    "//riu/include",
+  ]
+}
+
+static_library("riu_generic") {
+  public_configs = [ ":riu_generic_public" ]
+  public_deps = [ "//riu/ast:riu_ast" ]
+  sources = [ "generic.cpp" ]
+}

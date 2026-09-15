@@ -23,6 +23,7 @@
 #include "ast/node/spec_node.h"
 #include "ast/node/type_node.h"
 #include "compiler_runtime.h"
+#include "generic/generic.h"
 #include "sema/const_eval.h"
 #include "sema/sema_pass.h"
 #include "types.h"

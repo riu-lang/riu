@@ -7,6 +7,7 @@
 
 #include "sema/sema_pass.h"
 #include "builtin_methods.h"
+#include "generic/generic.h"
 #include "sema/call_resolve.h"
 #include "sema/const_eval.h"
 #include "sema/name_resolver.h"

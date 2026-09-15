@@ -15,6 +15,7 @@ graph LR
     llvm[llvm<br/>GN + Ninja]
     astlib[riu_ast]
     analyzer[riu_analyzer]
+    generic[riu_generic<br/>静态库, 0 LLVM]
     rt[riurt<br/>C99]
 
     frontend[riu_frontend<br/>静态库, 0 LLVM]
@@ -27,8 +28,11 @@ graph LR
 
     antlr --> astlib
     astlib --> analyzer
+    astlib --> generic
     astlib --> frontend
     analyzer --> frontend
+    generic --> frontend
+    generic --> riu
     frontend --> riu
     zlib --> riu
     llvm --> riu
@@ -39,7 +43,7 @@ graph LR
 
     classDef nollvm fill:#e0f3e0,stroke:#3a3
     classDef llvmDep fill:#fde2e2,stroke:#c33
-    class frontend,lsp,ast,check,astlib,analyzer,antlr,runner nollvm
+    class frontend,lsp,ast,check,astlib,analyzer,generic,antlr,runner nollvm
     class llvm,riu llvmDep
 ```
 
@@ -48,12 +52,12 @@ graph LR
 GN 箭头是「被谁链接」。include 方向相反：`riu_ast` 不得 `#include "sema/..."` / `"analyzer/..."`，也不得在 `BUILD.gn` 加 `include_dirs = [ "//riu/frontend" ]`。
 
 ```
-AST（数据 + 注解槽）  ←  Sema / Analyzer
-        ↑
-    Codegen（LLVM）
+AST（数据 + 注解槽）  ←  Generic（单态；2.1 空壳）  ←  Sema / Analyzer
+                              ↑
+                          Codegen（LLVM）
 ```
 
-名字查找：`riu/ast/name_lookup.h`（已加载模块图，0 LLVM）。类型计算由 Sema 写槽；codegen 读槽，泛型 subst 帧用 `structuralType()` 回退。
+名字查找：`riu/ast/name_lookup.h`（已加载模块图，0 LLVM）。类型计算由 Sema 写槽；codegen 读槽，泛型 subst 帧用 `structuralType()` 回退。`riu_generic` 0 LLVM；实例表仍在 Compiler，2.2 起迁入。
 
 ---
 

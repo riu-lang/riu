@@ -19,6 +19,7 @@ static_library("riu_frontend") {
   public_deps = [
     "//riu/analyzer:riu_analyzer",
     "//riu/ast:riu_ast",
+    "//riu/generic:riu_generic",
   ]
   sources = [
     "sema/call_resolve.cpp",
