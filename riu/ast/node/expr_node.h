@@ -18,10 +18,9 @@ class StructDeclNode;
 class ExprNode : public Node, public Typed {
 protected:
     // Phase 2 / 1.7 Sema/Codegen 拆分：表达式经语义检查后的解析型类型槽位。
-    // 1.7：getType() 有槽则返回槽，否则 structuralType() 廉价回退。
-    // Call / Dot / PathCall / TypeName 字面量的 structuralType 仍可能查 NameResolver。
-    // codegen 的 resolvedOrInferredType 在泛型 subst 帧里读 structuralType()，
-    // 避免复用模板 AST 时槽停留在上一次实例的具体类型。
+    // getType() 有槽则返回槽，否则 structuralType() 回退（字面量 / 已填子节点 /
+    // ast/name_lookup 上的已加载模块图查找）。codegen 的 resolvedOrInferredType
+    // 在泛型 subst 帧里读 structuralType()，避免复用模板 AST 时槽停留在上一次实例。
     //
     // 空 optional = 尚未解析（区别于 TypeInfo::empty() 表示的 void 类型）。
     std::optional<TypeInfo> _resolvedType;
@@ -44,8 +43,7 @@ public:
     // getType `[__empty * 0]` 与 `Array<T>` 假阳性失配。
     [[nodiscard]] TypeInfo resolvedOrGetType() const { return hasResolvedType() ? resolvedType() : getType(); }
 
-    // 不读 resolved 槽。1.7 已搬迁的族是廉价结构回退（字面量 / 已填子节点）；
-    // 未搬迁的族等同 getType()。
+    // 不读 resolved 槽。结构回退（字面量 / 已填子节点 / 已加载模块图查找）。
     [[nodiscard]] virtual TypeInfo structuralType() const;
 
     void setResolvedSymbol(ResolvedSymbol s) { _resolvedSymbol = s; }

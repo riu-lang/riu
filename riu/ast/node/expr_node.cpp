@@ -5,14 +5,14 @@
 
 #include <algorithm>
 #include <functional>
+#include <limits>
 #include <map>
 #include <set>
 
+#include "ast/name_lookup.h"
 #include "builtin_methods.h"
 #include "file_node.h"
 #include "fn_node.h"
-#include "sema/call_resolve.h"
-#include "sema/name_resolver.h"
 #include "spec_node.h"
 #include "statement_node.h"
 #include "struct_node.h"
@@ -79,6 +79,29 @@ static sema::NameResolver namesFromFile(FileNode* file) {
         }
     }
     return {file, sdk};
+}
+
+// Field.value 下标：非负整数字面量。完整范围校验在 Sema parseIntLiteral。
+static i64 parseFieldIndexLiteral(const string& text) {
+    string s = text;
+    for (const char* suf : {"isize", "usize", "i16", "i32", "i64", "u16", "u32", "u64", "i8", "u8"}) {
+        auto n = std::char_traits<char>::length(suf);
+        if (s.size() > n && s.compare(s.size() - n, n, suf) == 0) {
+            s.resize(s.size() - n);
+            break;
+        }
+    }
+    std::erase(s, '_');
+    if (s.empty() || s[0] == '-') return -1;
+    try {
+        size_t idx = 0;
+        unsigned long long v = std::stoull(s, &idx, 0);
+        if (idx != s.size()) return -1;
+        if (v > static_cast<unsigned long long>(std::numeric_limits<i64>::max())) return -1;
+        return static_cast<i64>(v);
+    } catch (...) { // NOLINT(bugprone-empty-catch)
+        return -1;
+    }
 }
 
 TypeInfo ExprNode::structuralType() const {
@@ -1203,8 +1226,7 @@ TypeInfo ExprDotNode::structuralType() const {
                         if (auto* idxLit = dynamic_cast<ExprLiteralNode*>(idxExpr)) {
                             if (auto* intLit = dynamic_cast<LiteralIntNode*>(idxLit->literal())) {
                                 Token tok = intLit->getValue();
-                                i64 idx = sema::parseIntLiteral(tok.getText(), static_cast<int>(tok.getLine()),
-                                                                static_cast<int>(tok.getCharPositionInLine()) + 1);
+                                i64 idx = parseFieldIndexLiteral(tok.getText());
                                 if (idx >= 0) {
                                     // Look up struct declaration from scope
                                     auto* s = expr->findNearestScope();
@@ -1256,8 +1278,7 @@ TypeInfo ExprDotNode::structuralType() const {
                         if (auto* idxLit = dynamic_cast<ExprLiteralNode*>(idxExpr)) {
                             if (auto* intLit = dynamic_cast<LiteralIntNode*>(idxLit->literal())) {
                                 Token tok = intLit->getValue();
-                                i64 idx = sema::parseIntLiteral(tok.getText(), static_cast<int>(tok.getLine()),
-                                                                static_cast<int>(tok.getCharPositionInLine()) + 1);
+                                i64 idx = parseFieldIndexLiteral(tok.getText());
                                 if (idx >= 0) {
                                     auto* s = expr->findNearestScope();
                                     auto* file = dynamic_cast<FileNode*>(s);

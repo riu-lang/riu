@@ -45,6 +45,16 @@ graph LR
 
 绿色 = 0 LLVM 依赖（编译快、可独立分发）；红色 = 链接整个 LLVM/lld。
 
+GN 箭头是「被谁链接」。include 方向相反：`riu_ast` 不得 `#include "sema/..."` / `"analyzer/..."`，也不得在 `BUILD.gn` 加 `include_dirs = [ "//riu/frontend" ]`。
+
+```
+AST（数据 + 注解槽）  ←  Sema / Analyzer
+        ↑
+    Codegen（LLVM）
+```
+
+名字查找：`riu/ast/name_lookup.h`（已加载模块图，0 LLVM）。类型计算由 Sema 写槽；codegen 读槽，泛型 subst 帧用 `structuralType()` 回退。
+
 ---
 
 ## 2. 编译管线（`riu build` 主路径）
@@ -134,6 +144,7 @@ flowchart TB
 
 规则要点（写新 C++ 时必看）：
 
+- `riu/ast/` 禁止 `#include "sema/..."` / `"analyzer/..."` / `"tools/..."`（frontend 路径）。
 - `riu/frontend/sema/` 禁止 `#include "llvm/..."`，禁止访问 `IRBuilder` / `_module`。
 - 让 sema 接管某错误码 → **默认即由 SemaPass 重抛**。若必须暂留 Compiler（假阳性），加入 `kDeferredCodes`，禁止静默吞。
 - 新增 AST / 表达式类 → 在 `SemaPass::visitExpr` 加 dispatch 分支（即使是空占位），否则 sema 静默 skip 整个子树。

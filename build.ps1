@@ -88,7 +88,30 @@ function Find-Tool([string]$Name) {
 function Ensure-SdkLink([string]$OutDir) {
     $link = Join-Path $OutDir 'sdk'
     $src = Join-Path $ProjectRoot 'sdk'
-    if (Test-Path -LiteralPath $link) { return }
+    $want = [System.IO.Path]::GetFullPath($src).TrimEnd('\', '/')
+    $ok = $false
+    if (Test-Path -LiteralPath $link) {
+        $item = Get-Item -LiteralPath $link -Force
+        $t = $null
+        if ($item.LinkType -in @('Junction', 'SymbolicLink')) {
+            $t = $item.Target
+            if ($t -is [array]) { $t = $t[0] }
+        }
+        if ($t) {
+            $got = [System.IO.Path]::GetFullPath([string]$t).TrimEnd('\', '/')
+            if ($got.ToLowerInvariant() -eq $want.ToLowerInvariant()) { $ok = $true }
+        }
+        if (-not $ok) {
+            $was = if ($t) { $t } else { 'not a junction' }
+            Write-Log "sdk junction retarget: $link ($was) → $src" DarkYellow
+            # rmdir 只拆 junction，不删目标；普通目录非空会失败
+            cmd.exe /c "rmdir `"$link`"" | Out-Null
+            if (Test-Path -LiteralPath $link) {
+                throw "failed to remove stale sdk path at $link (want junction → $src)"
+            }
+        }
+    }
+    if ($ok) { return }
     Write-Log "sdk junction: $link → sdk/" DarkGray
     cmd.exe /c "mklink /J `"$link`" `"$src`"" | Out-Null
     if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $link)) {

@@ -11,12 +11,12 @@
 
 #include <toml.hpp>
 
+#include "ast/syntax_error_listener.h"
 #include "ast_builder.h"
 #include "mod_decl.h"
 #include "parse_program.h"
 #include "riu/riuLexer.h"
 #include "riu/riuParser.h"
-#include "tools/syntax_error_listener.h"
 
 // 全局调试输出开关（声明于 include/types.h，仅 _DEBUG 构建可用），
 // 由 `riu build -d` / `riu test -d` 在 main.cpp 中翻成 true；

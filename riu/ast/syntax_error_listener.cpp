@@ -1,9 +1,9 @@
 // Copyright (c) 2026. Yin-Jinlong@github
 // MPL-2.0
 
-#include "syntax_error_listener.h"
+#include "ast/syntax_error_listener.h"
 
-#include "diagnostic.h"
+#include "ast/diagnostic.h"
 #include "error_code.h"
 
 #include "Lexer.h"

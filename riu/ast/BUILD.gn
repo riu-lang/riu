@@ -7,15 +7,13 @@ config("riu_ast_public") {
     "//riu/include",
     "//riu/ast/gen",
     "//third_party/toml11/single_include",
+    "//third_party/utfcpp/source",
   ]
 }
 
 static_library("riu_ast") {
   public_configs = [ ":riu_ast_public" ]
   public_deps = [ "//build/third_party:antlr4_static" ]
-
-  # ast_builder_decl.cpp / expr_node.cpp 构建期用 frontend 头
-  include_dirs = [ "//riu/frontend" ]
 
   sources = [
     "ast_builder.cpp",
@@ -25,10 +23,13 @@ static_library("riu_ast") {
     "ast_builder_stmt.cpp",
     "ast_builder_expr.cpp",
     "ast_builder_type.cpp",
-    "riu.cpp",
-    "parse_program.cpp",
-    "mod_decl.cpp",
+    "diagnostic.cpp",
     "mangler.cpp",
+    "mod_decl.cpp",
+    "name_lookup.cpp",
+    "parse_program.cpp",
+    "riu.cpp",
+    "syntax_error_listener.cpp",
     "type_path.cpp",
     "node/expr_node.cpp",
     "node/file_node.cpp",

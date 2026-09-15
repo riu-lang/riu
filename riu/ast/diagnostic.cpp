@@ -8,7 +8,7 @@
 // - 源文件读取与按行切片（带缓存）
 // - rustc 风格的 file:line:col + 源码片段 + 插入符渲染
 
-#include "diagnostic.h"
+#include "ast/diagnostic.h"
 
 #include <fstream>
 #include <map>

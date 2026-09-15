@@ -6,6 +6,7 @@
 
 #include "mod_decl.h"
 
+#include "ast/syntax_error_listener.h"
 #include "ast_builder.h"
 #include "node/alias_node.h"
 #include "node/enum_node.h"
@@ -20,7 +21,6 @@
 #include "riu.h"
 #include "riu/riuLexer.h"
 #include "riu/riuParser.h"
-#include "tools/syntax_error_listener.h"
 
 #include <algorithm>
 #include <array>
