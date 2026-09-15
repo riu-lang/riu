@@ -58,12 +58,10 @@ fn _count(text String&) (usize, usize, usize) {
 }
 
 fn _print(lines usize, words usize, bytes usize, name String&) {
-  ; usize 插进 "${n}" 会在 println 后退时崩；走 to_string 拼接。
-  let line String = lines.to_string() + " " + words.to_string() + " " + bytes.to_string()
   if name.is_empty() {
-    println(line)
+    println("${lines} ${words} ${bytes}")
   } else {
-    println(line + " " + name)
+    println("${lines} ${words} ${bytes} ${name}")
   }
 }
 

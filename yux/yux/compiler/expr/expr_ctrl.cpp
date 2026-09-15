@@ -150,7 +150,7 @@ llvm::Value* Compiler::compileOneLineIfElseExpr(ExprOneLineIfElseNode* node) {
     if (hasResult && !exprTerminatesFlow(node->findNearestScope(), node->trueValue())) {
         trueVal = compileBranchResultNormalized(node->trueValue(), resultType);
     } else {
-        (void)compileExpr(node->trueValue());
+        (void)compileBranchResultNormalized(node->trueValue(), TypeInfo());
     }
     if (!_builder.GetInsertBlock()->getTerminator()) {
         _builder.CreateBr(mergeBB);
@@ -165,7 +165,7 @@ llvm::Value* Compiler::compileOneLineIfElseExpr(ExprOneLineIfElseNode* node) {
     if (hasResult && !exprTerminatesFlow(node->findNearestScope(), node->falseValue())) {
         falseVal = compileBranchResultNormalized(node->falseValue(), resultType);
     } else {
-        (void)compileExpr(node->falseValue());
+        (void)compileBranchResultNormalized(node->falseValue(), TypeInfo());
     }
     if (!_builder.GetInsertBlock()->getTerminator()) {
         _builder.CreateBr(mergeBB);
@@ -476,15 +476,11 @@ llvm::Value* Compiler::compileMatchExpr(ExprMatchNode* node) {
             } else {
                 compileStatementBlock(arm->block());
             }
-        } else if (exprTerminatesFlow(arm->findNearestScope(), arm->body())) {
-            (void)compileExpr(arm->body());
-        } else if (hasResult) {
+        } else if (hasResult && !exprTerminatesFlow(arm->findNearestScope(), arm->body())) {
             bodyVal = compileBranchResultNormalized(arm->body(), resultType);
         } else {
-            // 作为语句：仍走 compileExpr，吃掉中间 fresh 临时
-            pushTempFrame();
-            (void)compileExpr(arm->body());
-            popAndReleaseTempFrame();
+            // 无值臂 / 流终止：子帧吃掉中间 fresh 临时（含 void 模板插值）
+            (void)compileBranchResultNormalized(arm->body(), TypeInfo());
         }
 
         auto armEndBB = _builder.GetInsertBlock();

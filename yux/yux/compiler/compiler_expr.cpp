@@ -467,7 +467,9 @@ void Compiler::compileStatementBlock(StatementBlockNode* block) {
     }
     if (!_builder.GetInsertBlock()->getTerminator() && block->hasResult()) {
         DEBUG_LOG("    Compiling result expression");
-        compileExpr(block->resultExpr());
+        // 与 compileBranchResultNormalized 同款：void 尾表达式的 String 临时必须在本块释放。
+        // match 无值臂走本函数，两臂共用外层语句帧会在 merge 上析构未初始化 spill。
+        (void)compileBranchResultNormalized(block->resultExpr(), TypeInfo());
     }
     if (scopeFrameDepth() == myDepth) {
         if (_builder.GetInsertBlock()->getTerminator()) {
@@ -498,13 +500,13 @@ llvm::Value* Compiler::compileStatementBlockWithResult(StatementBlockNode* block
     if (block->hasResult()) {
         // 尾表达式是 #NoReturn / 全分支终止时不当值：只编译调用（内部 emit unreachable），不进 phi。
         if (exprTerminatesFlow(block, block->resultExpr())) {
-            (void)compileExpr(block->resultExpr());
+            (void)compileBranchResultNormalized(block->resultExpr(), TypeInfo());
             if (scopeFrameDepth() == myDepth) {
                 popScopeFrameNoDestroy();
             }
             return nullptr;
         }
-        // Phase 8d.3: RC 句柄分支结果走子帧 + 归一 retain；非 RC 沿用旧行为
+        // Phase 8d.3: 分支结果走子帧（void 也开，吃掉模板插值临时）；需析构时再 consume / retain
         auto resultVal = compileBranchResultNormalized(block->resultExpr(), resultType);
         if (_builder.GetInsertBlock()->getTerminator()) {
             if (scopeFrameDepth() == myDepth) {

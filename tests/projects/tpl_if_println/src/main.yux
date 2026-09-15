@@ -1,0 +1,17 @@
+; if/else 块尾无分号的 println("${usize} …")：两支模板临时须在本支释放，不能留到 merge。
+
+fn _print(n usize, name String&) {
+  if name.is_empty() {
+    println("${n}")
+  } else {
+    println("${n} ${name}")
+  }
+}
+
+fn main() {
+  let n usize = 8
+  let name String = "x"
+  _print(n, &name)
+  let empty String = ""
+  _print(n, &empty)
+}

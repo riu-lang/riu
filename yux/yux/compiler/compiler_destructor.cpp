@@ -978,15 +978,18 @@ bool Compiler::consumeTemp(llvm::Value* val) {
 // Phase 8d.3: 编译分支体的结果表达式：用子帧吃掉中间 fresh 临时；非 fresh 结果发 retain 归一。
 // 不只处理 Rc/Array/String：带显式析构的 #NoCopy struct 也会作为分支值汇合，
 // 若不把分支临时转交给 phi，子帧退出时会提前析构其 OS 句柄等资源。
+//
+// 即使结果类型不需析构（void / i32 等），也必须开子帧：尾表达式里的 String 临时
+// （模板插值 `to_string`、`String +`）会 recordTemp 到当前帧。若两支共用外层帧、
+// 在 merge 上一起 release，未走的那支 spill 槽未写入 → 打印后 SIGSEGV
+// （`if { println("${n}") } else { println("${n} ${s}") }`，n: usize）。
 llvm::Value* Compiler::compileBranchResultNormalized(ExprNode* expr, const TypeInfo& expectedType) {
-    if (!typeNeedsDestructor(expectedType)) {
-        return compileExpr(expr);
-    }
     pushTempFrame();
     auto val = compileExpr(expr);
-    bool wasFresh = consumeTemp(val);
+    bool needsDtor = !expectedType.empty() && typeNeedsDestructor(expectedType);
+    bool wasFresh = needsDtor && consumeTemp(val);
     popAndReleaseTempFrame();
-    if (!wasFresh && val) {
+    if (needsDtor && !wasFresh && val) {
         retainHandleAtCallSite(val, expectedType);
     }
     return val;

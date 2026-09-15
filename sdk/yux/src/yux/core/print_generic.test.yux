@@ -2,6 +2,7 @@
 ; print / println / eprint / eprintln 各保留三态：
 ;   String& 非泛型快路径 + `<T : ToString>(x T)` 泛型 owned + `<T : ToString>(x T&)` 泛型借用
 ; 测试目标：三种重载在 i64 / bool / String / 用户类型 / Array::get 返回 T& 上能正确分发并编译链接通过
+; if/else 尾表达式 println 模板插值（无分号）不在 merge 上双释放
 ; （stdout / stderr 实际字节不易在 in-process JIT 内回采，依赖 -v 时的捕获回放观察。）
 
 #Impl(ToString)
@@ -97,5 +98,24 @@ fn test_print_user_type_ref() {
   arr.push(PrintTag::make(200i64))
   print(arr.get(0))
   println(arr.get(1))
+  assert_true(true)
+}
+
+; 验证：if/else 尾表达式 println 模板插值（无分号）不在 merge 上双释放
+#Test
+fn test_println_template_in_if() {
+  let n usize = 8
+  let name String = "x"
+  if name.is_empty() {
+    println("${n}")
+  } else {
+    println("${n} ${name}")
+  }
+  let empty String = ""
+  if empty.is_empty() {
+    println("${n}")
+  } else {
+    println("${n} ${name}")
+  }
   assert_true(true)
 }
