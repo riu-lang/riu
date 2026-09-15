@@ -64,21 +64,8 @@ class Compiler {
     int _forInSerial = 0;                        // for-in 临时集合名
 
     // ==================== 泛型单态化 ====================
-    // 泛型结构体单态化：key = 定义模块全限定实例名（如 "riu.core.map.Map<i32,i32>"）
-    struct StructInstance {
-        StructDeclNode* baseDecl; // 泛型结构体声明
-        StructImplNode* baseImpl; // 泛型结构体实现 (包含方法)
-        FileNode* ownerFile;      // 定义该结构体的文件
-        vector<TypeInfo> args;    // 类型参数实例化参数
-        string mangledName;       // mangle 后的实例名
-        // 定义该泛型的模块名（与 LLVM 符号前缀一致）。多 TU 各发一份 IR 时
-        // 同名符号靠 linkonce_odr + COMDAT 合并，不再用消费方模块当分隔。
-        string consumerModule;
-        bool methodsEmitted = false; // 方法是否已生成
-        string sourceFile;           // 实例化发生的源文件 (用于错误报告)
-        int sourceLine = 0;          // 实例化发生的行号 (用于错误报告)
-    };
-    map<string, StructInstance> _structInstances;
+    // 泛型结构体单态：登记 / 查询在 generic；LLVM 类型与方法 IR 仍在 Compiler。
+    generic::StructTable _structInstances;
 
     // 泛型函数单态化：key = `name<Args>(params)`（如 "println<i32>(i32)"）
     struct FnInstance {
@@ -126,7 +113,7 @@ class Compiler {
                                             const vector<TypeInfo>& params, const TypeInfo& retType = TypeInfo(),
                                             const string& fallibleErrType = "") const;
     string ensureStructInstance(StructDeclNode* baseDecl, const vector<sp<TypeInfo>>& args, FileNode* ownerFile,
-                                int sourceLine = 0); // 确保结构体实例存在
+                                int sourceLine = 0); // 登记 generic 实例并建 LLVM 类型
     string ensureFnInstance(FnNode* baseFn, const vector<TypeInfo>& typeArgs, FileNode* ownerFile,
                             int sourceLine); // 确保函数实例存在
     string ensureMethodInstance(FnNode* baseMethod, const string& structName, const vector<TypeInfo>& typeArgs,
@@ -219,7 +206,7 @@ public:
 private:
     // ==================== 类型系统 ====================
     llvm::Type* getLLVMType(const TypeInfo& type); // 将 TypeInfo 转换为 LLVM 类型
-    // 从 struct 名还原完整 TypeInfo。命中 `_structInstances`（mangle `Foo<i32>`）时带上
+    // 从 struct 名还原完整 TypeInfo。命中 generic 实例表（mangle `Foo<i32>`）时带上
     // args 走 kind 分发；否则 `TypeInfo(name)`（Normal / 标量 / 源码名，唯一名字构造点）。
     [[nodiscard]] TypeInfo typeInfoForNamedStruct(const string& name) const;
 
@@ -419,7 +406,7 @@ private:
 
     // Phase 3c.2.c: 解析结构体字段类型清单
     // 普通 struct → 直接取 fields().getType()
-    // 泛型实例 (`_structInstances`) → 取 baseDecl 字段并按实例 args 套替换
+    // 泛型实例（generic 实例表）→ 取 baseDecl 字段并按实例 args 套替换
     // 找不到则返回空
     vector<TypeInfo> resolveStructFieldTypes(const string& structName);
 

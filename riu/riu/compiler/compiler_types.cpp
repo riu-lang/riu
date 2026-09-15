@@ -198,9 +198,7 @@ string Compiler::ensureStructInstance(StructDeclNode* baseDecl, const vector<sp<
     }
     mangledName += '>';
 
-    // 检查是否已存在
-    auto it = _structInstances.find(mangledName);
-    if (it != _structInstances.end()) return mangledName;
+    if (_structInstances.contains(mangledName)) return mangledName;
 
     // 验证类型参数数量
     if (args.size() != baseDecl->typeParams().size()) {
@@ -211,29 +209,16 @@ string Compiler::ensureStructInstance(StructDeclNode* baseDecl, const vector<sp<
         throwSemaGap(errLine);
     }
 
-    // 创建实例记录
-    StructInstance inst;
-    inst.baseDecl = baseDecl;
-    inst.ownerFile = ownerFile ? ownerFile : _file;
-    inst.mangledName = mangledName;
-    // 查找结构体实现 (包含方法)
-    inst.baseImpl = inst.ownerFile ? inst.ownerFile->getStructImpl(baseName) : nullptr;
-    if (!inst.baseImpl && _riu && _riu->sdkFile() && _riu->sdkFile() != inst.ownerFile) {
-        inst.baseImpl = _riu->sdkFile()->getStructImpl(baseName);
-    }
-    inst.args.reserve(args.size());
+    vector<TypeInfo> instArgs;
+    instArgs.reserve(args.size());
     for (auto& a : args)
-        inst.args.push_back(a ? *a : TypeInfo());
-    inst.sourceFile = _file ? _file->moduleName() : "";
-    inst.sourceLine = sourceLine;
-    // 符号前缀用定义模块（与 riu 全限定同形）。多 TU 各发一份时靠 linkonce_odr + COMDAT 合并。
-    inst.consumerModule = inst.ownerFile ? inst.ownerFile->moduleName() : (_file ? _file->moduleName() : "");
+        instArgs.push_back(a ? *a : TypeInfo());
+    // 先建记录、后入表：字段 getLLVMType 可能递归 ensure 其它实例；同名须等 LLVM 类型建完。
+    auto inst = generic::makeStructInstance(baseDecl, std::move(instArgs), ownerFile, _file,
+                                            _riu ? _riu->sdkFile() : nullptr, mangledName, sourceLine);
 
     // 建立类型参数替换映射
-    map<string, TypeInfo> subst;
-    for (size_t i = 0; i < args.size(); ++i) {
-        subst[baseDecl->typeParams()[i]] = inst.args[i];
-    }
+    map<string, TypeInfo> subst = inst.substMap();
 
     // 压入替换栈帧
     _substStack.push_back(SubstFrame{.subst = subst,
@@ -265,7 +250,7 @@ string Compiler::ensureStructInstance(StructDeclNode* baseDecl, const vector<sp<
 
     _substStack.pop_back();
 
-    _structInstances[mangledName] = std::move(inst);
+    _structInstances.insert(std::move(inst));
     return mangledName;
 }
 
@@ -314,16 +299,8 @@ llvm::Value* Compiler::arrayCapFieldPtr(llvm::Value* arrayStructPtr, const strin
 // `_structInstances` 的 key 是 mangle（`Foo<i32>` / `Array<i32>`）；命中时带上 args
 // 走 `TypeInfo(base, args)` 唯一名字分发，避免 `TypeInfo("Array")` 变成 Normal。
 TypeInfo Compiler::typeInfoForNamedStruct(const string& name) const {
-    auto instIt = _structInstances.find(name);
-    if (instIt != _structInstances.end() && instIt->second.baseDecl) {
-        vector<sp<TypeInfo>> args;
-        args.reserve(instIt->second.args.size());
-        for (const auto& a : instIt->second.args) {
-            args.push_back(std::make_shared<TypeInfo>(a));
-        }
-        TypeInfo t{instIt->second.baseDecl->name().getText(), std::move(args)};
-        if (instIt->second.ownerFile) t.ownerModule = instIt->second.ownerFile->moduleName();
-        return t;
+    if (const auto* inst = _structInstances.find(name); inst && inst->baseDecl) {
+        return inst->typeInfo();
     }
     TypeInfo t(name);
     FileNode* owner = nullptr;
@@ -590,9 +567,9 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
             // 应对应已建好的实例 LLVM 类型，而不是按未实例化泛型建类型。
             auto instLlvm = [&](const string& key) -> llvm::Type* {
                 if (key.empty()) return nullptr;
-                auto instIt = _structInstances.find(key);
-                if (instIt == _structInstances.end() || !instIt->second.baseDecl) return nullptr;
-                if (instIt->second.baseDecl->name().getText() != structDecl->name().getText()) return nullptr;
+                const auto* inst = _structInstances.find(key);
+                if (!inst || !inst->baseDecl) return nullptr;
+                if (inst->baseDecl->name().getText() != structDecl->name().getText()) return nullptr;
                 auto cit = _structTypes.find(key);
                 return cit != _structTypes.end() ? cit->second : nullptr;
             };

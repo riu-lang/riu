@@ -390,8 +390,7 @@ bool Compiler::tryHeapNullableLvalueSlot(ExprNode* expr, llvm::Value*& outSlot, 
         if (baseType.isRef() || baseType.isRc()) return false;
         StructDeclNode* sd = names().lookupStruct(baseType);
         if (!sd) {
-            auto instIt = _structInstances.find(baseType.name);
-            if (instIt != _structInstances.end()) sd = instIt->second.baseDecl;
+            if (auto* inst = _structInstances.find(baseType.name)) sd = inst->baseDecl;
         }
         if (!sd) return false;
         auto member = dotE->member();
@@ -1137,7 +1136,7 @@ bool Compiler::structParamUsesPointer(const TypeInfo& ti) {
 
     // 泛型实例 → by-value（3c.2.c）；实例 key 走 mangle，不走裸 name
     const string instKey = ti.getMangleName();
-    if (_structInstances.find(instKey) != _structInstances.end()) return false;
+    if (_structInstances.contains(instKey)) return false;
 
     // 仅在 LLVM 类型表中注册的（跨模块未通配导入等）保守按指针
     if (_structTypes.find(instKey) != _structTypes.end()) {
@@ -1173,7 +1172,7 @@ bool Compiler::structNeedsDestructor(const TypeInfo& type) {
     if (type.isArrayGeneric()) return true;
     if (type.isGeneric()) {
         const string instKey = type.getMangleName();
-        if (_structInstances.find(instKey) != _structInstances.end()) {
+        if (_structInstances.contains(instKey)) {
             return structNeedsDestructor(instKey);
         }
         return structNeedsDestructor(type.baseStructName());
@@ -1327,16 +1326,10 @@ vector<TypeInfo> Compiler::resolveStructFieldTypes(const string& structName) {
     }
 
     // 泛型实例：拼接 baseDecl typeParams → 实例 args 的替换表
-    auto instIt = _structInstances.find(structName);
-    if (instIt != _structInstances.end() && instIt->second.baseDecl) {
-        const auto& inst = instIt->second;
-        std::map<string, TypeInfo> subst;
-        const auto& tparams = inst.baseDecl->typeParams();
-        for (size_t i = 0; i < tparams.size() && i < inst.args.size(); ++i) {
-            subst[tparams[i]] = inst.args[i];
-        }
-        out.reserve(inst.baseDecl->fields().size());
-        for (auto field : inst.baseDecl->fields()) {
+    if (const auto* inst = _structInstances.find(structName); inst && inst->baseDecl) {
+        std::map<string, TypeInfo> subst = inst->substMap();
+        out.reserve(inst->baseDecl->fields().size());
+        for (auto field : inst->baseDecl->fields()) {
             out.push_back(field->getType().substitute(subst));
         }
     }

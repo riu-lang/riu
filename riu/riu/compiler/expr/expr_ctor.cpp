@@ -112,9 +112,8 @@ llvm::Value* Compiler::compileEnumCtorExpr(ExprPathCallNode* node) {
     TypeInfo lhsTy = node->resolvedLhsType();
     if (selfLhs) {
         if (!_currentStructName.empty()) {
-            auto instIt = _structInstances.find(_currentStructName);
-            if (instIt != _structInstances.end() && instIt->second.baseDecl) {
-                lookupLhs = instIt->second.baseDecl->name().getText();
+            if (const auto* inst = _structInstances.find(_currentStructName); inst && inst->baseDecl) {
+                lookupLhs = inst->baseDecl->name().getText();
             } else if (lookupLhs == "Self") {
                 lookupLhs = _currentStructName;
             }
@@ -302,9 +301,8 @@ llvm::Value* Compiler::compileEnumCtorExpr(ExprPathCallNode* node) {
                     }
                 }
                 if (effLhs == lhsRaw) {
-                    auto instIt = _structInstances.find(_currentStructName);
-                    if (instIt != _structInstances.end()) {
-                        if (!instIt->second.baseDecl || instIt->second.baseDecl->name().getText() == lhsRaw) {
+                    if (const auto* inst = _structInstances.find(_currentStructName)) {
+                        if (!inst->baseDecl || inst->baseDecl->name().getText() == lhsRaw) {
                             effLhs = _currentStructName;
                         }
                     }

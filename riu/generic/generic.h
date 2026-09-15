@@ -2,7 +2,7 @@
 // MPL-2.0
 
 // 泛型单态化（`riu_generic`）。0 LLVM，不 include SemaPass 实现。
-// 2.2：替换栈 + applySubst / bindStructSelfType。Struct/Fn 实例表仍在 Compiler。
+// 2.3：struct 实例表。发射方法 IR 仍在 Compiler（`emitInstanceMethods`）。
 
 #ifndef RIU_LANG_GENERIC_H
 #define RIU_LANG_GENERIC_H
@@ -10,14 +10,59 @@
 #include "types.h"
 
 class FileNode;
+class StructDeclNode;
+class StructImplNode;
 
 namespace generic {
 
-struct StructInstance {};
+struct StructInstance {
+    StructDeclNode* baseDecl = nullptr; // 泛型结构体声明
+    StructImplNode* baseImpl = nullptr; // 泛型结构体实现（含方法）
+    FileNode* ownerFile = nullptr;      // 定义该结构体的文件
+    vector<TypeInfo> args;              // 类型参数实例化参数
+    string mangledName;                 // mangle 后的实例名
+    // 定义该泛型的模块名（与 LLVM 符号前缀一致）。多 TU 各发一份 IR 时
+    // 同名符号靠 linkonce_odr + COMDAT 合并，不再用消费方模块当分隔。
+    string consumerModule;
+    bool methodsEmitted = false; // codegen 是否已发射方法 IR
+    string sourceFile;           // 实例化发生的源文件（用于错误报告）
+    int sourceLine = 0;          // 实例化发生的行号（用于错误报告）
+
+    [[nodiscard]] string ownerModule() const;
+    [[nodiscard]] TypeInfo typeInfo() const;
+    [[nodiscard]] map<string, TypeInfo> substMap() const;
+};
+
+// 从声明 + 实参填一份实例记录（不入表）。`ownerFile` 空则用 `currentFile`。
+[[nodiscard]] StructInstance makeStructInstance(StructDeclNode* baseDecl, vector<TypeInfo> args, FileNode* ownerFile,
+                                                FileNode* currentFile, FileNode* sdkFile, string mangledName,
+                                                int sourceLine);
+
+// 泛型 struct 单态表：key = 定义模块全限定实例名（如 "riu.core.map.Map<i32,i32>"）。
+class StructTable {
+    map<string, StructInstance> _instances;
+
+public:
+    [[nodiscard]] StructInstance* find(const string& mangledName);
+    [[nodiscard]] const StructInstance* find(const string& mangledName) const;
+    [[nodiscard]] bool contains(const string& mangledName) const { return _instances.contains(mangledName); }
+
+    StructInstance& operator[](const string& mangledName) { return _instances[mangledName]; }
+
+    void insert(StructInstance inst);
+
+    [[nodiscard]] size_t size() const { return _instances.size(); }
+
+    auto begin() { return _instances.begin(); }
+    auto end() { return _instances.end(); }
+    [[nodiscard]] auto begin() const { return _instances.begin(); }
+    [[nodiscard]] auto end() const { return _instances.end(); }
+};
+
 struct FnInstance {};
 
 // map/string 分配可抛；与迁出前 Compiler::SubstFrame 相同。
-struct SubstFrame { // NOLINT(bugprone-exception-escape)
+struct SubstFrame {              // NOLINT(bugprone-exception-escape)
     map<string, TypeInfo> subst; // 类型参数 -> 实际类型
     string baseStructName;       // 泛型原名，如 "Foo2"
     string effStructName;        // 实例名，如 "riu.core.map.Map<i32,i32>"

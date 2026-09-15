@@ -84,8 +84,8 @@ llvm::Function* Compiler::getMethodFunction(const string& structName, const stri
     // 泛型实例：定义模块（符号与 riu 全限定同形；多 TU 靠 linkonce_odr 合并）
     // 普通结构体：baseDecl owner 模块
     string ownerModule = _file->moduleName();
-    if (auto instIt = _structInstances.find(structName); instIt != _structInstances.end()) {
-        ownerModule = instIt->second.ownerFile ? instIt->second.ownerFile->moduleName() : instIt->second.consumerModule;
+    if (auto* inst = _structInstances.find(structName)) {
+        ownerModule = inst->ownerModule();
     } else if (!ownerModuleHint.empty()) {
         ownerModule = std::move(ownerModuleHint);
     } else {
@@ -157,8 +157,8 @@ llvm::Function* Compiler::getDestructorFunction(const string& structName, string
     // 确定析构函数所属的模块
     // 泛型实例：定义模块；普通结构体：owner 模块或 hint
     string ownerModule = _file->moduleName();
-    if (auto instIt = _structInstances.find(structName); instIt != _structInstances.end()) {
-        ownerModule = instIt->second.ownerFile ? instIt->second.ownerFile->moduleName() : instIt->second.consumerModule;
+    if (auto* inst = _structInstances.find(structName)) {
+        ownerModule = inst->ownerModule();
     } else if (!ownerModuleHint.empty()) {
         ownerModule = std::move(ownerModuleHint);
     } else {

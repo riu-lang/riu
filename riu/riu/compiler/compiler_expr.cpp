@@ -260,9 +260,8 @@ llvm::Value* Compiler::compileExpr(ExprNode* node) {
         // `_structInstances` 里键为 mangled（`Map<i32,i32>`）。优先用当前单态名。
         string structName = structLitNode->structName();
         if (structLitNode->isSelfForm() && !_currentStructName.empty()) {
-            auto instIt = _structInstances.find(_currentStructName);
-            if (instIt != _structInstances.end() && instIt->second.baseDecl &&
-                (structName.empty() || instIt->second.baseDecl->name().getText() == structName)) {
+            const auto* inst = _structInstances.find(_currentStructName);
+            if (inst && inst->baseDecl && (structName.empty() || inst->baseDecl->name().getText() == structName)) {
                 structName = _currentStructName;
             }
         }
@@ -297,9 +296,8 @@ llvm::Value* Compiler::compileExpr(ExprNode* node) {
             decl = _riu->sdkFile()->getStructDecl(structName);
         }
         if (!decl) {
-            auto instIt = _structInstances.find(structName);
-            if (instIt != _structInstances.end()) {
-                decl = instIt->second.baseDecl;
+            if (auto* inst = _structInstances.find(structName)) {
+                decl = inst->baseDecl;
             }
         }
         if (!decl) {

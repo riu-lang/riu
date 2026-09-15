@@ -810,10 +810,7 @@ void Compiler::emitInstanceMethods() {
             if (!inst.baseImpl) continue; // 没有实现则跳过
 
             // 建立类型参数替换映射
-            map<string, TypeInfo> subst;
-            for (size_t i = 0; i < inst.args.size(); ++i) {
-                subst[inst.baseDecl->typeParams()[i]] = inst.args[i];
-            }
+            map<string, TypeInfo> subst = inst.substMap();
             string baseName = inst.baseDecl->name().getText();
             _substStack.push_back(SubstFrame{.subst = subst,
                                              .baseStructName = baseName,

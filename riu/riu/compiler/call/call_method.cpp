@@ -104,9 +104,7 @@ llvm::Value* Compiler::compileSafeDotMethodCall(ExprCallNode* callNode, ExprDotN
                     if (m->header()->name().getText() != member) continue;
                     if (m->header()->params().size() != argTypes.size()) continue;
                     genericMethodNode = m;
-                    for (size_t i = 0; i < inst.args.size(); ++i) {
-                        genericSubst[inst.baseDecl->typeParams()[i]] = inst.args[i];
-                    }
+                    genericSubst = inst.substMap();
                     break;
                 }
             }
@@ -230,9 +228,7 @@ llvm::Value* Compiler::compileSafeDotMethodCall(ExprCallNode* callNode, ExprDotN
     // 获取或创建 LLVM 函数
     llvm::Function* llvmFn = nullptr;
     if (genericMethodNode) {
-        string ownerMod = _structInstances[genericEffName].ownerFile
-                              ? _structInstances[genericEffName].ownerFile->moduleName()
-                              : _structInstances[genericEffName].consumerModule;
+        string ownerMod = _structInstances[genericEffName].ownerModule();
         bool methPriv = !member.empty() && member[0] == '_';
         TypeInfo genRetType;
         if (genericMethodNode->header()->retType()) {
@@ -2023,10 +2019,7 @@ llvm::Value* Compiler::compileStructMethodCall(ExprCallNode* callNode, ExprNode*
                         }
                     }
 
-                    map<string, TypeInfo> subst;
-                    for (size_t i = 0; i < inst.args.size(); ++i) {
-                        subst[inst.baseDecl->typeParams()[i]] = inst.args[i];
-                    }
+                    map<string, TypeInfo> subst = inst.substMap();
                     // 与 emitInstanceMethods / 非泛型路径一致：mangle 与 LLVM 签名用替换后的
                     // 形参类型，不用调用点实参（否则 K& 工厂被 mangle 成 `K`，T& 被调成 `i32`）。
                     vector<TypeInfo> formalTypes;
