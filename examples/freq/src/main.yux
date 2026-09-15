@@ -1,0 +1,92 @@
+; freq — 词频。无文件时读 stdin。词按 ASCII 空白切开，按次数降序。
+; 运行：cd examples/freq && yux build && ./build/freq.exe 某文件.txt
+
+use yux.io.*
+
+fn _die(msg String&) {
+  eprintln(msg)
+  exit(1)
+}
+
+struct Hit {
+  word String
+  n i32
+}
+
+fn _add_word(counts Map<String, i32>&, buf Array<u32>&) {
+  if buf.is_empty() {
+    ret;
+  }
+  let w String = String::from(buf)
+  let n i32 = counts.get_or(&w, 0)
+  counts.insert(w, n + 1)
+}
+
+fn _count_text(text String&, counts Map<String, i32>&) {
+  #Mut let buf Array<u32> = []
+  loop i usize = 0 {
+    if i >= text.len() {
+      break;
+    }
+    let cp u32 = text.get(i)
+    if cp.is_ascii_ws() {
+      _add_word(counts, &buf)
+      buf.clear()
+    } else {
+      buf.push(cp)
+    }
+    i += 1
+  }
+  _add_word(counts, &buf)
+}
+
+fn _read_stdin() String {
+  #Mut let parts Array<String> = []
+  loop {
+    let line String = try {
+      read_line()
+    } catch e IoErr {
+      break;
+    }
+    parts.push(line)
+  }
+  String::join(&parts, "\n")
+}
+
+fn main() {
+  let argv Array<String> = args()
+  #Mut let counts Map<String, i32> = Map:<String, i32>::make()
+  if argv.len() < 2 {
+    let text String = _read_stdin()
+    _count_text(&text, &counts)
+  } else {
+    #Mut let i usize = 1
+    loop {
+      if i >= argv.len() {
+        break;
+      }
+      let path String = copy_of(argv[i])
+      let text String = try {
+        read_file(&path)
+      } catch e IoErr {
+        _die("freq: cannot read ${path}")
+        ""
+      }
+      _count_text(&text, &counts)
+      i += 1
+    }
+  }
+  let ks Array<String> = counts.keys()
+  #Mut let hits Array<Hit> = []
+  for k in ks {
+    let n i32 = counts.get_or(k, 0)
+    hits.push(Hit {
+      .word = copy_of(k)
+      .n = n
+    })
+  }
+  sort_by(&hits, (a, b) => a.n > b.n)
+  for h in hits {
+    println("${h.n} ${h.word}")
+  }
+}

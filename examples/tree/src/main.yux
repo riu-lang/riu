@@ -1,0 +1,59 @@
+; tree — 打印目录树。默认 cwd。软链当文件打印，不往下走。
+; 运行：cd examples/tree && yux build
+;       ./build/tree.exe
+;       ./build/tree.exe 某目录
+
+use yux.io.*
+
+fn _die(msg String&) {
+  eprintln(msg)
+  exit(1)
+}
+
+fn _walk(dir File&, prefix String) {
+  let kids Array<File> = try {
+    dir.list()
+  } catch e IoErr {
+    eprintln("tree: cannot list ${dir}")
+    ret;
+  }
+  let n usize = kids.len()
+  loop i usize = 0 {
+    if i >= n {
+      break;
+    }
+    let child File& = kids[i]
+    let last bool = i + 1usize == n
+    let branch String = if last { "`-- " } else { "|-- " }
+    println(prefix + branch + child.path().name())
+    if child.is_dir() && !child.is_link() {
+      let next String = if last { prefix + "    " } else { prefix + "|   " }
+      _walk(child, next)
+    }
+    i += 1
+  }
+}
+
+fn main() {
+  let argv Array<String> = args()
+  #Mut let raw String = ""
+  if argv.len() >= 2 {
+    raw = copy_of(argv[1])
+  } else {
+    raw = try {
+      cwd()
+    } catch e IoErr {
+      _die("tree: cannot read cwd")
+      ""
+    }
+  }
+  let dir File = File::from(&raw)
+  if !dir.exists() {
+    _die("tree: not found")
+  }
+  println(dir)
+  if dir.is_dir() && !dir.is_link() {
+    let empty String = ""
+    _walk(&dir, empty)
+  }
+}
