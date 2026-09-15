@@ -160,7 +160,7 @@ bool refRetSourceInner(ExprNode* expr, FnNode* fn, TypeInfo& srcInner);
 
 bool isAssignTypeParam(const TypeInfo& t, const std::set<std::string>& typeParams);
 
-TypeInfo applySubstMap(const TypeInfo& t, const std::map<std::string, TypeInfo>* subst);
+TypeInfo applySubstMap(const TypeInfo& t, const std::map<std::string, TypeInfo>* subst); // generic::applySubstMap
 
 // 模板体：T / Array<T> 等仍不透明。实例化后 subst 已把 T 换成具体类型，继续比。
 bool stillTemplateType(const TypeInfo& t, const std::set<std::string>& typeParams,

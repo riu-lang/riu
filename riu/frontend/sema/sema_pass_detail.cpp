@@ -5,6 +5,7 @@
 
 #include "sema/sema_pass_detail.h"
 #include "builtin_methods.h"
+#include "generic/generic.h"
 #include "sema/call_resolve.h"
 #include "sema/name_resolver.h"
 
@@ -605,8 +606,7 @@ bool isAssignTypeParam(const TypeInfo& t, const std::set<std::string>& typeParam
 }
 
 TypeInfo applySubstMap(const TypeInfo& t, const std::map<std::string, TypeInfo>* subst) {
-    if (!subst || subst->empty()) return t;
-    return t.substitute(*subst);
+    return generic::applySubstMap(t, subst);
 }
 
 // 模板体：T / Array<T> 等仍不透明。实例化后 subst 已把 T 换成具体类型，继续比。

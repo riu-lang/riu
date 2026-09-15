@@ -26,6 +26,7 @@
 #include "ast/node/struct_node.h"
 #include "ast/riu.h"
 #include "compiler_runtime.h"
+#include "generic/generic.h"
 #include "sema/const_eval.h"
 #include "sema/name_resolver.h"
 #include "types.h"
@@ -93,23 +94,15 @@ class Compiler {
     };
     map<string, FnInstance> _fnInstances;
 
-    // 类型替换栈帧
-    // 用于在泛型实例化过程中跟踪类型参数替换
-    struct SubstFrame {
-        map<string, TypeInfo> subst; // 类型参数 -> 实际类型 的映射
-        string baseStructName;       // 泛型原名，如 "Foo2"
-        string effStructName;        // 实例名，如 "riu.core.map.Map<i32,i32>"
-        string sourceFile;           // 实例化发生的源文件
-        int sourceLine = 0;          // 实例化发生的行号
-    };
-    vector<SubstFrame> _substStack;
+    using SubstFrame = generic::SubstFrame;
+    generic::SubstStack _substStack;
 
     // ==================== 错误报告辅助 ====================
     [[nodiscard]] string formatInstantiationContext() const;                    // 格式化泛型实例化上下文信息
     [[noreturn]] void rethrowWithInstantiationContext(const RiuError& e) const; // 重新抛出异常并附加实例化上下文
 
     // ==================== 泛型实例化 ====================
-    [[nodiscard]] TypeInfo applySubst(const TypeInfo& t) const; // 应用当前类型替换（含别名透明替换）
+    [[nodiscard]] TypeInfo applySubst(const TypeInfo& t) const; // generic::applySubst（含别名透明替换）
     // `Self` / 泛型原名 → 当前单态 TypeInfo（如 `Slot<i32>`）
     [[nodiscard]] TypeInfo bindStructSelfType(const TypeInfo& t, const string& baseName, const string& effName) const;
     // 顶层透明类型别名解析；递归把 alias 名替换为目标类型，遇环抛 E2016

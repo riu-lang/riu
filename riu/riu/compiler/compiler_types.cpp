@@ -39,58 +39,23 @@ void Compiler::rethrowWithInstantiationContext(const RiuError& e) const {
 // 格式化泛型实例化上下文信息
 // 返回类似 "instantiated as 'Rc<i32>' at module:line" 的字符串
 string Compiler::formatInstantiationContext() const {
-    if (_substStack.empty()) return "";
-    string result;
-    // 从栈顶向下遍历，显示完整的实例化链
-    for (auto it = _substStack.rbegin(); it != _substStack.rend(); ++it) {
-        const auto& frame = *it;
-        if (!frame.effStructName.empty()) {
-            if (!result.empty()) result += "\n  ";
-            result += "instantiated as '" + frame.effStructName + "'";
-            if (!frame.sourceFile.empty()) {
-                result += " at " + frame.sourceFile;
-                if (frame.sourceLine > 0) {
-                    result += ":" + to_string(frame.sourceLine);
-                }
-            }
-        }
-    }
-    return result;
+    return _substStack.formatInstantiationContext();
 }
 
 // ==================== 类型替换 ====================
 
-// 应用当前类型替换
-// 用于泛型实例化过程中的类型参数替换；最后再走透明别名解析，使所有
-// 后续 LLVM 类型查找 / 结构体查找看到的都是规范化后的目标类型
 TypeInfo Compiler::bindStructSelfType(const TypeInfo& t, const string& baseName, const string& effName) const {
-    if (effName.empty()) return t;
-    if (t.isSelf() || (t.kind == TypeKind::Normal && !baseName.empty() && t.name == baseName)) {
-        return typeInfoForNamedStruct(effName);
-    }
-    return t;
+    if (!generic::bindsStructSelf(t, baseName, effName)) return t;
+    return typeInfoForNamedStruct(effName);
 }
 
+// 应用当前类型替换；最后再走透明别名解析，使后续 LLVM / 结构体查找看到规范化类型。
 TypeInfo Compiler::applySubst(const TypeInfo& t) const {
-    TypeInfo result = t;
-    if (!_substStack.empty()) {
-        // 从栈底到栈顶依次 substitute：实例方法体内若再压一帧泛型 fn（baseStructName
-        // 为空），只看 back() 会丢掉 struct 单态的 T→concrete，`Self` / 裸 `Slot` 也绑不上。
-        for (const auto& frame : _substStack) {
-            result = result.substitute(frame.subst);
-        }
-        for (auto it = _substStack.rbegin(); it != _substStack.rend(); ++it) {
-            TypeInfo bound = bindStructSelfType(result, it->baseStructName, it->effStructName);
-            if (bound.kind != result.kind || bound.name != result.name) {
-                result = std::move(bound);
-                break;
-            }
-        }
-    } else if (result.isSelf() && !_currentStructName.empty()) {
-        result = typeInfoForNamedStruct(_currentStructName);
-    }
-    // 顶层透明类型别名替换：alias 名透明等价于目标类型
-    return resolveAlias(result);
+    auto named = [](const void* ctx, const string& name) -> TypeInfo {
+        return static_cast<const Compiler*>(ctx)->typeInfoForNamedStruct(name);
+    };
+    return generic::applySubst(t, _substStack, _currentStructName, _file, _riu ? _riu->sdkFile() : nullptr, named,
+                               this);
 }
 
 // 从 target type 递归推断灵活整数类型（含 tuple/泛型别名展开）

@@ -52,12 +52,12 @@ graph LR
 GN 箭头是「被谁链接」。include 方向相反：`riu_ast` 不得 `#include "sema/..."` / `"analyzer/..."`，也不得在 `BUILD.gn` 加 `include_dirs = [ "//riu/frontend" ]`。
 
 ```
-AST（数据 + 注解槽）  ←  Generic（单态；2.1 空壳）  ←  Sema / Analyzer
+AST（数据 + 注解槽）  ←  Generic（替换栈；实例表仍在 Compiler）  ←  Sema / Analyzer
                               ↑
                           Codegen（LLVM）
 ```
 
-名字查找：`riu/ast/name_lookup.h`（已加载模块图，0 LLVM）。类型计算由 Sema 写槽；codegen 读槽，泛型 subst 帧用 `structuralType()` 回退。`riu_generic` 0 LLVM；实例表仍在 Compiler，2.2 起迁入。
+名字查找：`riu/ast/name_lookup.h`（已加载模块图，0 LLVM）。类型计算由 Sema 写槽；codegen 读槽，泛型 subst 帧用 `structuralType()` 回退。`riu_generic` 0 LLVM；`applySubst` / 替换栈在 generic，struct/fn 实例表 2.3 起迁入。
 
 ---
 

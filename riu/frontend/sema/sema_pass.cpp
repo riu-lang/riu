@@ -478,7 +478,7 @@ bool SemaPass::isCurrentTypeParam(const TypeInfo& t) const {
 }
 
 TypeInfo SemaPass::applyInstSubst(const TypeInfo& t) const {
-    return _instSubst.empty() ? t : t.substitute(_instSubst);
+    return generic::applySubstMap(t, _instSubst.empty() ? nullptr : &_instSubst);
 }
 
 bool SemaPass::typeStillTemplate(const TypeInfo& t) const {
