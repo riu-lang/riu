@@ -1,0 +1,62 @@
+; 泛型名冲突回归测试
+;
+; 覆盖：
+;   - 泛型函数 identity<T> + 泛型 struct Pair<T> 同名 T 在同一文件共存
+;   - Pair<T> 不同实例化（i32 / f64）
+;   - identity + Pair 交叉调用
+;   - 泛型函数返回元组（make_pair<T>）
+;
+; 已知缺口：无——本文件为 BUG 回归（泛型 struct 方法体内 T& 字段类型替换缺失）的专项验证。
+; 泛型 struct 方法返回 T& 独立场景见 generic_method_ref_return.test.ut。
+
+fn identity<T>(x T) T = x
+
+fn make_pair<T>(a T, b T) (T, T) {
+  ret (a, b)
+}
+
+struct Pair<T> {
+  a T
+  b T
+
+  #Static
+  fn make(a T, b T) Self {
+    Self {
+      .a = move(a)
+      .b = move(b)
+    }
+  }
+}
+
+; 验证：Pair 结构体的创建与字段访问
+#Test
+fn test_pair_i32() {
+  let p Pair<i32> = Pair:<i32>::make(10, 20)
+  assert_eq(p.a, 10)
+  assert_eq(p.b, 20)
+}
+
+; 验证：Pair 结构体中两个 f64 类型字段的求和
+#Test
+fn test_pair_f64() {
+  let p Pair<f64> = Pair:<f64>::make(1.5f64, 2.5f64)
+  let sum f64 = p.a + p.b
+  assert_eq(sum, 4.0f64)
+}
+
+; 验证：Identity 函数与 Pair 结构体的使用
+#Test
+fn test_identity_and_pair() {
+  let a i32 = identity(100)
+  let p Pair<i32> = Pair:<i32>::make(a, a + 1)
+  assert_eq(p.a, 100)
+  assert_eq(p.b, 101)
+}
+
+; 验证：make_pair 函数创建的元组在解构后保持值不变
+#Test
+fn test_make_pair_then_identity() {
+  let t (i32, i32) = make_pair(3, 7)
+  assert_eq(t.0, 3)
+  assert_eq(t.1, 7)
+}

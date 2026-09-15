@@ -1,0 +1,7 @@
+; require-sdk
+; 未 use riu.io：全限定不引入
+
+fn main() {
+  let p String = "nope.txt"
+  riu.io.read_file(&p)  ; check: E6001
+}

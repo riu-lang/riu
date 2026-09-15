@@ -1,13 +1,13 @@
-# yux 文档
+# riu 文档
 
-欢迎来到 yux 编程语言文档。yux 是一门自举的静态类型编程语言，使用 LLVM 作为编译后端，专注于简洁、安全和性能。
+欢迎来到 riu 编程语言文档。riu 是一门自举的静态类型编程语言，使用 LLVM 作为编译后端，专注于简洁、安全和性能。
 
 ## 概述
 
-yux 是一门独立的编译型语言，具有以下特性：
+riu 是一门独立的编译型语言，具有以下特性：
 
 - **静态类型系统**：无隐式类型转换，所有类型转换必须显式进行
-- **自举运行时**：SDK 使用 yux 语言自身编写，提供核心功能
+- **自举运行时**：SDK 使用 riu 语言自身编写，提供核心功能
 - **自动内存管理**：`Rc<T>` 类型使用引用计数自动管理堆内存
 - **泛型支持**：内置 `Rc<T>`、`Array<T>` 等泛型类型，以及 `T&` 借用、`Ptr` 原始指针
 - **C/系统互操作**：通过 `extern` 声明调用外部函数，支持 Windows API
@@ -19,7 +19,7 @@ yux 是一门独立的编译型语言，具有以下特性：
 ### 入门指南
 
 - [安装指南](安装指南.md) - 环境配置和安装步骤
-- [第一个程序](第一个程序.md) - `yux.toml` 到 `yux build`，以及 echo / cat / guess
+- [第一个程序](第一个程序.md) - `riu.toml` 到 `riu build`，以及 echo / cat / guess
 - [基础语法](基础语法.md) - 注释、变量、表达式等基础语法
 
 ### 语言参考
@@ -45,7 +45,7 @@ yux 是一门独立的编译型语言，具有以下特性：
 
 ### 更多资源
 
-- [语法文件](../yux/ast/yuxParser.g4) / [词法文件](../yux/ast/yuxLexer.g4) - 权威的 ANTLR4 语法定义
+- [语法文件](../riu/ast/riuParser.g4) / [词法文件](../riu/ast/riuLexer.g4) - 权威的 ANTLR4 语法定义
 - [RULES.md](../RULES.md) - 编译器开发规则
 - [README.md](../README.md) - 项目概述
 
@@ -57,21 +57,21 @@ yux 是一门独立的编译型语言，具有以下特性：
 
 ```
 myproject/
-├── yux.toml
-└── main.yux
+├── riu.toml
+└── main.ut
 ```
 
-**yux.toml**：
+**riu.toml**：
 
 ```toml
 name="hello"
 version="1.0.0"
-entry="main.yux"
+entry="main.ut"
 ```
 
-**main.yux**：
+**main.ut**：
 
-```yux
+```riu
 fn main() {
   println("Hello, World!")
 }
@@ -81,16 +81,16 @@ fn main() {
 
 ```
 myproject/
-├── yux.toml
+├── riu.toml
 └── src/
-    └── main.yux         ; entry 相对源根 src/
+    └── main.ut         ; entry 相对源根 src/
 ```
 
 编译并运行：
 
 ```powershell
 cd myproject
-yux build              ; 等价于 yux build hello（<name> 可省）
+riu build              ; 等价于 riu build hello（<name> 可省）
 ./build/hello.exe
 ```
 
@@ -98,7 +98,7 @@ yux build              ; 等价于 yux build hello（<name> 可省）
 
 ### 基本运算
 
-```yux
+```riu
 fn main() {
   let a = 10 + 5
   let b = a * 2
@@ -110,7 +110,7 @@ fn main() {
 
 ### 结构体与引用
 
-```yux
+```riu
 struct Counter {
   value i32
 
@@ -136,7 +136,7 @@ fn main() {
 
 ### 堆对象
 
-```yux
+```riu
 struct Data {
   value i32
 
@@ -158,7 +158,7 @@ fn main() {
 
 ### 动态数组
 
-```yux
+```riu
 fn main() {
   #Mut let arr Array<i32> = [1, 2, 3, 4, 5]
   arr[0] = 10

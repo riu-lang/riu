@@ -1,6 +1,0 @@
-use yux.core.*
-use helper.*
-
-fn main() {
-    println(public_add(10, 32))
-}

@@ -1,4 +1,4 @@
-#include "yux_ffi.h"
+#include "riu_ffi.h"
 
 #include <stdint.h>
 
@@ -52,7 +52,7 @@ int32_t ffi_triple_sum(Triple t) {
 static int32_t g_ids[8];
 static int g_used[8];
 
-yux_ptr ffi_handle_open(int32_t id) {
+riu_ptr ffi_handle_open(int32_t id) {
     int i = 0;
     while (i < 8) {
         if (!g_used[i]) {
@@ -65,14 +65,14 @@ yux_ptr ffi_handle_open(int32_t id) {
     return 0;
 }
 
-int32_t ffi_handle_id(yux_ptr p) {
+int32_t ffi_handle_id(riu_ptr p) {
     if (!p) {
         return -1;
     }
     return *(int32_t*)p;
 }
 
-void ffi_handle_close(yux_ptr p) {
+void ffi_handle_close(riu_ptr p) {
     int i = 0;
     while (i < 8) {
         if (g_used[i] && &g_ids[i] == p) {
@@ -100,6 +100,6 @@ int32_t ffi_nlen(const char* s) {
 
 static const char k_hello[] = "hi";
 
-yux_ptr ffi_hello(void) {
-    return (yux_ptr)k_hello;
+riu_ptr ffi_hello(void) {
+    return (riu_ptr)k_hello;
 }

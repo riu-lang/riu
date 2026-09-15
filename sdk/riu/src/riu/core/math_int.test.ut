@@ -1,0 +1,197 @@
+; math 整数标准库行为测试
+;
+; 覆盖：
+;   - math.abs：i8 / i16 / i32 / i64（负数 / 正数 / 零）
+;   - math.min：i8 / i16 / i32 / i64（含负数、零）
+;   - math.max：i8 / i16 / i32 / i64（含负数、零）
+;   - #Inline #Cval 跨文件常量：PI / E 从 math.ut 可见
+;
+; 已知缺口：无符号类型（u8/u16/u32/u64/u128）abs 不适用，
+; min/max 对无符号类型未覆盖；更多 math.*（sqrt/sin/cos/log 等）见 math.test.ut。
+
+use riu.core.math.*
+
+; ==================== abs i8 ====================
+
+; 验证：负数 i8 类型的 abs 函数返回正数
+#Test
+fn test_math_abs_i8_neg() {
+  ; 0 - 5 = -5；abs 应得 5
+  assert_eq(math.abs(0i8 - 5i8), 5i8)
+}
+
+; 验证：正数 i8 类型的绝对值计算
+#Test
+fn test_math_abs_i8_positive() {
+  assert_eq(math.abs(42i8), 42i8)
+}
+
+; 验证：abs 函数对零值的处理
+#Test
+fn test_math_abs_i8_zero() {
+  assert_eq(math.abs(0i8), 0i8)
+}
+
+; ==================== abs i16 ====================
+
+; 验证：负数的 i16 绝对值计算
+#Test
+fn test_math_abs_i16_neg() {
+  assert_eq(math.abs(-100i16), 100i16)
+}
+
+; 验证：正数的 i16 绝对值计算
+#Test
+fn test_math_abs_i16_positive() {
+  assert_eq(math.abs(1000i16), 1000i16)
+}
+
+; 验证：math.abs 函数对零值的处理
+#Test
+fn test_math_abs_i16_zero() {
+  assert_eq(math.abs(0i16), 0i16)
+}
+
+; ==================== abs i32 ====================
+
+; 验证：负数的绝对值计算
+#Test
+fn test_math_abs_i32_neg() {
+  assert_eq(math.abs(-12345i32), 12345i32)
+}
+
+; 验证：正整数的绝对值计算
+#Test
+fn test_math_abs_i32_positive() {
+  assert_eq(math.abs(67890i32), 67890i32)
+}
+
+; 验证：math.abs 对零值的处理
+#Test
+fn test_math_abs_i32_zero() {
+  assert_eq(math.abs(0i32), 0i32)
+}
+
+; ==================== abs i64 ====================
+
+; 验证：负数的绝对值计算
+#Test
+fn test_math_abs_i64_neg() {
+  assert_eq(math.abs(-987654321i64), 987654321i64)
+}
+
+; 验证：正数的绝对值计算
+#Test
+fn test_math_abs_i64_positive() {
+  assert_eq(math.abs(123456789i64), 123456789i64)
+}
+
+; 验证：math.abs 函数对零值的处理
+#Test
+fn test_math_abs_i64_zero() {
+  assert_eq(math.abs(0i64), 0i64)
+}
+
+; ==================== min i8 ====================
+
+; 验证：math.min 函数在不同整数和边界情况下的最小值计算
+#Test
+fn test_math_min_i8() {
+  assert_eq(math.min(10i8, 20i8), 10i8)
+  assert_eq(math.min(20i8, 10i8), 10i8)
+  assert_eq(math.min(-5i8, 5i8), -5i8)
+  assert_eq(math.min(0i8, 0i8), 0i8)
+}
+
+; ==================== min i16 ====================
+
+; 验证：min 函数在不同整数对中的最小值计算
+#Test
+fn test_math_min_i16() {
+  assert_eq(math.min(100i16, 200i16), 100i16)
+  assert_eq(math.min(200i16, 100i16), 100i16)
+  assert_eq(math.min(-100i16, 100i16), -100i16)
+  assert_eq(math.min(0i16, 0i16), 0i16)
+}
+
+; ==================== min i32 ====================
+
+; 验证：min 函数返回两个 i32 类型值中的较小者
+#Test
+fn test_math_min_i32() {
+  assert_eq(math.min(1000i32, 2000i32), 1000i32)
+  assert_eq(math.min(2000i32, 1000i32), 1000i32)
+  assert_eq(math.min(-1000i32, 1000i32), -1000i32)
+  assert_eq(math.min(0i32, 0i32), 0i32)
+}
+
+; ==================== min i64 ====================
+
+; 验证：min 函数返回两个 i64 类型值中的较小者
+#Test
+fn test_math_min_i64() {
+  assert_eq(math.min(10000i64, 20000i64), 10000i64)
+  assert_eq(math.min(20000i64, 10000i64), 10000i64)
+  assert_eq(math.min(-10000i64, 10000i64), -10000i64)
+  assert_eq(math.min(0i64, 0i64), 0i64)
+}
+
+; ==================== max i8 ====================
+
+; 验证：max 函数在不同整数类型下的最大值计算
+#Test
+fn test_math_max_i8() {
+  assert_eq(math.max(10i8, 20i8), 20i8)
+  assert_eq(math.max(20i8, 10i8), 20i8)
+  assert_eq(math.max(-5i8, 5i8), 5i8)
+  assert_eq(math.max(0i8, 0i8), 0i8)
+}
+
+; ==================== max i16 ====================
+
+; 验证：max 函数在不同整数对上的最大值计算
+#Test
+fn test_math_max_i16() {
+  assert_eq(math.max(100i16, 200i16), 200i16)
+  assert_eq(math.max(200i16, 100i16), 200i16)
+  assert_eq(math.max(-100i16, 100i16), 100i16)
+  assert_eq(math.max(0i16, 0i16), 0i16)
+}
+
+; ==================== max i32 ====================
+
+; 验证：math.max 函数返回两个 i32 类型值中的最大值
+#Test
+fn test_math_max_i32() {
+  assert_eq(math.max(1000i32, 2000i32), 2000i32)
+  assert_eq(math.max(2000i32, 1000i32), 2000i32)
+  assert_eq(math.max(-1000i32, 1000i32), 1000i32)
+  assert_eq(math.max(0i32, 0i32), 0i32)
+}
+
+; ==================== max i64 ====================
+
+; 验证：max 函数在不同整数情况下的最大值计算
+#Test
+fn test_math_max_i64() {
+  assert_eq(math.max(10000i64, 20000i64), 20000i64)
+  assert_eq(math.max(20000i64, 10000i64), 20000i64)
+  assert_eq(math.max(-10000i64, 10000i64), 10000i64)
+  assert_eq(math.max(0i64, 0i64), 0i64)
+}
+
+; ==================== 跨文件 #Inline #Cval 常量测试 ====================
+
+; 验证：跨文件使用内联常量
+#Test
+fn test_cross_file_inline_pi() {
+  ; math.ut 定义的 #Inline #Cval PI——跨文件可用
+  assert_eq(PI, 3.141592653589793)
+}
+
+; 验证：跨文件内联常量在不同文件中的可用性
+#Test
+fn test_cross_file_inline_e() {
+  ; math.ut 定义的 #Inline #Cval E——跨文件可用
+  assert_eq(E, 2.718281828459045)
+}

@@ -1,6 +1,0 @@
-use yux.core.*
-use mymath
-
-fn main() {
-    println(mymath.addition.add(7, 2))
-}

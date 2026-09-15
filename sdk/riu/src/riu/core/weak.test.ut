@@ -1,0 +1,115 @@
+; Weak<T> 弱引用行为测试
+;
+; 覆盖：
+;   - Weak 构造与析构生命周期（从 Rc 隐式构造）
+;   - upgrade 成功路径：box 仍活 → Some → ?. 读字段
+;   - upgrade 失败路径：box 已死 → null → ?? fallback
+;   - weak(box) builtin 显式构造
+;   - weak(bn) 从 Nullable<Rc<T>> 构造（Some / null）
+;   - 同测试内 alive vs dead 双路径验证
+;
+; 已知缺口：Weak<Array<T>> / Weak<String> 当前不支持（Weak 仅用于 Rc<T>）；
+; 多处同时持有 Weak 并验证引用计数语义未覆盖。
+; Rc<T> 基础见 rc.test.ut。
+
+struct WeakPair {
+  a i32
+  b i32
+
+  #Static
+  fn make(a i32, b i32) WeakPair {
+    ret Self {
+      .a = a
+      .b = b
+    }
+  }
+}
+
+; ---------- weak_basic：Weak 构造 + 析构生命周期 ----------
+
+#Test
+fn test_weak_basic_lifecycle() {
+  #Mut let b Rc<WeakPair> = WeakPair::make(42, 0)
+  #Mut let w Weak<WeakPair> = b
+  ; 仅验证构造 / 析构序列不崩；通过 b 字段读触发自动 deref
+  assert_eq(b.a, 42)
+}
+
+; ---------- weak_upgrade_ok：box 仍活，upgrade 返回 Some ----------
+
+#Test
+fn test_weak_upgrade_alive_returns_some() {
+  #Mut let b Rc<WeakPair> = WeakPair::make(11, 22)
+  #Mut let w Weak<WeakPair> = b
+  #Mut let maybe Rc<WeakPair>? = upgrade(w)
+  ; 借助 ?. 短路 + ?? fallback 验证 Some 路径取到真值
+  #Mut let got i32? = maybe?.a
+  assert_eq(got ?? -1, 11)
+}
+
+; ---------- weak_upgrade_fail：box 已死，upgrade 返回 null ----------
+
+fn make_dangling_weak() Weak<WeakPair> {
+  #Mut let b Rc<WeakPair> = WeakPair::make(11, 22)
+  #Mut let w Weak<WeakPair> = b
+  ret w
+}
+
+; 验证：弱引用升级后悬空返回 null
+#Test
+fn test_weak_upgrade_dangling_returns_null() {
+  #Mut let w Weak<WeakPair> = make_dangling_weak()
+  #Mut let maybe Rc<WeakPair>? = upgrade(w)
+  #Mut let v i32? = maybe?.a
+  assert_eq(v ?? -1, -1)
+}
+
+; ---------- weak(box) builtin：显式 turbofish 形态 ----------
+
+; 验证：从 Box 创建 Weak 并升级
+#Test
+fn test_weak_builtin_from_box() {
+  #Mut let b Rc<WeakPair> = WeakPair::make(7, 8)
+  #Mut let w Weak<WeakPair> = weak(b)
+  #Mut let maybe Rc<WeakPair>? = upgrade(w)
+  #Mut let got i32? = maybe?.a
+  assert_eq(got ?? -1, 7)
+}
+
+; 验证：从可选的 Weak 对象升级并获取值
+#Test
+fn test_weak_builtin_from_nullable_some() {
+  #Mut let b Rc<WeakPair> = WeakPair::make(9, 10)
+  #Mut let bn Rc<WeakPair>? = b
+  #Mut let w Weak<WeakPair> = weak(bn)
+  #Mut let maybe Rc<WeakPair>? = upgrade(w)
+  #Mut let got i32? = maybe?.a
+  assert_eq(got ?? -1, 9)
+}
+
+; 验证：弱引用从空可选值升级后仍为空
+#Test
+fn test_weak_builtin_from_nullable_null() {
+  #Mut let bn Rc<WeakPair>? = null
+  #Mut let w Weak<WeakPair> = weak(bn)
+  #Mut let maybe Rc<WeakPair>? = upgrade(w)
+  #Mut let got i32? = maybe?.a
+  assert_eq(got ?? -1, -1)
+}
+
+; 验证：弱引用升级在目标对象存活和死亡时的行为差异
+#Test
+fn test_weak_upgrade_alive_vs_dead_same_test() {
+  ; 失败路径
+  #Mut let w Weak<WeakPair> = make_dangling_weak()
+  #Mut let maybe Rc<WeakPair>? = upgrade(w)
+  #Mut let v i32? = maybe?.a
+  assert_eq(v ?? -1, -1)
+
+  ; 成功路径
+  #Mut let b2 Rc<WeakPair> = WeakPair::make(33, 44)
+  #Mut let w2 Weak<WeakPair> = b2
+  #Mut let maybe2 Rc<WeakPair>? = upgrade(w2)
+  #Mut let v2 i32? = maybe2?.a
+  assert_eq(v2 ?? -1, 33)
+}

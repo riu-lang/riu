@@ -1,0 +1,577 @@
+; Nullable<T> 行为测试
+;
+; 覆盖：
+;   - ?? 默认值：null ?? fallback、有值 ?? fallback（取原值）
+;   - ?.field 短路：null?.field 得 null、有值?.field 得 Some
+;   - .has() / .get()：判空与取值
+;   - null 赋值：将 Nullable 重设为空
+;   - Nullable<struct>：含字段访问 + ?? 链
+;   - struct 字段 T? 赋值：i32? / String? 三路包装（值 / null / 已是 T?）
+;
+; 已知缺口：Nullable 嵌套 ?? BUG（见 BUGS.md / Phase 2c）；
+; Nullable 链式操作扩展见 nullable_chain.test.ut。
+; 负面诊断（E6027 等）见 tests/check-cases/diag_nullable_*。
+
+struct NN {
+  v i32
+
+  #Static
+  fn make(v i32) NN {
+    ret Self {
+      .v = v
+    }
+  }
+}
+
+; ---------- nullable_basic：?? 拿 fallback ----------
+
+; 验证：Nullable 的 some_or_default 方法返回 Some 值
+#Test
+fn test_nullable_some_or_default() {
+  #Mut let nx i32? = 42
+  assert_eq(nx ?? -1, 42)
+}
+
+; 验证：Nullable 类型的 null_or_default 方法
+#Test
+fn test_nullable_null_or_default() {
+  #Mut let ny i32? = null
+  assert_eq(ny ?? -1, -1)
+}
+
+; ---------- nullable_chain：?.field 短路 ----------
+
+; 验证：Nullable chain 在存在字段时返回字段值
+#Test
+fn test_nullable_chain_some_field() {
+  #Mut let n NN = NN::make(7)
+  #Mut let maybeN NN? = n
+  #Mut let v1 i32? = maybeN?.v
+  assert_eq(v1 ?? -1, 7)
+}
+
+; 验证：Nullable 链式访问空字段的默认值处理
+#Test
+fn test_nullable_chain_null_field() {
+  #Mut let emptyN NN? = null
+  #Mut let v2 i32? = emptyN?.v
+  assert_eq(v2 ?? -99, -99)
+}
+
+; ---------- nullable_chain_method：泛型结构体方法链式 ----------
+
+; 验证：Nullable 类型的 get 方法返回值
+#Test
+fn test_nullable_method_chain_get() {
+  #Mut let nx i32? = 42
+  ; nx.get() 返回 i32，本测里直接断言
+  assert_eq(nx.get(), 42i32)
+}
+
+; ---------- nullable_reassign：null 重赋为有值 ----------
+
+; 验证：null 变量重赋值为非空值后的行为
+#Test
+fn test_nullable_reassign_from_null() {
+  #Mut let x i64? = null
+  x = 0
+  assert_true(x.has())
+  assert_eq(x.get(), 0i64)
+}
+
+; ---------- null 类型自动推断：函数调用 ----------
+
+fn take_nullable_i32(x i32?) bool {
+  ret !x.has()
+}
+
+; 验证：null 作为实参在函数调用时的类型推断
+#Test
+fn test_null_infer_fn_call() {
+  ; null 作为实参应自动推断为 Nullable<i32>
+  assert_true(take_nullable_i32(null))
+}
+
+fn take_nullable_string(x String?) bool {
+  ret !x.has()
+}
+
+; 验证：空值在函数调用中的推断处理
+#Test
+fn test_null_infer_fn_call_string() {
+  assert_true(take_nullable_string(null))
+}
+
+; ---------- null 类型自动推断：重载消歧 ----------
+
+fn overload_nullable(x i32) bool {
+  ret false
+}
+
+fn overload_nullable(x i32?) bool {
+  ret true
+}
+
+; 验证：null 在重载中应精确匹配 i32? 类型
+#Test
+fn test_null_infer_overload_disambig() {
+  ; null 应精确匹配 i32? 重载
+  assert_true(overload_nullable(null))
+}
+
+; ---------- null 类型自动推断：多参数（T + T?） ----------
+
+fn multi_param_nullable(a i32, b i32?) bool {
+  ret !b.has()
+}
+
+; 验证：多参数函数中 null 类型推断
+#Test
+fn test_null_infer_multi_param() {
+  assert_true(multi_param_nullable(42, null))
+}
+
+; ---------- null 类型自动推断：泛型函数 + 显式类型参数 ----------
+
+fn identity_nullable<T>(x T?) T? {
+  ret x
+}
+
+; 验证：Null 类型推断与 has 方法
+#Test
+fn test_null_infer_generic_turbofish() {
+  ; 显式指定类型参数，null 推断为 Nullable<i32>
+  #Mut let r i32? = identity_nullable:<i32>(null)
+  assert_true(!r.has())
+}
+
+; ---------- Array<Nullable<T>> 下标 Ref 直接 ??（P0-2）----------
+
+#Test
+fn test_nullable_array_subscript_null_else() {
+  ; arr[0] 返回 i32?&（Ref<Nullable<i32>>），?? 应自动解引用取 _value
+  #Mut let arr Array<i32?> = [42, null]
+  assert_eq(arr[0] ?? -1, 42)
+}
+
+; 验证：Nullable 数组下标访问，当元素为 null 时使用默认值
+#Test
+fn test_nullable_array_subscript_null_else_null_elem() {
+  ; arr[1] 是 null，?? 应返回默认值
+  #Mut let arr Array<i32?> = [42, null]
+  assert_eq(arr[1] ?? -1, -1)
+}
+
+; 验证：通过 Ref 变量间接持有下标结果再使用 ??
+#Test
+fn test_nullable_array_subscript_null_else_via_ref() {
+  ; 通过 Ref 变量间接持有 下标结果再 ??
+  #Mut let arr Array<i32?> = [7, null]
+  #Mut let r i32?& = arr[0]
+  assert_eq(r ?? -1, 7)
+}
+
+; ---------- 嵌套 Nullable ?? null 展开（P0-1）----------
+
+#Test
+fn test_nullable_nested_null_else_outer_null() {
+  ; b: i32?? = null（外层为 None），?? null 应返回 null（i32?）
+  #Mut let b i32?? = null
+  #Mut let r i32? = b ?? null
+  assert_true(r == null)
+}
+
+; 验证：嵌套 Nullable 的 ?? 操作符处理
+#Test
+fn test_nullable_nested_null_else_outer_some_inner_some() {
+  ; b: i32?? = Some(Some(42))，?? null 应返回 Some(42)
+  #Mut let inner i32? = 42
+  #Mut let b i32?? = inner
+  #Mut let r i32? = b ?? null
+  assert_eq(r ?? -1, 42)
+}
+
+; 验证：嵌套可选值中内层为 None 时，外层 ?? 操作符返回 None
+#Test
+fn test_nullable_nested_null_else_outer_some_inner_null() {
+  ; b: i32?? = Some(None)，?? null 应返回 None（i32?）
+  #Mut let inner i32? = null
+  #Mut let b i32?? = inner
+  #Mut let r i32? = b ?? null
+  assert_true(r == null)
+}
+
+; ---------- 实参 T 自动包装为 Nullable<T>（P1-3）----------
+
+fn take_nullable(x i32?) bool {
+  ret (x ?? -999) == 42
+}
+
+fn take_nullable_two(x i32?, y i32?) (i32, i32) {
+  ret (x ?? -1, y ?? -1)
+}
+
+; 验证：自动将非空值包装为可选类型
+#Test
+fn test_nullable_arg_wrap_i32() {
+  ; f(42) 调用 fn f(x i32?) → 42 自动包装为 Some(42)
+  assert_true(take_nullable(42))
+}
+
+; 验证：null 参数在函数调用中保持不变
+#Test
+fn test_nullable_arg_wrap_null() {
+  ; null 仍正常工作
+  assert_true(!take_nullable(null))
+}
+
+; 验证：Nullable 参数包装混合使用
+#Test
+fn test_nullable_arg_wrap_mixed() {
+  ; 第一个实参 i32、第二个 null 混合
+  #Mut let r (i32, i32) = take_nullable_two(10, null)
+  assert_eq(r.0, 10)
+  assert_eq(r.1, -1)
+}
+
+; 验证：Nullable 参数接收变量并返回真值
+#Test
+fn test_nullable_arg_wrap_with_var() {
+  ; 变量作为实参传给 Nullable 形参
+  #Mut let v i32 = 42
+  assert_true(take_nullable(v))
+}
+
+; 验证：表达式结果作为可选参数传递
+#Test
+fn test_nullable_arg_wrap_expression() {
+  ; 表达式结果作为实参
+  assert_true(take_nullable(21 + 21))
+}
+
+; ---------- P1-3 边界：i64? 形参 ----------
+
+fn nullable_i64_check(x i64?) bool {
+  ret (x ?? -1i64) == 100i64
+}
+
+; 验证：显式 i64 后缀自动包装为 Nullable<i64>
+#Test
+fn test_nullable_arg_wrap_i64_explicit() {
+  ; 显式 i64 后缀：100i64 → 自动包装为 Nullable<i64>
+  assert_true(nullable_i64_check(100i64))
+}
+
+; 验证：灵活整数参数自动转换为 Nullable<i64>
+#Test
+fn test_nullable_arg_wrap_i64_flexible_int() {
+  ; 灵活整数（不带后缀）→ 自动推断为 i64 并包装为 Nullable<i64>
+  assert_true(nullable_i64_check(100))
+}
+
+; 验证：null 匹配 i64? 形参
+#Test
+fn test_nullable_arg_wrap_i64_null() {
+  ; null 匹配 i64? 形参
+  assert_true(!nullable_i64_check(null))
+}
+
+; ---------- P1-3 边界：String? / struct 类型 Nullable 形参 T→Nullable<T> 自动包装 ----------
+; 修复：2026-07-15 — compileKnownFunctionCall / compileGenericFunctionCall 中
+; Nullable 包装逻辑移到 typeNeedsDestructor 检查之前，防止 String 等含 RC 字段类型
+; 被 typeNeedsDestructor 分支提前 continue 跳过包装
+
+fn take_string_nullable(s String?) String {
+  ret s ?? "(null)"
+}
+
+; 验证：字符串字面量自动包装为 Nullable<String>
+#Test
+fn test_nullable_arg_wrap_string_literal() {
+  ; 字符串字面量 → 自动包装为 Nullable<String>
+  let result String = take_string_nullable("hello")
+  assert_eq(result, "hello")
+}
+
+; 验证：Nullable 类型包装空值并返回字符串表示
+#Test
+fn test_nullable_arg_wrap_string_null() {
+  ; null → Nullable<String>
+  let result String = take_string_nullable(null)
+  assert_eq(result, "(null)")
+}
+
+; 验证：表达式结果自动包装为 Nullable<String>
+#Test
+fn test_nullable_arg_wrap_string_expression() {
+  ; 表达式结果 → 自动包装为 Nullable<String>
+  let a String = "world"
+  let result String = take_string_nullable(a)
+  assert_eq(result, "world")
+}
+
+struct NT_NullableBox {
+  val i32
+
+  #Static
+  fn make(val i32) Self {
+    Self {
+      .val = val
+    }
+  }
+}
+
+fn nt_check_nullable_box(p NT_NullableBox?) bool {
+  ret p != null
+}
+
+; 验证：Nullable 包装结构体字面量
+#Test
+fn test_nullable_arg_wrap_struct_literal() {
+  ; struct 字面量 → 自动包装为 Nullable<Struct>
+  assert_true(nt_check_nullable_box(NT_NullableBox::make(42)))
+}
+
+; 验证：检查将 null 转换为 Nullable<Struct> 后是否正确识别为非空
+#Test
+fn test_nullable_arg_wrap_struct_null() {
+  ; null → Nullable<Struct>
+  assert_true(!nt_check_nullable_box(null))
+}
+
+; ==================== 嵌套 Nullable（迁自 bug_hunt） ====================
+
+#Test
+fn test_nullable_nested_some() {
+  ; 验证：i32? 升格为 i32??（Some 包裹）
+  let a i32? = 42
+  let b i32?? = a
+  assert_true(b != null)
+}
+
+#Test
+fn test_nullable_nested_null() {
+  ; 验证：null i32? 升格为 i32??（Some(null)，b != null 为 true）
+  let a i32? = null
+  let b i32?? = a
+  assert_true(b != null)
+}
+
+#Test
+fn test_nullable_nested_outer_null() {
+  ; 验证：i32?? 直接赋值 null
+  let b i32?? = null
+  assert_true(b == null)
+}
+
+; ==================== ?. 链 + ?? fallback（迁自 bug_hunt） ====================
+
+struct NullablePair {
+  a i32
+  b i32
+
+  #Static
+  fn make(a i32, b i32) NullablePair {
+    ret Self {
+      .a = a
+      .b = b
+    }
+  }
+}
+
+#Test
+fn test_nullable_chain_struct() {
+  ; 验证：?. 取 struct 字段返回 Nullable
+  let p NullablePair? = NullablePair::make(10, 20)
+  let x i32? = p?.a
+  assert_eq(x ?? -1, 10)
+}
+
+#Test
+fn test_nullable_chain_null_input() {
+  ; 验证：?. 在 null 输入上短路
+  let p NullablePair? = null
+  let x i32? = p?.a
+  assert_true(x == null)
+}
+
+; ==================== Array<Nullable<T>>（迁自 bug_hunt） ====================
+
+#Test
+fn test_array_of_nullable_len() {
+  ; 验证：Array<i32?> 字面量构造 + len
+  #Mut let arr Array<i32?> = [1, null, 3]
+  assert_eq(arr.len(), 3)
+}
+
+#Test
+fn test_array_of_nullable_write() {
+  ; 验证：Array<i32?> 元素赋值为 null / 值
+  #Mut let arr Array<i32?> = [1, 2, 3]
+  arr[0] = null
+  arr[1] = 42
+  assert_eq(arr.len(), 3)
+}
+
+; ==================== Nullable struct 字段（迁自 bug_hunt） ====================
+
+struct BHNullableField {
+  label String?
+
+  #Static
+  fn make_with_label(label String) Self {
+    Self {
+      .label = label
+    }
+  }
+
+  #Static
+  fn make_null() Self {
+    Self {
+      .label = null
+    }
+  }
+}
+
+#Test
+fn test_nullable_field_with_string() {
+  ; 验证：struct 的 Nullable<String> 字段 has() = true
+  let s BHNullableField = BHNullableField::make_with_label("hello")
+  assert_true(s.label.has())
+}
+
+#Test
+fn test_nullable_field_null() {
+  ; 验证：struct 的 Nullable<String> 字段 has() = false
+  let s BHNullableField = BHNullableField::make_null()
+  assert_true(!s.label.has())
+}
+
+; ==================== struct 字段 T? 赋值（MemberAssign 三路包装） ====================
+
+struct NF_I32 {
+  n i32?
+}
+
+struct NF_Str {
+  name String?
+
+  fn set_name(s String) {
+    $.name = s
+  }
+}
+
+#Test
+fn test_struct_field_assign_i32_from_value() {
+  ; 验证：i32? 字段从 i32 隐式包装
+  #Mut let a NF_I32 = NF_I32 {
+    .n = null
+  }
+  a.n = 42
+  assert_true(a.n.has())
+  assert_eq(a.n.get(), 42)
+}
+
+#Test
+fn test_struct_field_assign_i32_from_null() {
+  ; 验证：i32? 字段赋 null
+  #Mut let a NF_I32 = NF_I32 {
+    .n = 1
+  }
+  a.n = null
+  assert_true(!a.n.has())
+}
+
+#Test
+fn test_struct_field_assign_i32_from_nullable() {
+  ; 验证：i32? 字段从 i32? 整份拷
+  #Mut let a NF_I32 = NF_I32 {
+    .n = null
+  }
+  let src i32? = 7
+  a.n = src
+  assert_eq(a.n.get(), 7)
+}
+
+#Test
+fn test_struct_field_assign_string_from_value() {
+  ; 验证：String? 字段从 String 变量包装（原先 LLVM assert）
+  #Mut let a NF_Str = NF_Str {
+    .name = null
+  }
+  let s String = "hello"
+  a.name = s
+  assert_true(a.name.has())
+  assert_eq(a.name ?? "", "hello")
+}
+
+#Test
+fn test_struct_field_assign_string_from_literal() {
+  ; 验证：String? 字段从字符串字面量包装
+  #Mut let a NF_Str = NF_Str {
+    .name = null
+  }
+  a.name = "world"
+  assert_eq(a.name ?? "", "world")
+}
+
+#Test
+fn test_struct_field_assign_string_from_null() {
+  ; 验证：String? 字段赋 null 释放旧值
+  #Mut let a NF_Str = NF_Str {
+    .name = "x"
+  }
+  a.name = null
+  assert_true(!a.name.has())
+}
+
+#Test
+fn test_struct_field_assign_string_from_nullable() {
+  ; 验证：String? 字段从 String? 整份拷
+  #Mut let a NF_Str = NF_Str {
+    .name = null
+  }
+  let src String? = "z"
+  a.name = src
+  assert_eq(a.name ?? "", "z")
+}
+
+#Test
+fn test_struct_field_reassign_string() {
+  ; 验证：String? 字段重赋覆盖旧句柄
+  #Mut let a NF_Str = NF_Str {
+    .name = "old"
+  }
+  a.name = "new"
+  assert_eq(a.name ?? "", "new")
+}
+
+#Test
+fn test_struct_field_assign_string_via_self() {
+  ; 验证：方法内 $.field = String 同样走包装
+  #Mut let a NF_Str = NF_Str {
+    .name = null
+  }
+  a.set_name("via-self")
+  assert_eq(a.name ?? "", "via-self")
+}
+
+; ==================== String→String? 自动包装（迁自 bug_hunt） ====================
+
+fn bh_take_string_nullable(s String?) String {
+  ret s ?? "(null)"
+}
+
+#Test
+fn test_string_to_nullable_basic() {
+  ; 验证：String 实参 → String? 形参自动包装
+  let result String = bh_take_string_nullable("hello")
+  assert_eq(result, "hello")
+}
+
+#Test
+fn test_string_to_nullable_null() {
+  ; 验证：null → String? 形参
+  let result String = bh_take_string_nullable(null)
+  assert_eq(result, "(null)")
+}

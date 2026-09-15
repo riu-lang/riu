@@ -1,0 +1,163 @@
+; Rc<T> 析构 / typed release 测试
+;
+; Rc 测试分散在 5 个文件中，详见 rc.test.ut 头部注释。
+;
+; 本文件覆盖（B-2）：Rc<含 Rc 字段的 struct> typed release、
+; 共享句柄最后离开触发释放、嵌套 Rc<Rc<i32>> / Rc<Rc<Rc<i32>>> / 四重、
+; Rc<Array<i32>> typed release
+
+struct HasRc {
+  data Rc<i32>
+
+  #Static
+  fn make(v i32) HasRc {
+    #Mut let r Rc<i32> = v
+    ret Self {
+      .data = r
+    }
+  }
+}
+
+; ---------- 基础：Rc<HasRc> 释放时 typed release 调 HasRc::~() ----------
+
+; 裸 `{ }` 不是语句块（旧 0 参 lambda 已删）；作用域用 `if true { ... }`
+#Test
+fn test_rc_typed_release_has_rc() {
+  #Mut let base i64 = rc_leak_count()
+  if true {
+    #Mut let r Rc<HasRc> = HasRc::make(42)
+    ; 读 data 值验证结构完整
+    let v i32& = as_ref(r.data)
+    assert_eq(v, 42)
+    ; r 离开作用域 → strong--==0 → typed release → HasRc::~() → release data Rc<i32>
+  }
+  assert_eq(rc_leak_count() - base, 0)
+}
+
+; ---------- 共享句柄：最后一个离开才触发 typed release ----------
+
+; 验证：Rc 共享句柄最后一个离开时触发类型释放
+#Test
+fn test_rc_typed_release_shared() {
+  #Mut let base i64 = rc_leak_count()
+  if true {
+    #Mut let r1 Rc<HasRc> = HasRc::make(7)
+    let v1 i32& = as_ref(r1.data)
+    assert_eq(v1, 7)
+    if true {
+      #Mut let r2 Rc<HasRc> = r1  ; share: strong=2
+      let v2 i32& = as_ref(r2.data)
+      assert_eq(v2, 7)
+      ; r2 离开作用域：strong-- → 1，未触发 typed release
+    }
+    ; r1 离开作用域：strong-- → 0 → typed release → HasRc::~()
+  }
+  assert_eq(rc_leak_count() - base, 0)
+}
+
+; ---------- 函数返回 Rc<HasRc> ----------
+
+fn make_has_rc(v i32) Rc<HasRc> {
+  #Mut let r Rc<HasRc> = HasRc::make(v)
+  ret r
+}
+
+; 验证：Rc 引用计数在作用域结束时正确释放
+#Test
+fn test_rc_typed_release_return() {
+  #Mut let base i64 = rc_leak_count()
+  if true {
+    #Mut let r Rc<HasRc> = make_has_rc(99)
+    let v i32& = as_ref(r.data)
+    assert_eq(v, 99)
+  }
+  assert_eq(rc_leak_count() - base, 0)
+}
+
+; ---------- B-2 inline-dtor: Rc<Rc<i32>> 内层 typed release ----------
+
+; 验证：Rc<Rc<i32>> 内层 Rc 在外层作用域离开时正确释放
+#Test
+fn test_rc_nested_rc_typed_release() {
+  #Mut let base i64 = rc_leak_count()
+  if true {
+    #Mut let inner Rc<i32> = 42
+    #Mut let outer Rc<Rc<i32>> = move(inner)
+    ; inner was moved — outer now owns the handle
+    ; outer 离开作用域 → strong==0 → inline dtor 调内层 typed release
+    ; Rc<i32> 平凡 payload → generic _box_release
+  }
+  assert_eq(rc_leak_count() - base, 0)
+}
+
+; ---------- 深层嵌套: Rc<Rc<Rc<i32>>> / Rc<Rc<Rc<Rc<i32>>>> ----------
+
+; 验证：三重 / 四重嵌套 Rc 离开作用域时每一层 RC block 都释放
+#Test
+fn test_rc_dtor_triple_nested() {
+  #Mut let base i64 = rc_leak_count()
+  if true {
+    #Mut let a Rc<i32> = 42
+    #Mut let b Rc<Rc<i32>> = move(a)
+    #Mut let c Rc<Rc<Rc<i32>>> = move(b)
+    ; c 离开 → typed release(Rc<Rc<i32>>) → typed release(Rc<i32>) → free
+  }
+  assert_eq(rc_leak_count() - base, 0)
+}
+
+; 验证：四重嵌套仍递归走 typed release（不硬编码深度 3）
+#Test
+fn test_rc_dtor_quad_nested() {
+  #Mut let base i64 = rc_leak_count()
+  if true {
+    #Mut let a Rc<i32> = 1
+    #Mut let b Rc<Rc<i32>> = move(a)
+    #Mut let c Rc<Rc<Rc<i32>>> = move(b)
+    #Mut let d Rc<Rc<Rc<Rc<i32>>>> = move(c)
+  }
+  assert_eq(rc_leak_count() - base, 0)
+}
+
+; ---------- Rc<Array<i32>> typed release ----------
+
+; 验证：Rc<Array<i32>> 离开作用域时，Array 被正确释放
+#Test
+fn test_rc_dtor_array() {
+  #Mut let base i64 = rc_leak_count()
+  if true {
+    #Mut let arr Array<i32> = [10, 20, 30]
+    #Mut let r Rc<Array<i32>> = move(arr)
+    ; r 离开作用域 → typed release → Array::~() → HeapFree(_data)
+  }
+  assert_eq(rc_leak_count() - base, 0)
+}
+
+; ---------- Rc<Rc<Array<i32>>> 双层 ----------
+
+; 验证：双层 Rc 解构时，内部 Rc 和数组正确释放
+#Test
+fn test_rc_dtor_rc_array() {
+  #Mut let base i64 = rc_leak_count()
+  if true {
+    #Mut let arr Array<i32> = [5, 15, 25]
+    #Mut let inner Rc<Array<i32>> = move(arr)
+    #Mut let outer Rc<Rc<Array<i32>>> = move(inner)
+    ; outer → typed release(Rc<Array<i32>>) → Array::~()
+  }
+  assert_eq(rc_leak_count() - base, 0)
+}
+
+fn rc_string_array_drop_scope() {
+  let ints Array<i32> = [1, 2]
+  #Mut let strings Array<String> = ints.map:<String>((x) => x.to_string())
+  #Mut let owned Rc<Array<String>> = move(strings)
+  assert_eq(owned.len(), 2)
+}
+
+; 验证：Rc<Array<String>> 的 typed release 会先析构数组元素
+#Test
+fn test_rc_dtor_array_string_elements() {
+  #Mut let base i64 = rc_leak_count()
+  rc_string_array_drop_scope()
+  assert_eq(rc_leak_count() - base, 0)
+}

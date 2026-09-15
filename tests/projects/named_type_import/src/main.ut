@@ -1,0 +1,11 @@
+use riu.core.*
+use a.b.Point
+
+fn main() {
+  let p = Point {
+    .x = 3
+    .y = 4
+  }
+  println(p.x)
+  println(p.y)
+}

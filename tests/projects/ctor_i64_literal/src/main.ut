@@ -1,0 +1,20 @@
+use riu.core.*
+
+; 回归：#Static fn 形参 i64 + 未带后缀的整数字面量
+; 之前会触发 LLVM `isSized` 断言；现在应推断字面量为 i64 并正常构造。
+
+struct S {
+    n i64
+
+    #Static
+    fn make(n i64) S {
+        ret Self {
+            .n = n
+        }
+    }
+}
+
+fn main() {
+    let p = S::make(1)
+    println(p.n)
+}

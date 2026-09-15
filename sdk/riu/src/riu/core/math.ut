@@ -1,0 +1,323 @@
+; riu SDK - 数学函数
+; 超越函数（sin/cos/exp/log/pow/sqrt 等）走 riurt（musl libm 移植），
+; 精度和正确性久经验证。纯 riu 实现的函数（abs/min/max/clamp/sign/pow_int）保留。
+; `#Inline #Cval` 常量（PI / TAU / E 等）可跨文件：`use riu.core.math.*` 后裸名 `PI`。
+; `math.PI` 点链会把模块当值（E5016）；`math.abs` 一类函数点链仍合法。
+
+; ==================== riurt 数学函数 extern 声明 ====================
+
+extern {
+  fn riurt_sin(v f64) f64
+  fn riurt_cos(v f64) f64
+  fn riurt_tan(v f64) f64
+  fn riurt_asin(v f64) f64
+  fn riurt_acos(v f64) f64
+  fn riurt_atan(v f64) f64
+  fn riurt_atan2(y f64, x f64) f64
+  fn riurt_sinh(v f64) f64
+  fn riurt_cosh(v f64) f64
+  fn riurt_tanh(v f64) f64
+  fn riurt_exp(v f64) f64
+  fn riurt_expm1(v f64) f64
+  fn riurt_log(v f64) f64
+  fn riurt_log10(v f64) f64
+  fn riurt_log2(v f64) f64
+  fn riurt_log1p(v f64) f64
+  fn riurt_pow(base f64, exp_ f64) f64
+  fn riurt_sqrt(v f64) f64
+  fn riurt_cbrt(v f64) f64
+  fn riurt_hypot(x f64, y f64) f64
+  fn riurt_fabs(v f64) f64
+  fn riurt_floor(v f64) f64
+  fn riurt_ceil(v f64) f64
+  fn riurt_trunc(v f64) f64
+  fn riurt_round(v f64) f64
+  fn riurt_fmod(x f64, y f64) f64
+  fn riurt_scalbn(x f64, n i32) f64
+}
+
+; ==================== #Inline 数学常量（文件作用域） ====================
+
+#Inline
+#Cval
+let PI f64 = 3.141592653589793
+
+#Inline
+#Cval
+let TAU f64 = 6.283185307179586
+
+#Inline
+#Cval
+let E f64 = 2.718281828459045
+
+#Inline
+#Cval
+let PHI f64 = 1.618033988749895
+
+#Inline
+#Cval
+let LN2 f64 = 0.6931471805599453
+
+#Inline
+#Cval
+let LN10 f64 = 2.302585092994046
+
+; ==================== abs（有符号整数 / 浮点） ====================
+; v < (v − v) 消去零字面量，适配泛型——但 unsigned 语义需单独实现
+
+fn abs(v i8) i8 {
+  if v < 0 {
+    -v
+  } else {
+    v
+  }
+}
+
+fn abs(v i16) i16 {
+  if v < 0 {
+    -v
+  } else {
+    v
+  }
+}
+
+fn abs(v i32) i32 {
+  if v < 0 {
+    -v
+  } else {
+    v
+  }
+}
+
+fn abs(v i64) i64 {
+  if v < 0 {
+    -v
+  } else {
+    v
+  }
+}
+
+fn abs(v f64) f64 {
+  if v < 0.0f64 {
+    -v
+  } else {
+    v
+  }
+}
+
+fn abs(v f32) f32 {
+  if v < 0.0f32 {
+    -v
+  } else {
+    v
+  }
+}
+
+; ==================== min / max / clamp（泛型，所有内建数值类型通用） ====================
+
+fn min<T>(a T, b T) T {
+  if a < b {
+    a
+  } else {
+    b
+  }
+}
+
+fn max<T>(a T, b T) T {
+  if a > b {
+    a
+  } else {
+    b
+  }
+}
+
+fn clamp<T>(v T, lo T, hi T) T {
+  if v < lo {
+    lo
+  } else {
+    if v > hi {
+      hi
+    } else {
+      v
+    }
+  }
+}
+
+
+; ==================== sign（有符号整数）→ i32 ====================
+
+fn sign(v i8) i32 {
+  if v > 0 {
+    1
+  } else {
+    if v < 0 {
+      -1
+    } else {
+      0
+    }
+  }
+}
+
+fn sign(v i16) i32 {
+  if v > 0 {
+    1
+  } else {
+    if v < 0 {
+      -1
+    } else {
+      0
+    }
+  }
+}
+
+fn sign(v i32) i32 {
+  if v > 0 {
+    1
+  } else {
+    if v < 0 {
+      -1
+    } else {
+      0
+    }
+  }
+}
+
+fn sign(v i64) i32 {
+  if v > 0 {
+    1
+  } else {
+    if v < 0 {
+      -1
+    } else {
+      0
+    }
+  }
+}
+
+; ==================== floor / ceil / trunc / round（f64） ====================
+; Phase 3：走 riurt（musl libm），正确处理 subnormal/NaN/±inf
+
+fn floor(v f64) f64 = riurt_floor(v)
+
+fn ceil(v f64) f64 = riurt_ceil(v)
+
+fn trunc(v f64) f64 = riurt_trunc(v)
+
+fn round(v f64) f64 = riurt_round(v)
+
+; ==================== floor / ceil / trunc / round（f32） ====================
+
+fn floor_f32(v f32) f32 {
+  let i i64 = v.to_i64()
+  let fi f32 = i.to_f32()
+  if v >= 0.0f32 {
+    fi
+  } else {
+    if fi == v {
+      fi
+    } else {
+      fi - 1.0f32
+    }
+  }
+}
+
+fn ceil_f32(v f32) f32 {
+  let i i64 = v.to_i64()
+  let fi f32 = i.to_f32()
+  if v <= 0.0f32 {
+    fi
+  } else {
+    if fi == v {
+      fi
+    } else {
+      fi + 1.0f32
+    }
+  }
+}
+
+fn trunc_f32(v f32) f32 = v.to_i64().to_f32()
+
+fn round_f32(v f32) f32 {
+  if v >= 0.0f32 {
+    floor_f32(v + 0.5f32)
+  } else {
+    ceil_f32(v - 0.5f32)
+  }
+}
+
+fn sqrt(v f64) f64 = riurt_sqrt(v)
+
+fn sqrt_f32(v f32) f32 {
+  if v <= 0.0f32 {
+    0.0f32
+  } else {
+    #Mut let x f32 = v
+    loop i i32 = 0 {
+      if i >= 20 {
+        break;
+      }
+      x = (x + v / x) * 0.5f32
+      i += 1
+    }
+    x
+  }
+}
+
+fn sin(v f64) f64 = riurt_sin(v)
+
+fn cos(v f64) f64 = riurt_cos(v)
+
+fn tan(v f64) f64 = riurt_tan(v)
+
+fn exp(v f64) f64 = riurt_exp(v)
+
+; ==================== pow（整数指数快速幂） ====================
+; 指数为负时返回 1 / pow(base, -exp)
+
+fn pow_int(base f64, exp i32) f64 {
+  if exp == 0 {
+    1.0f64
+  } else {
+    if exp < 0 {
+      1.0f64 / pow_int(base, -exp)
+    } else {
+      #Mut let result f64 = 1.0f64
+      #Mut let b f64 = base
+      #Mut let e i32 = exp
+      loop {
+        if e == 0 {
+          break;
+        }
+        if e % 2 == 1 {
+          result = result * b
+        }
+        b = b * b
+        e = e / 2
+      }
+      result
+    }
+  }
+}
+
+fn ln(v f64) f64 = riurt_log(v)
+
+fn log10(v f64) f64 = riurt_log10(v)
+
+fn atan(v f64) f64 = riurt_atan(v)
+
+fn asin(v f64) f64 = riurt_asin(v)
+
+fn acos(v f64) f64 = riurt_acos(v)
+
+; ==================== sinh / cosh / tanh（双曲函数，走 riurt） ====================
+
+fn sinh(v f64) f64 = riurt_sinh(v)
+
+fn cosh(v f64) f64 = riurt_cosh(v)
+
+fn tanh(v f64) f64 = riurt_tanh(v)
+
+; ==================== pow_f64（浮点指数幂，走 riurt_pow） ====================
+
+fn pow_f64(base f64, exp_ f64) f64 = riurt_pow(base, exp_)
+

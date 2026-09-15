@@ -1,0 +1,8 @@
+use riu.core.*
+use ops
+
+fn main() {
+    println(ops.add.plus(10, 20))
+    println(ops.mul.times(6, 7))
+    println(ops.sub.inner.deep(50, 8))
+}

@@ -1,0 +1,23 @@
+# Copyright (c) 2026. Yin-Jinlong@github
+# MPL-2.0
+
+config("riu_analyzer_public") {
+  include_dirs = [
+    "//riu",
+    "//riu/include",
+  ]
+}
+
+static_library("riu_analyzer") {
+  public_configs = [ ":riu_analyzer_public" ]
+  public_deps = [ "//riu/ast:riu_ast" ]
+  sources = [
+    "borrow_checker.cpp",
+    "const_mut_checker.cpp",
+    "flow_terminate_checker.cpp",
+    "spec_impl_checker.cpp",
+    "spec_registry.cpp",
+    "symbol_suggest.cpp",
+    "riu_spec.cpp",
+  ]
+}

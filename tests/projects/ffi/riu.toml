@@ -1,0 +1,7 @@
+name = "ffi"
+version = "1.0.0"
+entry = "main.ut"
+
+[link]
+libs = ["ffi_demo"]
+lib_dirs = ["lib"]

@@ -10,8 +10,8 @@ New-Item -ItemType Directory -Path $LibDir -Force | Out-Null
 function Find-LlvmBin([string]$Name) {
     $cmd = Get-Command $Name -ErrorAction SilentlyContinue
     if ($cmd) { return $cmd.Source }
-    if ($env:YuxExe) {
-        $bin = Split-Path -Parent $env:YuxExe
+    if ($env:RiuExe) {
+        $bin = Split-Path -Parent $env:RiuExe
         $cand = Join-Path (Split-Path -Parent $bin) "llvm\bin\$Name.exe"
         if (Test-Path -LiteralPath $cand) { return $cand }
     }
@@ -23,7 +23,7 @@ function Find-LlvmBin([string]$Name) {
         if ($parent -eq $here) { break }
         $here = $parent
     }
-    throw "$Name not found (need clang-cl / lld-link on PATH or next to yux.exe)"
+    throw "$Name not found (need clang-cl / lld-link on PATH or next to riu.exe)"
 }
 
 $clang = Find-LlvmBin 'clang-cl'

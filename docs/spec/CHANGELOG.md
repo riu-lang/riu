@@ -2,7 +2,7 @@
 
 > 上新下旧。每条记录规范层（`docs/spec/*.md`）的语义变化、章节增删、用语收口、与编译器实现的对齐点。
 >
-> 日常用户教程（`docs/*.md`）的改动不在此记录；语法（`yux/ast/yux*.g4`）改动以 commit log 为准，本文件只记录其在 spec 层的反映。
+> 日常用户教程（`docs/*.md`）的改动不在此记录；语法（`riu/ast/riu*.g4`）改动以 commit log 为准，本文件只记录其在 spec 层的反映。
 
 记录格式：
 
@@ -14,6 +14,11 @@
 ```
 
 ---
+
+## 2026-09-15 —— 语言改名为 riu
+
+- **修改** 全篇用语：语言名 yux → **riu**（发音通 U，非英语）；源文件 `.yux` → `.ut`（U Text）；模块声明缓存 `.decl` → `.ud`；项目配置 `yux.toml` → `riu.toml`；SDK `yux.core` / `yux.io` / `yux.time` → `riu.core` / `riu.io` / `riu.time`；CLI `yux` → `riu`。
+- **冲突 / 兼容**：破坏。迁移：改扩展名与 `riu.toml`；`use yux.*` 改为 `use riu.*`；工具链命令与运行时符号（`riurt` / `riu_rc_*` / `__riu_*`）一并改名。GitHub 仓库 URL 暂不改。
 
 ## 2026-09-13 —— SDK 常用 API：路径 / 字节 / 浮点解析 / 排序
 

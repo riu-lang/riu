@@ -1,0 +1,849 @@
+; lambda 测试套件
+; 迁自 tests/cases/lambda_call_*.ut, lambda_type_*.ut, lambda_closure_*.ut
+;
+; 本文件包含 lambda 相关测试:
+; - IIFE（立即调用 lambda）
+; - lambda 作实参传给高阶 fn
+; - fn 值作返回类型
+; - struct 含 fn 字段
+; - Array<fn> 元素调用
+; - Rc<fn> 调用
+; - fn 类型声明与别名
+; - lambda 闭包捕获
+
+; ==================== 类型别名 ====================
+
+Callback = Function<String, bool>
+Pred<T> = Function<T, bool>
+Op2<A, B> = Function<A, B, A>
+
+; ==================== 辅助函数 ====================
+
+fn apply(f Function<i32, i32>, x i32) i32 {
+  ret f(x)
+}
+
+fn apply0(f Function<i32>) i32 {
+  ret f()
+}
+
+fn call_with(x i32, f Function<i32, i32>) i32 {
+  ret f(x)
+}
+
+fn run_twice(f Function<i32, i32>, x i32) i32 {
+  ret f(x) + f(x + 1)
+}
+
+fn forward(g Function<i32, i32>, y i32) i32 {
+  ret run_twice(g, y)
+}
+
+fn make_inc() Function<i32, i32> {
+  ret (x i32) i32 => x + 1
+}
+
+fn make_const(v i32) Function<i32, i32> {
+  ret (x i32) i32 => x * 2
+}
+
+fn make_adder(n i32) Function<i32, i32> {
+  ret (x i32) i32 => x + n
+}
+
+fn run_first(a Array<Function<i32, i32>>&, x i32) i32 {
+  ret a[0](x)
+}
+
+fn first(a Array<i32>&) i32 {
+  ret copy_of(a[0])
+}
+
+; ==================== struct Holder ====================
+
+struct Holder {
+  h Function<i32, i32>
+  base i32
+
+  #Static
+  fn make(h Function<i32, i32>, base i32) Holder {
+    ret Self {
+      .h = h
+      .base = base
+    }
+  }
+
+  fn run(x i32) i32 {
+    ret $.h(x) + $.base
+  }
+
+  fn set(h Function<i32, i32>) {
+    $.h = h
+    ret;
+  }
+}
+
+fn call_h_by_value(s Holder, x i32) i32 {
+  ret s.h(x)
+}
+
+; ==================== struct Cell ====================
+
+struct Cell {
+  n i32
+
+  #Static
+  fn make(n i32) Cell {
+    ret Self {
+      .n = n
+    }
+  }
+  fn get() i32 {
+    ret $.n
+  }
+}
+
+; ==================== struct Counter ====================
+
+struct Counter {
+  value i32
+
+  #Static
+  fn make(v i32) Counter {
+    ret Self {
+      .value = v
+    }
+  }
+
+  fn double() i32 {
+    ret $.value * 2
+  }
+
+  fn add_then_apply(x i32) i32 {
+    ret apply((y i32) i32 => $.value + y, x)
+  }
+
+  fn triple_apply() i32 {
+    #Mut let s i32 = 0
+    s = s + apply0(() i32 => $.value)
+    s = s + apply0(() i32 => $.value * 2)
+    s = s + apply0(() i32 => $.double())
+    ret s
+  }
+}
+
+; ==================== IIFE 测试 ====================
+
+; 验证：立即执行函数表达式（IIFE）单参数行为
+#Test
+fn test_iife_single_param() {
+  let r = ((x i32) i32 => x + 1)(5)
+  assert_eq(r, 6)
+}
+
+; 验证：立即执行函数表达式（IIFE）处理多个参数
+#Test
+fn test_iife_multi_param() {
+  let r = ((a, b i32) i32 => a + b)(3, 4)
+  assert_eq(r, 7)
+}
+
+; ==================== lambda 变量调用测试 ====================
+
+; 验证：Lambda 表达式变量调用与计算结果
+#Test
+fn test_lambda_var_call() {
+  #Mut let f Function<i32, i32> = (x i32) i32 => x * 2
+  assert_eq(f(7), 14)
+  assert_eq(f(0), 0)
+  assert_eq(f(21), 42)
+}
+
+; ==================== lambda 作实参测试 ====================
+
+; 验证：Lambda 表达式作为参数显式调用
+#Test
+fn test_lambda_as_arg_explicit() {
+  let r = apply((x i32) i32 => x + 10, 5)
+  assert_eq(r, 15)
+}
+
+; 验证：Lambda 作为参数传递并进行类型推断
+#Test
+fn test_lambda_as_arg_inferred() {
+  let r = apply((x) => x * x, 6)
+  assert_eq(r, 36)
+}
+
+; ==================== lambda 作返回值测试 ====================
+
+; 验证：Lambda 函数作为返回值使用
+#Test
+fn test_lambda_return() {
+  #Mut let f Function<i32, i32> = make_inc()
+  assert_eq(f(10), 11)
+  assert_eq(f(99), 100)
+}
+
+; 验证：Lambda 返回值链式调用
+#Test
+fn test_lambda_return_chained() {
+  let r = make_inc()(41)
+  assert_eq(r, 42)
+}
+
+; 验证：Lambda 返回常量值
+#Test
+fn test_lambda_return_const() {
+  #Mut let g Function<i32, i32> = make_const(0)
+  assert_eq(g(7), 14)
+}
+
+; ==================== lambda 参数传递测试 ====================
+
+; 验证：Lambda 参数传递与高阶函数使用
+#Test
+fn test_lambda_param_pass() {
+  #Mut let inc Function<i32, i32> = (x i32) i32 => x + 1
+  #Mut let r1 = forward(inc, 10)
+  assert_eq(r1, 23)
+
+  #Mut let r2 = forward((x i32) i32 => x * 2, 3)
+  assert_eq(r2, 14)
+}
+
+; ==================== struct fn 字段测试 ====================
+
+; 验证：Struct 方法调用与字段访问
+#Test
+fn test_struct_fn_field() {
+  #Mut let s Holder = Holder::make(make_inc(), 100)
+  assert_eq(s.run(5), 106)
+  assert_eq(s.h(10), 11)
+}
+
+; 验证：Struct 方法重新赋值与调用
+#Test
+fn test_struct_fn_field_reassign() {
+  #Mut let s Holder = Holder::make(make_inc(), 100)
+  s.set((x i32) i32 => x * 3)
+  assert_eq(s.h(4), 12)
+}
+
+; 验证：Struct 方法按值调用字段并修改
+#Test
+fn test_struct_fn_field_by_value() {
+  #Mut let s Holder = Holder::make(make_inc(), 100)
+  let r = call_h_by_value(s, 7)
+  assert_eq(r, 8)
+}
+
+; 验证：Struct 字段整体重新赋值后方法调用
+#Test
+fn test_struct_fn_field_whole_reassign() {
+  #Mut let s Holder = Holder::make(make_inc(), 100)
+  #Mut let s2 Holder = Holder::make((x i32) i32 => x - 1, 0)
+  s = s2
+  assert_eq(s.h(50), 49)
+}
+
+; ==================== Array<fn> 测试 ====================
+
+; 验证：Array 存储和调用不同行为的函数元素
+#Test
+fn test_array_fn_elem() {
+  #Mut let arr Array<Function<i32, i32>> = []
+  arr.push(make_inc())
+  arr.push((x i32) i32 => x * 2)
+  arr.push((x i32) i32 => x - 5)
+
+  assert_eq(arr.len(), 3)
+  assert_eq(arr[0](10), 11)
+  assert_eq(arr[1](10), 20)
+  assert_eq(arr[2](10), 5)
+}
+
+; 验证：Array 存储函数并按值调用
+#Test
+fn test_array_fn_elem_by_value() {
+  #Mut let arr Array<Function<i32, i32>> = []
+  arr.push(make_inc())
+
+  let r = run_first(arr, 100)
+  assert_eq(r, 101)
+}
+
+; 验证：Array 中存储的函数元素重新赋值
+#Test
+fn test_array_fn_elem_reassign() {
+  #Mut let arr Array<Function<i32, i32>> = []
+  arr.push(make_inc())
+
+  arr[0] = (x i32) i32 => x + 1000
+  assert_eq(arr[0](1), 1001)
+}
+
+; ==================== Rc<fn> 测试 ====================
+
+; 验证：Rc<fn> 调用与闭包行为
+#Test
+fn test_box_fn_call() {
+  #Mut let b Rc<Function<i32, i32>> = (x i32) i32 => x + 100
+  assert_eq(b(5), 105)
+  assert_eq(b(10), 110)
+}
+
+; 验证：Rc 复制函数后调用结果不变
+#Test
+fn test_box_fn_copy() {
+  #Mut let b Rc<Function<i32, i32>> = (x i32) i32 => x + 100
+  #Mut let b2 Rc<Function<i32, i32>> = b
+  assert_eq(b2(7), 107)
+}
+
+; 验证：Rc 引用计数指针下挂的闭包重新赋值后，原有引用仍然有效
+#Test
+fn test_box_fn_reassign() {
+  #Mut let b Rc<Function<i32, i32>> = (x i32) i32 => x + 100
+  #Mut let b2 Rc<Function<i32, i32>> = b
+
+  b = (x i32) i32 => x * 3
+  assert_eq(b(4), 12)
+  assert_eq(b2(20), 120)
+}
+
+; ==================== 0 参语句体 lambda tail-expr 返回（BUG#0 修复） ====================
+
+; 验证：零参数块尾表达式返回值
+#Test
+fn test_zero_block_tail_expr_return() {
+  let once Function<i32> = () => {
+    42
+  }
+  assert_eq(once(), 42)
+}
+
+; 验证：Lambda 表达式中尾部表达式与预lude
+#Test
+fn test_zero_block_tail_expr_with_prelude() {
+  let f Function<i32> = () => {
+    #Mut let a = 3
+    #Mut let b = 4
+    a + b
+  }
+  assert_eq(f(), 7)
+}
+
+; 验证：零块通过参数传播
+#Test
+fn test_zero_block_propagates_via_arg() {
+  let seven Function<i32> = () => {
+    7
+  }
+  assert_eq(apply0(seven), 7)
+}
+
+; ==================== fn 类型声明测试 ====================
+
+; 验证：函数类型声明与定义
+#Test
+fn test_fn_type_decl() {
+  #Mut let a Function<()>
+  #Mut let b Function<i32>
+  #Mut let c Function<i32, i32>
+  #Mut let d Function<i32, i32>
+  #Mut let e Function<i32, i32, i32>
+  #Mut let f Function<Function<i32, i32>, i32>
+  #Mut let h Function<Function<i32, i32>>
+
+  assert_true(true)
+}
+
+; 验证：函数类型别名的定义与使用
+#Test
+fn test_fn_type_alias() {
+  #Mut let c Callback
+  #Mut let pi Pred<i32>
+  #Mut let ps Pred<String>
+  #Mut let op Op2<i32, i32>
+  #Mut let nested Pred<Function<i32>>
+
+  assert_true(true)
+}
+
+; 验证：函数类型等价性检查
+#Test
+fn test_fn_type_equiv() {
+  #Mut let x Function<String, bool>
+  #Mut let c Callback = x
+  #Mut let y Callback
+  #Mut let z Function<String, bool> = y
+
+  #Mut let a Function<i32, i32, i32>
+  #Mut let b Function<i32, i32, i32> = a
+  #Mut let d Function<i32, i32, i32> = b
+
+  #Mut let g Function<i32, i32, i32>
+  #Mut let ge Function<i32, i32, i32> = g
+
+  #Mut let n1 Function<Function<i32, i32>, i32>
+  #Mut let n2 Function<Function<i32, i32>, i32> = n1
+
+  assert_true(true)
+}
+
+; 验证：Rc<fn> 类型的容器在多作用域析构时的行为
+#Test
+fn test_fn_type_container() {
+  ; BUGS #4: Rc<fn> 未初始化变量 2+ 个同作用域析构时 ACCESS_VIOLATION，暂赋初值规避
+  #Mut let arr Array<Function<i32>> = []
+  #Mut let b Rc<Function<i32>> = () i32 => 42
+  #Mut let p (Function<i32>, i32)
+  #Mut let nested Array<Function<Function<i32, i32>>> = []
+
+  assert_true(true)
+}
+
+; 验证：可选函数类型声明与赋值
+#Test
+fn test_fn_type_nullable() {
+  #Mut let a Function<()>?
+  #Mut let b Function<i32, i32>?
+  #Mut let c Function<String, i32?>
+  #Mut let d Function<String, i32?>?
+
+  assert_true(true)
+}
+
+; ==================== lambda 闭包捕获测试 ====================
+
+; 验证：闭包捕获可变变量并修改其值
+#Test
+fn test_closure_capture_scalar() {
+  #Mut let x i32 = 10
+  let f = (y i32) i32 => y + x
+  assert_eq(f(1), 11)
+  assert_eq(f(7), 17)
+
+  x = 100
+  assert_eq(f(1), 11)
+}
+
+; 验证：闭包捕获多个变量并进行不同操作
+#Test
+fn test_closure_capture_multi() {
+  #Mut let a i32 = 3
+  #Mut let b i32 = 7
+  let sum = (x i32) i32 => a + b + x
+  assert_eq(sum(0), 10)
+  assert_eq(sum(5), 15)
+
+  #Mut let pi f64 = 3.14
+  let pifloor = () i32 => pi.to_i32()
+  assert_eq(pifloor(), 3)
+
+  #Mut let enabled bool = true
+  let pick = (t, f i32) i32 => if enabled { t } else { f }
+  assert_eq(pick(1, 2), 1)
+}
+
+; 验证：闭包捕获 Rc<Cell> 并共享其值
+#Test
+fn test_closure_capture_box() {
+  #Mut let b Rc<Cell> = Cell::make(42)
+  let f = () i32 => b.get()
+  assert_eq(f(), 42)
+  assert_eq(f(), 42)
+
+  let g = () i32 => b.get()
+  assert_eq(g(), 42)
+}
+
+; 验证：闭包捕获变量并返回其值
+#Test
+fn test_closure_capture_string() {
+  #Mut let s String = "hello"
+  let f = () String => s
+  assert_eq(f(), "hello")
+  assert_eq(f(), "hello")
+
+  #Mut let n i32 = 7
+  let g = () String => s
+  let h = () i32 => n + 1
+  assert_eq(g(), "hello")
+  assert_eq(h(), 8)
+}
+
+; 验证：闭包捕获数组并返回第一个元素两次
+#Test
+fn test_closure_capture_array() {
+  #Mut let arr Array<i32> = [10, 20, 30]
+  let f = () i32 => first(arr)
+  assert_eq(f(), 10)
+  assert_eq(f(), 10)
+}
+
+; 验证：闭包传递与别名
+#Test
+fn test_closure_pass_around() {
+  #Mut let add10 Function<i32, i32> = make_adder(10)
+  assert_eq(apply(add10, 5), 15)
+  assert_eq(apply(add10, 100), 110)
+
+  #Mut let add42 Function<i32, i32> = make_adder(42)
+  assert_eq(add42(8), 50)
+
+  #Mut let alias Function<i32, i32> = add10
+  assert_eq(alias(7), 17)
+}
+
+; 验证：闭包捕获自身并修改状态
+#Test
+fn test_closure_self_capture() {
+  #Mut let c Counter = Counter::make(10)
+  assert_eq(c.add_then_apply(5), 15)
+  assert_eq(c.triple_apply(), 50)
+}
+
+; ==================== lambda if 表达式体 ====================
+
+; 验证：Lambda 表达式在 if 表达式体中的使用
+#Test
+fn test_lambda_if_expr_body() {
+  let abs1 = (x i32) i32 => if x > 0 { x } else { 0 - x }
+  assert_eq(abs1(5), 5)
+  assert_eq(abs1(0 - 7), 7)
+
+  let r1 = apply((x) => if x > 10 { x + 1 } else { x }, 20)
+  assert_eq(r1, 21)
+}
+
+; ==================== lambda match 表达式体 ====================
+
+enum Color {
+  Red
+  Green
+  Blue
+}
+
+fn classify(c Color) i32 {
+  match c {
+    Color::Red   => 1
+    Color::Green => 2
+    Color::Blue  => 3
+  }
+}
+
+fn apply_color(f Function<Color, i32>, c Color) i32 {
+  ret f(c)
+}
+
+; 验证：Lambda 表达式在 match 表达式中的使用和应用
+#Test
+fn test_lambda_match_expr_body() {
+  let cl = (c Color) i32 => match c {
+    Color::Red   => 1
+    Color::Green => 2
+    Color::Blue  => 3
+  }
+  assert_eq(cl(Color::Red), 1)
+  assert_eq(cl(Color::Green), 2)
+
+  let r1 = apply_color((c) => match c {
+    Color::Red   => 10
+    Color::Green => 20
+    Color::Blue  => 30
+  }, Color::Blue)
+  assert_eq(r1, 30)
+}
+
+; ==================== lambda T& 捕获作为调用实参 ====================
+
+fn use_borrow_capture(r i32&) i32 {
+  #Mut let sum i32 = 0
+  sum = sum + apply((x i32) i32 => r + x, 5)
+  sum = sum + apply((x i32) i32 => r * x, 2)
+  ret sum
+}
+
+; 验证：闭包借用捕获并调用参数
+#Test
+fn test_closure_borrow_capture_call_arg() {
+  #Mut let n i32 = 100
+  assert_eq(use_borrow_capture(&n), 305)
+}
+
+; ==================== lambda 返回静态 T&（有形参仍只允许 $rodata） ====================
+
+let LAM_G i32 = 7
+
+fn use_lambda_borrow_ret(f Function<i32&, i32&>) {
+  ; 不调用 f，仅验证 borrow checker 接受静态根
+}
+
+; 验证：闭包返回静态借用（形参透传已收，见 diag_lambda_ret_param）
+#Test
+fn test_closure_ret_static_ref() {
+  use_lambda_borrow_ret((r i32&) i32& => &LAM_G)
+  assert_true(true)
+}
+
+; ==================== 语句体 / 尾随 / 推断 / 单行块 ====================
+
+fn call_arr(c bool, f Function<bool, Array<i32>>) Array<i32> {
+  ret f(c)
+}
+
+fn call_g<T>(x T, f Function<T, T>) T {
+  ret f(x)
+}
+
+fn apply0_g<T>(f Function<T>) T {
+  ret f()
+}
+
+fn wrap_opt(ok bool, f Function<i32>) i32? {
+  if ok {
+    ret f()
+  }
+  ret null
+}
+
+fn call_color(c Color, f Function<Color, i32>) i32 {
+  ret f(c)
+}
+
+struct LamRunner {
+  v i32
+
+  #Static
+  fn make(v i32) LamRunner {
+    ret Self {
+      .v = v
+    }
+  }
+
+  fn run(f Function<i32, i32>) i32 {
+    ret f($.v)
+  }
+}
+
+fn one_line_add(a i32, b i32) i32 { ret a + b }
+
+; 验证：返回类型由表达式体推断
+#Test
+fn test_lambda_ret_inferred() {
+  let f = () => 42
+  assert_eq(f(), 42)
+  let g = (x i32) => x + 1
+  assert_eq(g(41), 42)
+}
+
+; 验证：语句体 lambda
+#Test
+fn test_lambda_stmt_body() {
+  let f = (x i32) i32 => {
+    let y = x + 1
+    ret y
+  }
+  assert_eq(f(4), 5)
+}
+
+; 验证：尾随 lambda（调用末位）
+#Test
+fn test_lambda_trailing() {
+  let r = call_with(5){ (x) => x * 2 }
+  assert_eq(r, 10)
+  let r2 = apply0(){ () => 7 }
+  assert_eq(r2, 7)
+  let r3 = apply0 { () => 8 }
+  assert_eq(r3, 8)
+}
+
+; 验证：尾随 lambda 显式形参 / 返回类型
+#Test
+fn test_lambda_trailing_explicit_types() {
+  let r = call_with(5){ (x i32) i32 => x * 2 }
+  assert_eq(r, 10)
+}
+
+; 验证：尾随 lambda 语句体（g4：`=>` 后直接 stmts，外层 `{ }` 即块）
+#Test
+fn test_lambda_trailing_stmt_body() {
+  let r = call_with(5){ (x i32) i32 =>
+    let y = x + 1
+    ret y
+  }
+  assert_eq(r, 6)
+}
+
+; 验证：尾随 lambda + turbofish（typeArgs 替换后再编 lambda，见 compileGenericFunctionCall）
+#Test
+fn test_lambda_trailing_turbofish() {
+  let r = call_g:<i32>(5){ (x) => x + 1 }
+  assert_eq(r, 6)
+  let r2 = apply0_g:<i32> { () => 42 }
+  assert_eq(r2, 42)
+  let r3 = apply0_g:<i32>(){ () => 7 }
+  assert_eq(r3, 7)
+}
+
+; 验证：尾随 lambda 由实参推断泛型
+#Test
+fn test_lambda_trailing_generic_infer() {
+  let r = call_g(5){ (x) => x + 1 }
+  assert_eq(r, 6)
+}
+
+; 验证：尾随 lambda 体为 if 表达式（尾随块是语句体，用 ret 接表达式）
+#Test
+fn test_lambda_trailing_if_body() {
+  let r = call_with(5){ (x) =>
+    ret if x > 0 { x + 1 } else { x }
+  }
+  assert_eq(r, 6)
+  let r2 = call_with(0 - 3){ (x) =>
+    ret if x > 0 { x + 1 } else { x }
+  }
+  assert_eq(r2, 0 - 3)
+}
+
+; 验证：尾随 lambda 体为 match
+#Test
+fn test_lambda_trailing_match_body() {
+  let r = call_color(Color::Blue){ (c) =>
+    ret match c {
+      Color::Red   => 10
+      Color::Green => 20
+      Color::Blue  => 30
+    }
+  }
+  assert_eq(r, 30)
+}
+
+; 验证：lambda 表达式体 if 绑 Array（codegen 靶向）
+#Test
+fn test_lambda_if_array_body() {
+  let pick = (c bool) Array<i32> => if c { [1] } else { [2] }
+  assert_eq(pick(true)[0], 1)
+  assert_eq(pick(false)[0], 2)
+}
+
+; 验证：lambda 表达式体 match 绑 Array
+#Test
+fn test_lambda_match_array_body() {
+  let pick = (c Color) Array<i32> => match c {
+    Color::Red   => [1]
+    Color::Green => [2]
+    Color::Blue  => [3]
+  }
+  assert_eq(pick(Color::Red)[0], 1)
+  assert_eq(pick(Color::Blue)[0], 3)
+}
+
+; 验证：尾随 lambda if 绑 Array
+#Test
+fn test_lambda_trailing_if_array() {
+  let a = call_arr(true){ (c) =>
+    ret if c { [1] } else { [2] }
+  }
+  assert_eq(a[0], 1)
+  let b = call_arr(false){ (c) =>
+    ret if c { [] } else { [9] }
+  }
+  assert_eq(b[0], 9)
+}
+
+; 验证：lambda 语句体含 if + ret
+#Test
+fn test_lambda_stmt_body_if_ret() {
+  let abs1 = (x i32) i32 => {
+    if x > 0 {
+      ret x
+    }
+    ret 0 - x
+  }
+  assert_eq(abs1(5), 5)
+  assert_eq(abs1(0 - 7), 7)
+}
+
+; 验证：尾随 lambda 调用结果接 `??`
+#Test
+fn test_lambda_trailing_null_else() {
+  let r i32 = wrap_opt(true){ () => 7 } ?? -1
+  assert_eq(r, 7)
+  let r2 i32 = wrap_opt(false){ () => 7 } ?? -1
+  assert_eq(r2, -1)
+}
+
+; 验证：`?.method` 尾随 lambda（有值 / 空短路）
+#Test
+fn test_lambda_trailing_safe_dot() {
+  #Mut let r LamRunner? = LamRunner::make(10)
+  #Mut let x i32? = r?.run { (n) => n + 1 }
+  assert_eq(x ?? -1, 11)
+
+  #Mut let n LamRunner? = null
+  #Mut let y i32? = n?.run { (n) => n + 1 }
+  assert_eq(y ?? -1, -1)
+}
+
+; 验证：函数体 / if 可写成一行
+#Test
+fn test_one_line_block() {
+  assert_eq(one_line_add(2, 3), 5)
+  let v = if true { 1 } else { 0 }
+  assert_eq(v, 1)
+}
+
+struct FnBox {
+  f Function<String>
+}
+
+struct FnRefBox {
+  f Function<i32&, i32>
+}
+
+fn run_fn_ref_field(h FnRefBox, x i32&) i32 {
+  h.f(x)
+}
+
+; 验证：含 T& 形参的 Function 可作 struct 字段并调用
+#Test
+fn test_fn_ref_field_call() {
+  let h FnRefBox = FnRefBox {
+    .f = (r i32&) i32 => r + 1
+  }
+  #Mut let n i32 = 10
+  assert_eq(run_fn_ref_field(h, &n), 11)
+}
+
+fn struct_fn_field_drop_scope() {
+  let s String = "hello"
+  let h FnBox = FnBox {
+    .f = () String => s
+  }
+  assert_eq(h.f(), "hello")
+}
+
+#Test
+fn test_struct_fn_field_drops_captures() {
+  #Mut let base i64 = rc_leak_count()
+  struct_fn_field_drop_scope()
+  assert_eq(rc_leak_count() - base, 0)
+}
+
+fn array_fn_clone_scope() {
+  let s String = "ab"
+  let fs Array<Function<i32>> = [() i32 => s.len().to_i32()]
+  let copy Array<Function<i32>> = fs.clone()
+  assert_eq(copy[0](), 2)
+  assert_eq(fs[0](), 2)
+}
+
+#Test
+fn test_array_fn_clone_no_double_free() {
+  #Mut let base i64 = rc_leak_count()
+  array_fn_clone_scope()
+  assert_eq(rc_leak_count() - base, 0)
+}

@@ -1,0 +1,80 @@
+; 全局常量（#Cval / #Inline #Cval）行为测试
+;
+; 覆盖：
+;   - #Cval 全局常量：i32 / f64 / _ 前缀（内部常量）
+;   - #Inline #Cval 内联常量：i32 / 负数 / bool / _ 前缀
+;   - 常量在表达式计算中使用（不经过 load 指令）
+;   - 跨文件常量（PI / E）见 math_int.test.ut
+;
+; 已知缺口：#Cval 常量目前仅文件作用域，跨文件不可见限制见 math.test.ut 头注；
+; struct 内 #Cval 字段未覆盖。
+
+#Cval
+let TEST_MAX_SIZE i32 = 1024
+#Cval
+let TEST_PI f64 = 3.14159
+#Cval
+let _TEST_INTERNAL_CONST i32 = 42
+
+; #Inline #Cval —— 内联常量，不产生 GlobalVariable，使用处直接替换（类似 C #define）
+#Inline
+#Cval
+let INLINE_INT i32 = 42
+#Inline
+#Cval
+let INLINE_NEG i32 = -100
+#Inline
+#Cval
+let INLINE_BOOL bool = true
+#Inline
+#Cval
+let _INLINE_PRIVATE i64 = 999
+
+; 验证：全局常量 i32 类型的值是否正确
+#Test
+fn test_global_const_i32() {
+  assert_eq(TEST_MAX_SIZE, 1024)
+}
+
+; 验证：全局常量 f64 类型的值是否正确
+#Test
+fn test_global_const_f64() {
+  assert_eq(TEST_PI, 3.14159)
+}
+
+; 验证：全局常量内部值是否正确
+#Test
+fn test_global_const_internal() {
+  assert_eq(_TEST_INTERNAL_CONST, 42)
+}
+
+; 验证：内联整数常量的值是否正确
+#Test
+fn test_inline_cval_int() {
+  assert_eq(INLINE_INT, 42)
+}
+
+; 验证：内联常量的负值计算
+#Test
+fn test_inline_cval_neg() {
+  assert_eq(INLINE_NEG, -100)
+}
+
+; 验证：内联布尔常量的真假值
+#Test
+fn test_inline_cval_bool() {
+  assert_true(INLINE_BOOL)
+}
+
+; 验证：内联常量的私有访问
+#Test
+fn test_inline_cval_private() {
+  assert_eq(_INLINE_PRIVATE, 999)
+}
+
+; 验证内联常量可用于表达式计算（不经过 load 指令）
+#Test
+fn test_inline_cval_in_expr() {
+  let result i32 = INLINE_INT + 8
+  assert_eq(result, 50)
+}

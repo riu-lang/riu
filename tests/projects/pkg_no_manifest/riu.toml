@@ -1,0 +1,3 @@
+name="pkg_no_manifest"
+version="1.0.0"
+entry="main.ut"

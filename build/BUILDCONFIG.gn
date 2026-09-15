@@ -9,8 +9,8 @@ declare_args() {
   # LLVM GN 输出目录（绝对路径，正斜杠）。空则用 $root_out_dir/llvm
   llvm_build_dir = ""
 
-  # 注入 YUX_VERSION，由 build.ps1 写成 v<version>-<date>
-  yux_version_str = "v$yux_version"
+  # 注入 RIU_VERSION，由 build.ps1 写成 v<version>-<date>
+  riu_version_str = "v$riu_version"
 }
 
 is_win = true

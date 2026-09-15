@@ -1,0 +1,6 @@
+use riu.core.*
+
+fn util_say() {
+    println("util")
+    println(13)
+}

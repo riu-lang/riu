@@ -2,14 +2,14 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Generate C++ parser sources from yuxLexer.g4 / yuxParser.g4 via ANTLR4 jar.
+  Generate C++ parser sources from riuLexer.g4 / riuParser.g4 via ANTLR4 jar.
 #>
 $ErrorActionPreference = 'Stop'
 
 $ProjectRoot = $PSScriptRoot
-$LexerGrammar = Join-Path $ProjectRoot 'yux\ast\yuxLexer.g4'
-$ParserGrammar = Join-Path $ProjectRoot 'yux\ast\yuxParser.g4'
-$OutputDir = Join-Path $ProjectRoot 'yux\ast\gen\yux'
+$LexerGrammar = Join-Path $ProjectRoot 'riu\ast\riuLexer.g4'
+$ParserGrammar = Join-Path $ProjectRoot 'riu\ast\riuParser.g4'
+$OutputDir = Join-Path $ProjectRoot 'riu\ast\gen\riu'
 $JarFile = Join-Path $ProjectRoot 'bin\antlr-4.13.2-complete.jar'
 
 function Write-Log([string]$Message, [ConsoleColor]$Color = [ConsoleColor]::White) {
@@ -38,12 +38,12 @@ Write-Log "Parser: $ParserGrammar"
 Write-Log "Output: $OutputDir"
 Write-Log "JAR:    $JarFile`n"
 
-# Lexer first — parser uses tokenVocab=yuxLexer
+# Lexer first — parser uses tokenVocab=riuLexer
 foreach ($g in @($LexerGrammar, $ParserGrammar)) {
     $cmdArgs = @(
         '-jar', $JarFile,
         '-Dlanguage=Cpp',
-        '-package', 'yux',
+        '-package', 'riu',
         '-visitor',
         '-no-listener',
         '-o', $OutputDir,

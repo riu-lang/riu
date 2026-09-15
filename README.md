@@ -1,10 +1,10 @@
-# yux-lang
+# riu-lang
 
 一个独立的编译器，类似于 clang，一个程序能完成所有编译流程。
 
 ## 项目简介
 
-yux 是一门自举的编程语言，使用 ANTLR4 解析语法，LLVM 作为编译后端。编译器将 `.yux` 源文件编译为可执行文件。
+riu（发音通 U，非英语）是一门自举的编程语言，使用 ANTLR4 解析语法，LLVM 作为编译后端。编译器将 `.ut`（U Text）源文件编译为可执行文件；模块声明缓存为 `.ud`。
 
 ### 语言特性
 
@@ -16,7 +16,7 @@ yux 是一门自举的编程语言，使用 ANTLR4 解析语法，LLVM 作为编
 
 ### 示例代码
 
-```yux
+```riu
 ; 注释，顶行 ;，可加空格缩进
 
 fn add(a i32, b i32) i32 = a + b
@@ -35,7 +35,7 @@ fn main() {
 
 ## 开发
 
-[组织架构](yux.md)
+[组织架构](riu.md)
 
 ### 环境要求
 
@@ -69,7 +69,7 @@ git submodule update --init scripts/ps-sync-deps
 |------|------|
 | `./sync-deps.ps1` | 按 `DEPS.json` 同步 `third_party/` 与 `bin/`（调用 `scripts/ps-sync-deps`） |
 | `./build.ps1` | GN + Ninja 构建入口 |
-| `./gen-antlr.ps1` | 从 `yux/ast/yux*.g4` 生成 C++ 解析器到 `yux/ast/gen/yux/` |
+| `./gen-antlr.ps1` | 从 `riu/ast/riu*.g4` 生成 C++ 解析器到 `riu/ast/gen/riu/` |
 | `./count-lines.ps1` | `cloc` 统计（可选 commit，默认 HEAD） |
 | `./lint.ps1` | clang-tidy（默认 git 变动文件；`--all` / 路径参数） |
 | `./format.ps1` | clang-format（默认 git 变动；`--all` / `--check` / 路径参数） |
@@ -82,11 +82,11 @@ git submodule update --init scripts/ps-sync-deps
 ./sync-deps.ps1 cli11 zlib       # 只同步指定项
 ```
 
-若 `llvm` 源码 commit 有变，下次 `./build.ps1 yux`（或 `./build.ps1 llvm`）会按 stamp 自动重新 gn gen 并编译 LLVM（首次/升级可能很久）。
+若 `llvm` 源码 commit 有变，下次 `./build.ps1 riu`（或 `./build.ps1 llvm`）会按 stamp 自动重新 gn gen 并编译 LLVM（首次/升级可能很久）。
 
 ### 生成解析器代码
 
-修改 `yux/ast/yux*.g4` 后：
+修改 `riu/ast/riu*.g4` 后：
 
 ```powershell
 ./gen-antlr.ps1
@@ -103,7 +103,7 @@ git submodule update --init scripts/ps-sync-deps
 ./count-lines.ps1 <commit>
 ```
 
-排除 lock 文件，并用 `yux_lang_def.txt` 识别 yux。
+排除 lock 文件，并用 `riu_lang_def.txt` 识别 riu。
 
 ### Lint / Format
 
@@ -119,31 +119,31 @@ git submodule update --init scripts/ps-sync-deps
 ## 构建
 
 ```powershell
-# 构建 yux 编译器
-./build.ps1 yux
+# 构建 riu 编译器
+./build.ps1 riu
 
 # 可选：附属工具
-./build.ps1 yux-lsp     # LSP 服务器（编辑器插件用）
-./build.ps1 yux-ast     # 仅 ANTLR parse tree 转储工具
+./build.ps1 riu-lsp     # LSP 服务器（编辑器插件用）
+./build.ps1 riu-ast     # 仅 ANTLR parse tree 转储工具
 ./build.ps1             # 全部默认目标
 ```
 
 ## 使用
 
-在项目根目录（含 `yux.toml`）执行：
+在项目根目录（含 `riu.toml`）执行：
 
 ```powershell
-yux build                  # 等价于 yux build <toml-name>；当前每个项目仅一个目标
-yux build <name>           # 显式给出时 <name> 必须与 yux.toml 的 name 一致
+riu build                  # 等价于 riu build <toml-name>；当前每个项目仅一个目标
+riu build <name>           # 显式给出时 <name> 必须与 riu.toml 的 name 一致
                            # 入口取 toml 的 entry，产物落在 <projectRoot>/build/<name>/<name>.exe
 ```
 
-### yux.toml（项目配置）
+### riu.toml（项目配置）
 
 | 字段 | 说明 |
 |------|------|
-| `name` | 项目 / 可执行文件名；`yux build` 默认取它，显式 `yux build <name>` 必须与它匹配 |
-| `entry` | 入口 `.yux`，相对项目根 |
+| `name` | 项目 / 可执行文件名；`riu build` 默认取它，显式 `riu build <name>` 必须与它匹配 |
+| `entry` | 入口 `.ut`，相对项目根 |
 | `version` | 版本号（当前仅记录） |
 
 最小示例：
@@ -151,7 +151,7 @@ yux build <name>           # 显式给出时 <name> 必须与 yux.toml 的 name 
 ```toml
 name="test"
 version="1.0.0"
-entry="main.yux"
+entry="main.ut"
 ```
 
 ### 命令行参数
@@ -162,19 +162,19 @@ entry="main.yux"
 | `--emit-ir` | 输出 LLVM IR 到 .ll 文件 |
 | `--emit-ir-dir <dir>` | 指定 .ll 输出目录（默认 build/） |
 | `-d, --debug` | 输出编译 IR 调试信息（仅 Debug 构建） |
-| `lsp` | 以 stdio 启动语言服务器（供 [yux-vscode](plugins/yux-vscode/) / [yux-idea](plugins/yux-idea/) 等编辑器集成使用） |
+| `lsp` | 以 stdio 启动语言服务器（供 [riu-vscode](plugins/riu-vscode/) / [riu-idea](plugins/riu-idea/) 等编辑器集成使用） |
 
-附属可执行文件（与 `yux.exe` 同目录）：
+附属可执行文件（与 `riu.exe` 同目录）：
 
 | 命令 | 说明 |
 |------|------|
-| `yux-ast <input.yux> [-o <file>] [--oneline]` | 转储 ANTLR parse tree；仅词法 + 语法，遇到语法错也输出含 `<error>` 节点的树 |
-| `yux-lsp` | 独立 LSP 服务器二进制 |
+| `riu-ast <input.ut> [-o <file>] [--oneline]` | 转储 ANTLR parse tree；仅词法 + 语法，遇到语法错也输出含 `<error>` 节点的树 |
+| `riu-lsp` | 独立 LSP 服务器二进制 |
 
 ## 编辑器支持
 
-- [`plugins/yux-vscode/`](plugins/yux-vscode/) —— VSCode 扩展
-- [`plugins/yux-idea/`](plugins/yux-idea/) —— IntelliJ 系插件，通过 [LSP4IJ](https://github.com/redhat-developer/lsp4ij) 接入 `yux-lsp`
+- [`plugins/riu-vscode/`](plugins/riu-vscode/) —— VSCode 扩展
+- [`plugins/riu-idea/`](plugins/riu-idea/) —— IntelliJ 系插件，通过 [LSP4IJ](https://github.com/redhat-developer/lsp4ij) 接入 `riu-lsp`
 
 ## 测试
 
@@ -182,33 +182,33 @@ entry="main.yux"
 
 | 层级 | 命令 | 用例位置 | 说明 |
 |------|------|---------|------|
-| 项目编译+运行 | `./build.ps1 test` | `tests/projects/` | 每目录一个 `yux.toml` + `expected.txt`；编译产物并比对 stdout |
+| 项目编译+运行 | `./build.ps1 test` | `tests/projects/` | 每目录一个 `riu.toml` + `expected.txt`；编译产物并比对 stdout |
 | 格式化回归 | `./build.ps1 test` | `tests/projects/` | `expected_format` 文件，比对外格式化输出 |
-| 诊断回归 | `yux-check test` | `tests/check-cases/` | `diag_*.yux`，行尾 `; check: EXXXX` 注解精确匹配 |
-| 单元/行为测试 | `yux test` | `sdk/yux/src/yux/core/*.test.yux` | `#Test` 注解，DLL + 多子进程并行 |
+| 诊断回归 | `riu-check test` | `tests/check-cases/` | `diag_*.ut`，行尾 `; check: EXXXX` 注解精确匹配 |
+| 单元/行为测试 | `riu test` | `sdk/riu/src/riu/core/*.test.ut` | `#Test` 注解，DLL + 多子进程并行 |
 
 **运行方式：**
 
 ```powershell
 # 项目 / 格式化测试
-./build.ps1 yux
+./build.ps1 riu
 ./build.ps1 test                  # 全部（默认并行，jobs = CPU 核数）
 ./build.ps1 test -Jobs 1          # 强制串行
 ./build.ps1 test <name>           # 单个（tests/projects/<name>）
 ./build.ps1 test -Group format    # 只跑格式化
 
 # 诊断回归
-yux-check test tests/check-cases/
+riu-check test tests/check-cases/
 
 # SDK 单元测试（主测试集）
-cd sdk/yux && yux test
-yux test --verbose          # 打印每个测试 stdout/stderr
-yux test --test-mod yux.core.array  # 只测指定模块
+cd sdk/riu && riu test
+riu test --verbose          # 打印每个测试 stdout/stderr
+riu test --test-mod riu.core.array  # 只测指定模块
 ```
 
-语法以 `yux/ast/yux*.g4` 和 [文档](docs/index.md) 为准，用例需符合这两者。
+语法以 `riu/ast/riu*.g4` 和 [文档](docs/index.md) 为准，用例需符合这两者。
 
-测试逻辑：`./build.ps1 test` 定义在 [tests/run.ps1](tests/run.ps1)；`yux test` 流程为 `yux build --test` → 并行 spawn `yux-test-runner` 子进程加载 DLL 执行。
+测试逻辑：`./build.ps1 test` 定义在 [tests/run.ps1](tests/run.ps1)；`riu test` 流程为 `riu build --test` → 并行 spawn `riu-test-runner` 子进程加载 DLL 执行。
 
 ## License
 

@@ -1,7 +1,0 @@
-use yux.core.*
-use utils.*
-
-fn main() {
-    println(abs.my_abs(-5))
-    println(dbl.dbl(7))
-}

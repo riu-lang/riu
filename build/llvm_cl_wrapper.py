@@ -1,6 +1,6 @@
 # Copyright (c) 2026. Yin-Jinlong@github
 # MPL-2.0
-"""LLVM GN compiler_wrapper：给 clang-cl 补上 /MD 或 /MDd，与 yux CRT 对齐。"""
+"""LLVM GN compiler_wrapper：给 clang-cl 补上 /MD 或 /MDd，与 riu CRT 对齐。"""
 
 from __future__ import annotations
 

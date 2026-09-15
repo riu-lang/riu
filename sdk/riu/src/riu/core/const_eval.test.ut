@@ -1,0 +1,261 @@
+; const_eval 测试套件
+; 迁自 tests/cases/const_eval_*.ut, misc_cval_*.ut, misc_const_fn_*.ut
+; 覆盖: #Cval 全局/局部、#Const fn、struct 字面量、编译期求值、边界值
+
+; ==================== 测试用类型定义 ====================
+
+#Cval
+let LIMIT i32 = 1000
+
+struct Point {
+  x i32
+  y i32
+}
+
+struct Rect {
+  tl Point
+  br Point
+}
+
+#Const
+fn const_add(a i32, b i32) i32 = a + b
+
+#Const
+fn const_square(x i32) i32 = x * x
+
+#Const
+fn const_dbl(x i32) i32 = x + x
+
+#Const
+fn const_quad(x i32) i32 {
+  #Cval let m i32 = const_dbl(x)
+  ret const_dbl(m)
+}
+
+#Const
+fn clamp(x i32) i32 {
+  #Cval let base i32 = 0
+  #Cval let hi i32 = LIMIT
+  ret const_add(x, base) + hi - hi
+}
+
+fn make_point(a i32, b i32) Point {
+  ret Point {
+    .x = a
+    .y = b
+  }
+}
+
+; ==================== #Cval 全局算术 ====================
+
+#Cval
+let GA i32 = 10
+
+#Cval
+let GB i32 = GA + 5
+
+#Cval
+let GC i32 = (GA * 2) - GB
+
+#Cval
+let GMASK u32 = 0xFFu32.and(0x0Fu32)
+
+; 验证：全局常量算术运算
+#Test
+fn test_cval_global_arith() {
+  assert_eq(GA, 10)
+  assert_eq(GB, 15)
+  assert_eq(GC, 5)
+  assert_eq(GMASK, 15)
+}
+
+; ==================== #Const fn 基本调用 ====================
+
+#Cval
+let SUM i32 = const_add(3, 4)
+
+#Cval
+let SQ i32 = const_square(5)
+
+#Cval
+let MIX i32 = const_add(SUM, SQ) * 2
+
+; 验证：常量表达式计算正确性
+#Test
+fn test_const_fn_basic() {
+  assert_eq(SUM, 7)
+  assert_eq(SQ, 25)
+  assert_eq(MIX, 64)
+}
+
+; ==================== #Const fn 嵌套调用 ====================
+
+#Cval
+let QA i32 = const_quad(3)
+
+#Cval
+let QB i32 = const_quad(const_quad(2))
+
+; 验证：常量表达式嵌套调用
+#Test
+fn test_const_fn_nested() {
+  assert_eq(QA, 12)
+  assert_eq(QB, 32)
+}
+
+; ==================== 全局 #Cval struct 字面量 ====================
+
+#Cval
+let ORIGIN Point = Point {
+  .x = 0
+  .y = 0
+}
+
+#Cval
+let PV Point = Point {
+  .x = 3 + 4
+  .y = 10 * 2
+}
+
+; 验证：全局结构体字面量的初始化与访问
+#Test
+fn test_global_struct_literal() {
+  assert_eq(ORIGIN.x, 0)
+  assert_eq(ORIGIN.y, 0)
+  assert_eq(PV.x, 7)
+  assert_eq(PV.y, 20)
+}
+
+; ==================== 嵌套 struct 字面量 ====================
+
+#Cval
+let R Rect = Rect {
+  .tl = Point {
+    .x = 1
+    .y = 2
+  }
+  .br = Point {
+    .x = 10
+    .y = 20
+  }
+}
+
+; 验证：嵌套结构体字面量的访问和比较
+#Test
+fn test_nested_struct_literal() {
+  assert_eq(R.tl.x, 1)
+  assert_eq(R.tl.y, 2)
+  assert_eq(R.br.x, 10)
+  assert_eq(R.br.y, 20)
+}
+
+; ==================== 运行期 struct 字面量 ====================
+
+; 验证：运行时 struct 字面量的创建和访问
+#Test
+fn test_struct_literal_runtime() {
+  let p Point = Point {
+    .x = 5
+    .y = 7
+  }
+  assert_eq(p.x, 5)
+  assert_eq(p.y, 7)
+
+  let q Point = make_point(11, 22)
+  assert_eq(q.x, 11)
+  assert_eq(q.y, 22)
+}
+
+; ==================== #Cval 局部声明 ====================
+
+; 验证：局部变量声明与初始化
+#Test
+fn test_cval_local() {
+  #Cval let k i32 = 42
+  #Cval let m i32 = k + 1
+  assert_eq(k, 42)
+  assert_eq(m, 43)
+}
+
+; 验证：常量表达式计算与布尔逻辑
+#Test
+fn test_cval_local_expr() {
+  #Cval let a i32 = 6
+  #Cval let b i32 = a * 7 - 1 + a.and(3)
+  #Cval let c bool = a < b && true
+  #Cval let s String = "ok"
+  assert_eq(b, 43)
+  assert_true(c)
+  assert_eq(s, "ok")
+}
+
+; ==================== #Const fn 注解 ====================
+
+; 验证：常量函数注解是否正确处理常量表达式
+#Test
+fn test_const_fn_annotation() {
+  assert_eq(const_add(2, 3), 5)
+  assert_eq(clamp(7), 7)
+}
+
+; ==================== 边界测试 ====================
+
+#Cval
+let CZERO i32 = 0
+
+#Cval
+let CNEG i32 = -100
+
+#Cval
+let CMIN i32 = const_add(-1073741824, -1073741824)  ; -2147483648
+
+#Cval
+let CMAX i32 = 2147483647
+
+#Cval
+let C_I64_UNSUF i64 = 60000000000
+
+#Cval
+let C_U64_UNSUF u64 = 116444736000000000
+
+; 验证：常量边界值（零、负数、MIN）
+#Test
+fn test_cval_boundary() {
+  assert_eq(CZERO, 0)
+  assert_eq(CNEG, -100)
+  assert_eq(CMIN, -2147483648)
+}
+
+; 验证：#Cval 无后缀大整数按声明类型求值，不截断
+#Test
+fn test_cval_large_unsuffixed() {
+  assert_eq(C_I64_UNSUF, 60000000000i64)
+  assert_eq(C_U64_UNSUF, 116444736000000000u64)
+}
+
+; 验证：常量零输入下的函数调用
+#Test
+fn test_const_fn_zero_input() {
+  ; const fn 零输入
+  assert_eq(const_add(0, 0), 0)
+  assert_eq(const_square(0), 0)
+  assert_eq(const_dbl(0), 0)
+  assert_eq(const_quad(0), 0)
+}
+
+; 验证：常量函数在边界输入下的行为
+#Test
+fn test_const_fn_large_input() {
+  ; const fn 大数值输入
+  assert_eq(const_add(1000000000, 1000000000), 2000000000)
+  assert_eq(const_square(46340), 2147395600)
+}
+
+#Cval
+let CNEG_EXPR i32 = -10 * 5 + const_add(-3, -2)
+
+; 验证：常量表达式中负数的计算
+#Test
+fn test_cval_negative_expr() {
+  assert_eq(CNEG_EXPR, -55)
+}

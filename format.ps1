@@ -5,7 +5,7 @@
   C/C++ format wrapper: clang-format -i (incl. #include sort).
 
 .DESCRIPTION
-  Default: git-changed files. --all: yux/, include/, sdk/yux/src/.
+  Default: git-changed files. --all: riu/ 下 C/C++。
   Positional: listed files only. --check: dry-run -Werror.
 #>
 $ErrorActionPreference = 'Stop'
@@ -81,7 +81,7 @@ function Walk-Dir([string]$Dir, [System.Collections.Generic.List[string]]$Out) {
 
 function Get-AllRepoFiles {
     $out = New-Object System.Collections.Generic.List[string]
-    foreach ($r in @('yux', 'include', 'sdk\yux\src')) {
+    foreach ($r in @('riu', 'include', 'sdk\riu\src')) {
         Walk-Dir (Join-Path $ProjectRoot $r) $out
     }
     return ,@($out.ToArray())
@@ -131,9 +131,9 @@ function Show-Help {
     Write-Host @'
 用法:
   ./format.ps1              仅 git 变动/未跟踪的 C/C++（clang-format -i）
-  ./format.ps1 --all        yux/ include/ sdk/yux/src/
+  ./format.ps1 --all        riu/ 下 C/C++
   ./format.ps1 --check      dry-run + -Werror（pre-commit）
-  ./format.ps1 yux/x.cpp    指定文件
+  ./format.ps1 riu/x.cpp    指定文件
   ./format.ps1 -h / --help  帮助
 '@
 }

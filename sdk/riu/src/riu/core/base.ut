@@ -1,0 +1,729 @@
+; riu SDK - 自举运行时
+; 使用 Windows API 进行 I/O
+
+use riu.core.helper.*
+
+; 外部函数声明（内存管理走 riurt；Win32 声明在定向开放的 helper.ut）
+extern {
+  ; riurt 内存管理（替代 Win32 HeapAlloc/HeapFree）
+  fn riurt_alloc(size u64) Ptr
+  fn riurt_alloc_zeroed(size u64) Ptr
+  fn riurt_realloc(ptr Ptr, new_size u64) Ptr
+  fn riurt_free(ptr Ptr)
+  fn riurt_memcpy(dst Ptr, src Ptr, size u64) Ptr
+  fn riurt_memset(dst Ptr, val i32, size u64) Ptr
+  fn riurt_memcmp(a Ptr, b Ptr, size u64) i32
+  fn riurt_memmove(dst Ptr, src Ptr, size u64) Ptr
+}
+
+; 全局常量
+#Cval
+let _STD_OUTPUT_HANDLE i32 = -11
+#Cval
+let _STD_ERROR_HANDLE i32 = -12
+
+; 内部：向 stdout 写入
+fn _stdout_write(buf Ptr, off i64, len i64) {
+  #Mut let hStdout Ptr = GetStdHandle(_STD_OUTPUT_HANDLE)
+  #Mut let bufWithOff Ptr = _ptr_offset(buf, off)
+  #Mut let written u32 = 0
+  WriteFile(hStdout, bufWithOff, len.to_u32(), &written, null);
+}
+
+; 内部：向 stderr 写入（panic / eprint* 模板用，DRAFT-错误.md §8.6）
+fn _stderr_write(buf Ptr, off i64, len i64) {
+  #Mut let hStderr Ptr = GetStdHandle(_STD_ERROR_HANDLE)
+  #Mut let bufWithOff Ptr = _ptr_offset(buf, off)
+  #Mut let written u32 = 0
+  WriteFile(hStderr, bufWithOff, len.to_u32(), &written, null);
+}
+
+#Builtin
+fn size_of<T>() u64
+
+; DRAFT-spec-reflect Phase 3a (捷径 A): 反射 Type 节点拿取 intrinsic.
+; 调用站 `__riu_reflect_type:<Counter>()` 由编译器特例化 lower 到
+; `load %Type, ptr __riu_reflect_<mod>_<typename>__type` (linkonce_odr rodata).
+; 草案 §2 的 `Counter::type` path 形态留 Phase 4 接入完整 spec 链, 这里走 fn 形态过渡.
+#Builtin
+fn __riu_reflect_type<T>() Type
+
+; ==================== 内置 spec（spec §12.7） ====================
+; spec-unify v1：以 #Spec / #Impl(...) 替代 draft 关键字与 `: Spec` 头部槽
+; DRAFT-spec-default-body 落地：spec body 内方法允许带默认体；实现者未覆盖即 fall-through
+; #DraftLike 不进 v1；Any 已删（无 #DraftLike 自动派生时无意义）
+
+#Spec
+struct ToString {
+  fn to_string() String
+}
+
+; Eq / Ord：实现者仅写 eq / cmp，剩余比较方法由默认体推导（DRAFT-spec-default-body §5）
+#Spec
+struct Eq {
+  fn eq(other Self&) bool
+  fn ne(other Self&) bool = !$.eq(&other)
+}
+
+#Spec
+struct Ord {
+  fn cmp(other Self&) i32
+  fn lt(other Self&) bool = $.cmp(&other) < 0
+  fn le(other Self&) bool = $.cmp(&other) <= 0
+  fn gt(other Self&) bool = $.cmp(&other) > 0
+  fn ge(other Self&) bool = $.cmp(&other) >= 0
+}
+
+; Number：内置数字类型的公共边界。
+; 签名直接由各类型已有的按值 #Builtin intrinsic 满足；不用 `$ + other`
+; 一类默认体，因为运算符本身会再次分发到 plus 等方法。
+#Spec
+struct Number {
+  #Cval
+  #Inline
+  MAX Self
+
+  #Cval
+  #Inline
+  MIN Self
+
+  fn to_i8() i8
+  fn to_u8() u8
+  fn to_i16() i16
+  fn to_u16() u16
+  fn to_i32() i32
+  fn to_u32() u32
+  fn to_i64() i64
+  fn to_u64() u64
+  fn to_f64() f64
+  fn to_f32() f32
+
+  fn plus(other Self) Self
+  fn minus(other Self) Self
+  fn mul(other Self) Self
+  fn div(other Self) Self
+  fn mod(other Self) Self
+
+  fn eq(other Self) bool
+  fn ne(other Self) bool
+  fn lt(other Self) bool
+  fn le(other Self) bool
+  fn gt(other Self) bool
+  fn ge(other Self) bool
+
+  fn neg() Self
+}
+
+; ToJson：纯抽象签名；按字段递归 derive 永不引入（DRAFT [#1.AE]）
+#Spec
+struct ToJson {
+  fn to_json() String
+}
+
+; 内置基本类型声明见 num.ut（i8/u8/i16/u16/i32/u32/i64/u64/isize/usize/f64/f32）
+
+; 内置泛型类型占位：实际布局与方法（_push/_len/... 等）由编译器合成
+
+#Builtin
+struct Ref<T> {
+  ; 内部处理
+}
+
+#Builtin
+struct Ptr {
+  ; 编译为 C void*
+  #Builtin
+  fn to_int() u64
+}
+
+#Builtin
+fn ptr_from_addr(addr u64) Ptr
+
+; 私有（`_` 前缀约定）：Ptr + i64 字节偏移；编译器 GEP i8，不暴露给用户
+; 取代 ptr_from_addr(p.to_int() + off.to_u64()) 的冗长写法（DRAFT §9.1：Ptr 算术不开放给用户）
+#Builtin
+fn _ptr_offset(p Ptr, off i64) Ptr
+
+#Builtin
+struct Rc<T> {
+  ; 内部处理
+}
+
+; rc:<T>(v T) Rc<T>：从值构造 owned Rc
+; 编译器 intrinsic：__riu_rc_alloc + store v @ block+8，返回 { handle } 形态的 Rc<T>
+#Builtin
+fn rc<T>(v T) Rc<T>
+
+; Weak<T> 实例 layout = { ptr handle }，与 Rc<T> 同形
+; handle 指向同一 Block；weak 计数维护 block 存活；不维护 payload 存活
+#Builtin
+struct Weak<T> {
+}
+
+; upgrade(w) Rc<T>?：尝试从 Weak 升级到 Rc；strong==0 → null；存活 → strong++ 返回 Some(Rc{handle})
+#Builtin
+fn upgrade<T>(w Weak<T>) Rc<T>?
+
+; same_ref:<T>(a, b) bool：地址相等比较（DRAFT §10）
+; T 必须是 Rc<U> / Weak<U> / Array<U> / String / U&；标量禁
+; 比对底层 handle 指针；空 Weak 与任何活句柄不等
+#Builtin
+fn same_ref<T>(a T, b T) bool
+
+; rc_leak_count() i64：返回当前未释放的 RC Block 数（Rc / Array / String / Weak 共用计数）
+; 仅供测试 / 自检使用；正常程序不应依赖
+#Builtin
+fn rc_leak_count() i64
+
+; ptr_of:<T>(obj) Ptr：显式取裸指针（DRAFT §9.4）
+; T = U&         → 指向 U 的 Ptr（短生命周期，C 端不可保存超出本次调用）
+; T = Rc<U>    → 指向 U payload（跳过 RC 头；C 端只能读写 payload，不能 free）
+; T = Array<U>  → 指向元素首地址（同上）
+; T = String     → 指向 UTF-32 码点首地址（不带 NUL 终止）
+; T = 标量       → 报错
+#Builtin
+fn ptr_of<T>(obj T) Ptr
+
+; as_ref:<T>(box) T&：显式获取 Rc payload 的借用（spec §8.3.5.5）
+; v1 唯一允许"以 T& 形态借用 Rc payload 整体"的途径；返回的 T& 根对象
+; 视为传入的 box 句柄本身，受 §8.6.5 一切寿命规则约束
+; T 由实参推断；不接受 Rc<T>?
+; DRAFT-heap-types §8.3a.6：同样接受 Heap<T>（句柄即裸 T*，返回的 T& 寿命绑定
+;   到该 Heap 局部的所在作用域；签名仍写 Rc<T> 是因 v1 不支持函数重载，编译器
+;   在 #Builtin 分派时对 Heap arg 走 GEP 偏移 0 / 对 Rc arg 走偏移 8）
+#Builtin
+fn as_ref<T>(box Rc<T>) T&
+
+; copy_of:<T>(x T&) T：T& → T 显式深拷贝（spec §12.7.3）
+; 返回独立 owned T；值类型 memcpy，含 Rc / Array / String / Ref 字段时执行字段级 retain
+; 语义重载（DRAFT-const-mut [#1.I]）：T 同时可由 #Frozen T 实参传入，按 T& 看待，
+;   返回的 owned T 不带 #Frozen 痕迹，作为唯一脱 const 出口
+; T 不接受 owned T 自身（直接复用即可）
+#Builtin
+fn copy_of<T>(x T&) T
+
+; move:<T>(x T&) T：所有权转移（Phase B-1）
+; 从 T& 引用转移所有权到返回值；源变量标记为不可达，析构跳过
+; 对 Rc/Array/Weak 等句柄类型，跳过 retain（直接转移 +1）
+#Builtin
+fn move<T>(x T&) T
+
+; _ptr_as_ref:<T>(p Ptr) T&：裸指针 reinterpret 为 T& 引用（B-3）
+; 编译器 intrinsic：p 直接作为 T* 返回（LLVM 中 Ptr=T&）
+#Builtin
+fn _ptr_as_ref<T>(p Ptr) T&
+
+; _ptr_write:<T>(p Ptr, v T)：将 v 写入 p 指向的内存（B-3）
+; 编译器 intrinsic：CreateStore(v, p)
+#Builtin
+fn _ptr_write<T>(p Ptr, v T)
+
+; weak:<T>(box) Weak<T>：从 Rc 构造 Weak（spec §4.8.3.1 / §9）
+; 接受 Rc<T> 或 Rc<T>?；null 输入返回空 Weak（永远 upgrade 失败）
+; 复制 handle 指针；weak 计数 +1，不影响 strong
+#Builtin
+fn weak<T>(box Rc<T>?) Weak<T>
+
+; heap_some:<T>(v T) Heap<T>?：构造 _has=true 的 Heap<T>?（DRAFT-heap-types §8.3a.4.2）
+; 等价于 `Nullable<Heap<T>> { _has=true, _value=heap:<T>(v) }` 但走 baked intrinsic
+; 是 Heap<T> → Heap<T>? 唯一合法构造路径之一（隐式 widen 由 E4027 禁；详见 §8a.2）
+#Builtin
+fn heap_some<T>(v T) Heap<T>?
+
+; heap_null:<T>() Heap<T>?：构造 _has=false 的 Heap<T>?（DRAFT-heap-types §8.3a.4.2）
+; 等价于 `let h Heap<T>? = null` 的显式 turbofish 形态，便于类型推断 / 表达式位置使用
+#Builtin
+fn heap_null<T>() Heap<T>?
+
+; heap:<T>(v T) Heap<T>：从值构造 owned Heap（DRAFT-heap-types §8.3a）
+; 编译器 intrinsic：__riu_heap_alloc + store v，返回裸 T* 形态的 Heap<T> 句柄
+#Builtin
+fn heap<T>(v T) Heap<T>
+
+; _heap_take:<T>(p Ptr) Heap<T>：从裸 Ptr 接管所有权（SDK 私有，不在用户 FFI 契约里）
+; 编译器 intrinsic：直接返回 Ptr 作为 Heap<T> 句柄，作用域尾走 Heap<T> dtor
+; 调用方保证 Ptr 由 riurt 兼容的 allocator 分配；C 返回的 Ptr 不得走这条路径（§9.7.2.7）
+#Builtin
+fn _heap_take<T>(p Ptr) Heap<T>
+
+; Array<T> 实例 layout 由编译器内部管理：{ ptr _data, usize _len, usize _cap }
+; （方法编译器特例化，主体不再读 riu 端字段）
+; TODO: is_empty / clear 可改为 riu 端便捷方法（$.len() == 0usize / $.set_len(0usize)）
+#Builtin
+struct Array<T> {
+  ; 预分配容量的静态工厂；n == 0 时与 [] 相同（不分配）
+  #Builtin
+  #Static
+  fn with_capacity(n usize) Self
+
+  #Builtin
+  fn len() usize
+
+  #Builtin
+  fn cap() usize
+
+  #Builtin
+  fn is_empty() bool
+
+  #Builtin
+  fn clear()
+
+  #Builtin
+  fn reserve(additional usize)
+
+  #Builtin
+  fn set_len(new_len usize)
+
+  #Builtin
+  fn push(value T)
+
+  #Builtin
+  fn get(i usize) T&
+
+  #Builtin
+  fn first() T&
+
+  #Builtin
+  fn last() T&
+
+  #Builtin
+  fn pop() T
+
+  ; Array 深拷贝唯一入口，替代 copy_of（copy_of 不再接受 Array）
+  #Builtin
+  fn clone() Array<T>
+
+  ; [start, end) 拷贝；越界端点夹到 len；start > end 得空
+  #Builtin
+  fn slice(start usize, end usize) Array<T>
+
+  #Builtin
+  fn concat(other Array<T>&) Array<T>
+
+  ; T 须可 ==（标量或 String，与 Map 键相同）
+  #Builtin
+  fn contains(item T&) bool
+
+  ; 急切高阶查询；predicate 每个元素至多调用一次，元素以 T& 借用
+  #Builtin
+  fn any(predicate Function<T&, bool>) bool
+
+  #Builtin
+  fn all(predicate Function<T&, bool>) bool
+
+  ; 急切构造新数组；命中元素走 copy_of，不共享接收者缓冲
+  #Builtin
+  fn filter(predicate Function<T&, bool>) Array<T>
+
+  ; U 可由 transform 的 Function 返回类型推断，也可在调用点显式写 map:<U>
+  #Builtin
+  fn map<U>(transform Function<T&, U>) Array<U>
+
+  #Builtin
+  fn index_of(item T&) usize?
+
+  #Builtin
+  fn last_index_of(item T&) usize?
+
+  ; 越界 null（get 仍终止）；命中走 copy_of
+  #Builtin
+  fn get_or_null(i usize) T?
+
+  #Builtin
+  fn first_or_null() T?
+
+  #Builtin
+  fn last_or_null() T?
+
+  ; 按值移入；i == len 等价 push；i > len 终止
+  #Builtin
+  fn insert(i usize, value T)
+
+  ; 保序左移；越界终止
+  #Builtin
+  fn remove_at(i usize) T
+
+  #Builtin
+  fn reverse()
+
+  ; slice(0, n) / slice(n, len) 包装，新缓冲
+  #Builtin
+  fn take(n usize) Array<T>
+
+  #Builtin
+  fn drop(n usize) Array<T>
+}
+
+; Array 是 `#Builtin` 布局，riu 方法发不出去；排序 / 对换走自由函数。
+; T 须可 `copy_of` 且可 `<` / `<=`（标量或 `#Impl(Ord)`，如 String）。
+
+fn swap<T>(arr Array<T>&, i usize, j usize) {
+  if i == j {
+    ret;
+  }
+  #Mut let tmp T = copy_of:<T>(arr[i])
+  arr[i] = copy_of:<T>(arr[j])
+  arr[j] = tmp
+}
+
+fn sort<T>(arr Array<T>&) {
+  let n usize = arr.len()
+  loop i usize = 1 {
+    if i >= n {
+      break;
+    }
+    #Mut let j usize = i
+    loop {
+      if j == 0 {
+        break;
+      }
+      if arr[j - 1] <= arr[j] {
+        break;
+      }
+      #Mut let tmp T = copy_of:<T>(arr[j - 1])
+      arr[j - 1] = copy_of:<T>(arr[j])
+      arr[j] = tmp
+      j -= 1
+    }
+    i += 1
+  }
+}
+
+; less(a, b) 为 true 时 a 排在 b 前
+fn sort_by<T>(arr Array<T>&, less Function<T&, T&, bool>) {
+  let n usize = arr.len()
+  loop i usize = 1 {
+    if i >= n {
+      break;
+    }
+    #Mut let j usize = i
+    loop {
+      if j == 0 {
+        break;
+      }
+      if !less(arr[j], arr[j - 1]) {
+        break;
+      }
+      #Mut let tmp T = copy_of:<T>(arr[j - 1])
+      arr[j - 1] = copy_of:<T>(arr[j])
+      arr[j] = tmp
+      j -= 1
+    }
+    i += 1
+  }
+}
+
+; Nullable<T> - 可空包装类型
+; T? 是 Nullable<T> 的语法糖（编译器解糖）
+; 当前实现为简单包装；性能优化（指针类退化、sentinel 等）后置
+struct Nullable<T> {
+  _has bool
+  _value T
+
+  ; 是否持有值
+  fn has() bool = $._has
+
+  ; 取值。空时调用 exit(1) 终止进程（语言尚无 panic 设施）
+  fn get() T {
+    if !$._has {
+      exit(1);
+    }
+    $._value
+  }
+}
+
+; String / StringBuilder 类型声明见 string.ut
+
+#Impl(ToString)
+#Builtin
+struct bool {
+  #Cval
+  #Inline
+  MAX bool = true
+
+  #Cval
+  #Inline
+  MIN bool = false
+
+  ; 一元运算符
+  #Builtin
+  fn not() bool
+
+  fn to_string() String {
+    if $ { "true" } else { "false" }
+  }
+}
+
+; ==================== stdlib I/O ====================
+; v0.6 起 print* / eprint* 三态：
+;   - 非泛型借用 `(s String&)` —— String 实参与字面量走的快路径
+;   - 泛型 owned `<T : ToString>(x T)` —— owned 值传参（如 print(42)）
+;   - 泛型借用 `<T : ToString>(x T&)` —— T& 实参免去手动 copy_of（如 Array::get 返回 T&）
+; 无隐式 auto-ref：T 值不会自动匹配 T& 形参，需要引用时调用处用显式 &arg。
+; 选择 String& 而非 String 非泛型形态的原因：避免 owned/borrow 双非泛型时 dispatcher 无法在 String 值参上消歧（[E6014]）；
+; 同时与既有 SDK 约定（assert_eq / starts_with / contains 形参均 String&）一致。
+; 通道：print / println → stdout；eprint / eprintln → stderr（DRAFT-错误.md §8.6 panic 模板沿用此通道）。
+
+fn print(s String&) {
+  let bytes Array<u8> = s.to_bytes()
+  loop i usize = 0 {
+    if i >= bytes.len() {
+      break;
+    }
+    let b [u8 * 1] = [copy_of(bytes[i])]
+    _stdout_write(&b, 0, 1)
+    i += 1
+  }
+}
+
+fn print<T : ToString>(x T) {
+  let s String = x.to_string()
+  print(&s)
+}
+
+fn print<T : ToString>(x T&) {
+  let s String = x.to_string()
+  print(&s)
+}
+
+fn println(s String&) {
+  print(&s)
+  let nl [u8 * 1] = [10u8]
+  _stdout_write(&nl, 0, 1)
+}
+
+fn println<T : ToString>(x T) {
+  let s String = x.to_string()
+  println(&s)
+}
+
+fn println<T : ToString>(x T&) {
+  let s String = x.to_string()
+  println(&s)
+}
+
+fn eprint(s String&) {
+  let bytes Array<u8> = s.to_bytes()
+  loop i usize = 0 {
+    if i >= bytes.len() {
+      break;
+    }
+    let b [u8 * 1] = [copy_of(bytes[i])]
+    _stderr_write(&b, 0, 1)
+    i += 1
+  }
+}
+
+fn eprint<T : ToString>(x T) {
+  let s String = x.to_string()
+  eprint(&s)
+}
+
+fn eprint<T : ToString>(x T&) {
+  let s String = x.to_string()
+  eprint(&s)
+}
+
+fn eprintln(s String&) {
+  eprint(&s)
+  let nl [u8 * 1] = [10u8]
+  _stderr_write(&nl, 0, 1)
+}
+
+fn eprintln<T : ToString>(x T) {
+  let s String = x.to_string()
+  eprintln(&s)
+}
+
+fn eprintln<T : ToString>(x T&) {
+  let s String = x.to_string()
+  eprintln(&s)
+}
+
+; String 断言重载（assert_eq(String&)/assert_contains/assert_starts_with）见 string.ut
+
+; ==================== DRAFT-spec-reflect Phase 2：反射 metadata 数据类型 ====================
+; Type / Field / Method / Variant: #Builtin struct, 布局由编译器硬编码.
+; SDK 仅声明 user-visible 字段; fields/methods/variants 隐藏 slot
+; 由 ensureReflectTypeGlobal codegen 直接写入, 用户通过 Counter::fields 静态路径访问.
+; layout (编译器硬编码):
+;   Type    = { String name }
+;   Field   = { String name }
+;   Method  = { String name }
+;   Variant = { String name }
+;   fields_ref → [N x ptr]  (每个 ptr 通过 constexpr GEP 指向 data 数组中的 Field)
+; 注：getOrCreateStructType 跳过这四种 struct（LLVM 布局硬编码）.
+;     反射元数据类型均为纯值 copy（rodata → stack），不含 T&，避免引用语义复杂性.
+;     Field 目前仅含 name；type/offset 待后续有需求时再加.
+
+#Builtin
+struct Type {
+  #Frozen
+  name String
+}
+
+#Builtin
+struct Field {
+  #Frozen
+  name String
+}
+
+#Builtin
+struct Method {
+  #Frozen
+  name String
+}
+
+#Builtin
+struct Variant {
+  #Frozen
+  name String
+}
+
+; ==================== FFI 字符串拷贝（§9.7.2.8）====================
+; 不 wrap Ptr：c_string 产出带 NUL 的 UTF-8 Array<u8>；from_c_chars 从 C 缓冲拷成 String。
+
+fn c_string(s String&) Array<u8> {
+  #Mut let b Array<u8> = s.to_bytes()
+  b.push(0u8)
+  ret b
+}
+
+fn from_c_chars(p Ptr) String {
+  if p.to_int() == 0u64 {
+    ret String::empty()
+  }
+  #Mut let bytes Array<u8> = []
+  #Mut let cur Ptr = p
+  loop {
+    let b u8& = _ptr_as_ref:<u8>(cur)
+    if b == 0u8 {
+      break;
+    }
+    bytes.push(copy_of(b))
+    cur = _ptr_offset(cur, 1i64)
+  }
+  #Mut let cps Array<u32> = []
+  #Mut let i usize = 0
+  let n usize = bytes.len()
+  loop {
+    if i >= n {
+      break;
+    }
+    let b0 u8 = copy_of(bytes[i])
+    if b0 < 128u8 {
+      cps.push(b0.to_u32())
+      i += 1
+    } elif b0 >= 194u8 && b0 < 224u8 {
+      if i + 1 >= n {
+        cps.push(65533u32)
+        break;
+      }
+      let b1 u8 = copy_of(bytes[i + 1])
+      if b1 < 128u8 || b1 >= 192u8 {
+        cps.push(65533u32)
+        i += 1
+      } else {
+        cps.push((b0.to_u32() - 192u32).shl(6u32) + (b1.to_u32() - 128u32))
+        i += 2
+      }
+    } elif b0 >= 224u8 && b0 < 240u8 {
+      if i + 2 >= n {
+        cps.push(65533u32)
+        break;
+      }
+      let b1 u8 = copy_of(bytes[i + 1])
+      let b2 u8 = copy_of(bytes[i + 2])
+      if b1 < 128u8 || b1 >= 192u8 || b2 < 128u8 || b2 >= 192u8 {
+        cps.push(65533u32)
+        i += 1
+      } else {
+        cps.push((b0.to_u32() - 224u32).shl(12u32) + (b1.to_u32() - 128u32).shl(6u32) + (b2.to_u32() - 128u32))
+        i += 3
+      }
+    } elif b0 >= 240u8 && b0 < 245u8 {
+      if i + 3 >= n {
+        cps.push(65533u32)
+        break;
+      }
+      let b1 u8 = copy_of(bytes[i + 1])
+      let b2 u8 = copy_of(bytes[i + 2])
+      let b3 u8 = copy_of(bytes[i + 3])
+      if b1 < 128u8 || b1 >= 192u8 || b2 < 128u8 || b2 >= 192u8 || b3 < 128u8 || b3 >= 192u8 {
+        cps.push(65533u32)
+        i += 1
+      } else {
+        cps.push((b0.to_u32() - 240u32).shl(18u32) + (b1.to_u32() - 128u32).shl(12u32) + (b2.to_u32() - 128u32).shl(6u32) + (b3.to_u32() - 128u32))
+        i += 4
+      }
+    } else {
+      cps.push(65533u32)
+      i += 1
+    }
+  }
+  String::from(&cps)
+}
+
+; UTF-16 NUL 结尾（LPWSTR）→ String。不合法代理对按 U+FFFD。p 为 null → 空串。
+fn _from_wide_chars(p Ptr) String {
+  if p.to_int() == 0u64 {
+    ret String::empty()
+  }
+  #Mut let cps Array<u32> = []
+  #Mut let cur Ptr = p
+  loop {
+    let w0 u16& = _ptr_as_ref:<u16>(cur)
+    let x u16 = copy_of(w0)
+    if x == 0u16 {
+      break;
+    }
+    if x >= 55296u16 && x < 56320u16 {
+      cur = _ptr_offset(cur, 2i64)
+      let w1 u16& = _ptr_as_ref:<u16>(cur)
+      let y u16 = copy_of(w1)
+      if y >= 56320u16 && y < 57344u16 {
+        let cp u32 = 65536u32 + (x.to_u32() - 55296u32).shl(10u32) + (y.to_u32() - 56320u32)
+        cps.push(cp)
+        cur = _ptr_offset(cur, 2i64)
+      } else {
+        cps.push(65533u32)
+        if y == 0u16 {
+          break;
+        }
+        cur = _ptr_offset(cur, 2i64)
+      }
+    } else {
+      cps.push(x.to_u32())
+      cur = _ptr_offset(cur, 2i64)
+    }
+  }
+  String::from(&cps)
+}
+
+; 进程命令行。含 argv[0]（exe 路径）；用户参数从 [1] 起。失败 → []。
+fn args() Array<String> {
+  let cmd Ptr = GetCommandLineW()
+  #Mut let n i32 = 0
+  let argv Ptr = CommandLineToArgvW(cmd, &n)
+  if argv.to_int() == 0u64 {
+    ret []
+  }
+  #Mut let out Array<String> = []
+  loop i usize = 0 {
+    if i.to_i32() >= n {
+      break;
+    }
+    let slot Ptr = _ptr_offset(argv, i.to_i64() * 8i64)
+    let addr u64& = _ptr_as_ref:<u64>(slot)
+    let wstr Ptr = ptr_from_addr(copy_of(addr))
+    out.push(_from_wide_chars(wstr))
+    i += 1
+  }
+  LocalFree(argv);
+  out
+}
+
+; 自开机起的毫秒（GetTickCount，约 49 天回绕）。CLI 种子用，不承诺单调高精度。
+fn tick_ms() u32 {
+  GetTickCount()
+}

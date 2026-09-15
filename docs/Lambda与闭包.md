@@ -1,12 +1,12 @@
 # Lambda 与闭包
 
-本文档介绍 yux 中的函数类型、lambda 字面量与闭包。
+本文档介绍 riu 中的函数类型、lambda 字面量与闭包。
 
 > 规范层条款见 `docs/spec/03-类型系统.md` §3.11、`docs/spec/04-表达式.md` §4.11、`docs/spec/06-函数.md` §6.5.5、`docs/spec/08-所有权与引用.md` §8.7.6。闭包捕获模型的完整决议见 `docs/spec/draft/DRAFT-closure-capture.md`（v0.16 已落地）。
 
 ## 概览
 
-yux 把"函数"视作一等值：
+riu 把"函数"视作一等值：
 
 - **函数类型** `Function<P..., Ret>`：与 `i32` / `Rc<T>` 并列的特殊泛型。
 - **lambda 字面量**：以 `=>` 标记的匿名函数表达式，求值得到一个函数值。
@@ -14,7 +14,7 @@ yux 把"函数"视作一等值：
 
 ## 函数类型
 
-```yux
+```riu
 ; 变量持有函数值
 #Mut let f Function<i32, i32> = (x i32) i32 => x + 1
 println(f(41)) ; 42
@@ -36,7 +36,7 @@ fn first_match(arr Array<String>, p Predicate) String {
 
 类型相等是**结构等同**。文档用别名，不在类型位写形参名。
 
-```yux
+```riu
 Function<i32, i32, i32>            ; (i32, i32) -> i32
 Callback = Function<String, bool>  ; 别名即文档
 ```
@@ -45,7 +45,7 @@ Callback = Function<String, bool>  ; 别名即文档
 
 两种前缀 + 调用尾随（详见 spec §4.11.1）：
 
-```yux
+```riu
 ; 表达式体
 let add = (a i32, b i32) i32 => a + b
 let inc = (x i32) i32 => x + 1
@@ -65,7 +65,7 @@ let once = () => 42
 
 实参 / 字段值 / 别名右侧位置可省去形参类型：
 
-```yux
+```riu
 fn op(f Function<i32, i32, i32>) i32 = f(1, 2)
 
 ; { ... } 内的 a / b 由 op 的形参类型反推为 i32
@@ -74,7 +74,7 @@ let r = op((a, b) => a + b)
 
 无上下文则需显式标注：
 
-```yux
+```riu
 let f = (x i32) i32 => x + 1   ; ✅ 显式
 let f = (x) => x + 1            ; ❌ 编译错（无上下文，形参类型无法推断）
 ```
@@ -93,7 +93,7 @@ let f = (x) => x + 1            ; ❌ 编译错（无上下文，形参类型无
 
 ### 实参 / 字段值位置必须括起来
 
-```yux
+```riu
 ; ✅ 多参 lambda 在 args 位置带括号
 op((a, b) => a + b)
 op { (a, b) => a + b }          ; 尾随
@@ -105,7 +105,7 @@ let r = apply(7, (x) => x * 2)
 
 ### 表达式体可含 `if` / `match`
 
-```yux
+```riu
 let abs = (x i32) i32 => if x < 0 { -x } else { x }
 
 let name = (k Kind) String => match k {
@@ -118,7 +118,7 @@ let name = (k Kind) String => match k {
 
 仅调用位置可把末位 lambda 写成尾随块（Kotlin 风）：
 
-```yux
+```riu
 fn each<T>(arr Array<T>, body Function<T, ()>) {
   ; ...
 }
@@ -154,7 +154,7 @@ lambda 体引用了**非形参 / 非全局**的标识符，编译器自动收集
 | `Heap<T>?`（可空堆） | **B 档 move**：outer slot 写 null，env 独占所有权 |
 | `Heap<T>`（非空堆） | **禁止捕获** → E4024（非空不可 move） |
 
-```yux
+```riu
 fn make_adder(n i32) Function<i32, i32> {
   ret (x i32) i32 => x + n   ; 捕获标量 n（值复制）
 }
@@ -169,7 +169,7 @@ fn main() {
 
 ### 捕获变量在 lambda 体内只读
 
-```yux
+```riu
 fn bad() {
   #Mut let n = 0
   let f = () => n = n + 1   ; ❌ 编译错 E2030：lambda 不可对捕获变量赋值
@@ -178,7 +178,7 @@ fn bad() {
 
 理由：标量按值复制后赋值仅影响 captures 副本，对外层静默无效，与用户直觉冲突。要修改外层状态走"堆对象 mutator 方法"或"`T&` 形参显式传入"。
 
-```yux
+```riu
 struct Counter {
   v i32
 
@@ -207,7 +207,7 @@ fn good() {
 
 捕获了 `T&` 的 lambda 自身按"广义 `T&`"处理 —— 不可逃逸出借用源 scope：
 
-```yux
+```riu
 fn make_reader(r i32&) Function<i32> {
   ret () i32 => r              ; ❌ E4022：含 T& 捕获的 lambda 不能 ret 出去
 }
@@ -222,7 +222,7 @@ fn use_reader(r i32&) {
 
 `$` 视作隐式 `Self&` 形参，按 `T&` 行处理 —— 同样触发不可逃逸。
 
-```yux
+```riu
 struct Greeter {
   msg String
 
@@ -238,7 +238,7 @@ struct Greeter {
 
 lambda 返回 `T&` 时，允许源集只有 `$rodata`（静态 / 全局）；**形参透传与捕获都不进允许源集**：
 
-```yux
+```riu
 let G i32 = 1
 let pick = (a i32&) i32& => &G   ; ✅ 静态根
 
@@ -254,7 +254,7 @@ fn outer(c i32&) {
 
 `Heap<T>?`（可空堆）捕获时走 **B 档 move**：outer slot 写 null，env 独占所有权，lambda 析构时释放。
 
-```yux
+```riu
 fn make_handler(h Heap<Data>?) Function<()> {
   ret () => {
     ; h 被捕获，outer slot 变 null
@@ -269,7 +269,7 @@ fn make_handler(h Heap<Data>?) Function<()> {
 
 v1 显式不支持函数类型跨 FFI 边界：
 
-```yux
+```riu
 extern {
   fn my_callback(cb Function<()>) ; ❌ E2031：extern fn 不接受 Function<...> 类型
 }

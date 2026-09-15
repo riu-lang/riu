@@ -1,0 +1,12 @@
+use riu.core.*
+use sub.*
+use util.*
+
+; 多模块同时调泛型实例 (riu.core.base.println<i32>(i32) 等) 不应在 LLD 时报 duplicate symbol.
+
+fn main() {
+    println("main")
+    println(42)
+    sub_say()
+    util_say()
+}

@@ -1,0 +1,15 @@
+use riu.core.*
+use specs.*
+
+#Impl(BadEq)
+struct N {
+    v i32
+
+    fn eq(other N&) bool {
+        $.v == other.v
+    }
+}
+
+fn main() {
+    println("ok")
+}

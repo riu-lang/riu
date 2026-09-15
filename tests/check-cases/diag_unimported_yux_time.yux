@@ -1,6 +1,0 @@
-; require-sdk
-; 未 use yux.time：全限定不引入
-
-fn main() {
-  yux.time.sleep_ms(0)  ; check: E6001
-}

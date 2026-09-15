@@ -1,0 +1,70 @@
+; 函数返回类型行为测试
+;
+; 覆盖：
+;   - 各返回类型：i32 / i64 / f64 / bool
+;   - 块表达式返回值（块末行无 ; 即块值）
+;   - 类型推断返回值（ret 语句 / 末行表达式）
+;
+; 已知缺口：void 返回类型（无返回值函数）未在本文件覆盖；
+; 更多函数场景见 functions.test.ut。
+
+fn ret_i32() i32 {
+  42
+}
+
+fn ret_i64() i64 {
+  123456789
+}
+
+fn ret_f64() f64 {
+  3.14
+}
+
+fn ret_bool() bool {
+  true
+}
+
+fn ret_expr() i32 {
+  let x = 10
+  x + 5
+}
+
+fn ret_inferred() i64 {
+  999
+}
+
+; 验证：ret_i32 函数返回值是否为 42
+#Test
+fn test_ret_i32() {
+  assert_eq(ret_i32(), 42)
+}
+
+; 验证：ret_i64 函数返回值是否为 i64 类型的 123456789
+#Test
+fn test_ret_i64() {
+  assert_eq(ret_i64(), 123456789)
+}
+
+; 验证：函数返回值类型匹配 f64
+#Test
+fn test_ret_f64() {
+  assert_eq(ret_f64(), 3.14)
+}
+
+; 验证：ret_bool 函数返回值是否为布尔类型且为真
+#Test
+fn test_ret_bool() {
+  assert_true(ret_bool())
+}
+
+; 验证：ret_expr 函数返回值是否正确
+#Test
+fn test_ret_expr() {
+  assert_eq(ret_expr(), 15)
+}
+
+; 验证：返回值推断是否正确
+#Test
+fn test_ret_inferred() {
+  assert_eq(ret_inferred(), 999)
+}

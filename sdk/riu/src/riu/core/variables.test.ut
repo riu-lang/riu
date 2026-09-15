@@ -1,0 +1,84 @@
+; 变量声明与赋值行为测试
+;
+; 覆盖：
+;   - #Mut let：可变变量声明 + 重赋值（i32）
+;   - let（val）：不可变变量声明（i64）
+;   - 类型推断：整数（默认 i32）、浮点（默认 f64）、bool
+;
+; 已知缺口：String / Array / Rc 等句柄类型变量声明未在本文件覆盖（见各专项文件）；
+; 声明不初始化见 declare_no_init.test.ut。
+
+#Test
+fn test_var_reassign() {
+  #Mut let a i32 = 10
+  assert_eq(a, 10)
+  a = 20
+  assert_eq(a, 20)
+}
+
+; 验证：基本整数变量的声明和赋值
+#Test
+fn test_val_i64() {
+  let b i64 = 100
+  assert_eq(b, 100)
+}
+
+; 验证：整数类型推断
+#Test
+fn test_val_inferred_int() {
+  let c = 123
+  assert_eq(c, 123)
+}
+
+; 验证：浮点数默认推断类型为 f64
+#Test
+fn test_val_inferred_f64() {
+  let d = 3.14
+  assert_eq(d, 3.14)
+}
+
+; 验证：布尔值推断与断言
+#Test
+fn test_val_inferred_bool() {
+  let e = true
+  assert_true(e)
+}
+
+; ==================== 边界 / 扩展测试 ====================
+
+#Test
+fn test_var_multiple_reassign() {
+  ; 验证：多次重赋值
+  #Mut let a i32 = 0
+  a = 1
+  assert_eq(a, 1)
+  a = 2
+  assert_eq(a, 2)
+  a = -1
+  assert_eq(a, -1)
+}
+
+#Test
+fn test_val_f32_explicit() {
+  ; 验证：f32 显式类型变量
+  let a f32 = 1.0f32
+  assert_eq(a, 1.0f32)
+}
+
+#Test
+fn test_val_isize() {
+  ; 验证：isize 变量声明与赋值
+  let a isize = 100
+  assert_eq(a, 100)
+  let b isize = -100
+  assert_eq(b, -100)
+}
+
+#Test
+fn test_val_usize() {
+  ; 验证：usize 变量声明
+  let a usize = 0
+  assert_eq(a, 0)
+  let b usize = 999
+  assert_eq(b, 999)
+}

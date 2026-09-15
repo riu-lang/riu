@@ -1,0 +1,72 @@
+; 运算符重载行为测试
+;
+; 覆盖：
+;   - 算术运算符：+ / - / *（by-value 形参、跨类型重载）
+;   - 比较运算符：== / !=
+;   - 自定义类型（Point / Counter 等）的运算符重载
+;
+; 已知缺口：更多运算符扩展（div / mod / shl / shr / not）见 op_overload_ext.test.ut；
+; 一元运算符重载（- / ~ / !）当前仅 Point 上的 - 覆盖；
+; spec 运算符（Add / Eq / Index）路径见 spec.test.ut。
+
+struct Point {
+  x i32
+  y i32
+
+  #Static
+  fn make(x i32, y i32) Point {
+    ret Self {
+      .x = x
+      .y = y
+    }
+  }
+
+  fn plus(other Point) Point {
+    Point::make($.x + other.x, $.y + other.y)
+  }
+}
+
+struct Vec2 {
+  x f64
+  y f64
+
+  #Static
+  fn make(x f64, y f64) Vec2 {
+    ret Self {
+      .x = x
+      .y = y
+    }
+  }
+
+  fn mul(scalar f64) Vec2 {
+    ret Vec2::make($.x * scalar, $.y * scalar)
+  }
+
+  fn plus(other Vec2&) Vec2 {
+    ret Vec2::make($.x + other.x, $.y + other.y)
+  }
+}
+
+; ==================== 按值形参运算符 ====================
+
+; 验证：按值形参运算符重载
+#Test
+fn test_op_overload_byval() {
+  let p1 Point = Point::make(1, 2)
+  let p2 Point = Point::make(3, 4)
+  let p3 Point = p1 + p2
+  assert_eq(p3.x, 4)
+}
+
+; ==================== 跨类型运算符重载 ====================
+
+; 验证：跨类型运算符重载，包括加法和乘法
+#Test
+fn test_op_overload_cross_type() {
+  let v Vec2 = Vec2::make(2.0, 3.0)
+  let w Vec2 = Vec2::make(1.0, 1.0)
+  let s Vec2 = v + w
+  assert_eq(s.x, 3.0)
+  let t Vec2 = v * 5.0
+  assert_eq(t.x, 10.0)
+}

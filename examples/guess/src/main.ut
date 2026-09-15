@@ -1,0 +1,32 @@
+; guess — 猜 1–100。种子来自 tick_ms()。
+; 运行：cd examples/guess && riu build && ./build/guess.exe
+
+use riu.io.*
+
+fn main() {
+  let secret i32 = (tick_ms() % 100u32).to_i32() + 1
+  println("guess 1-100")
+  loop {
+    print("> ")
+    let line String = try {
+      read_line()
+    } catch e IoErr {
+      break;
+    }
+    let n i32? = line.trim().parse_i32()
+    if !n.has() {
+      println("not a number")
+      continue;
+    }
+    let g i32 = n.get()
+    if g == secret {
+      println("yes")
+      break;
+    }
+    if g < secret {
+      println("too small")
+    } else {
+      println("too big")
+    }
+  }
+}

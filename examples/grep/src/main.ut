@@ -1,0 +1,99 @@
+; grep — 打印匹配行。无文件时读 stdin。
+; 运行：cd examples/grep && riu build
+;       ./build/grep.exe hello 某文件.txt
+;       ./build/grep.exe -i hello 某文件.txt
+
+use riu.io.*
+
+fn _die(msg String&) {
+  eprintln(msg)
+  exit(1)
+}
+
+fn _hit(line String&, pat String&, ignore bool) bool {
+  if ignore {
+    let a String = line.to_lower()
+    let b String = pat.to_lower()
+    ret a.contains(&b)
+  }
+  line.contains(pat)
+}
+
+fn _grep_text(text String&, pat String&, ignore bool, label String&) {
+  let lines Array<String> = text.lines()
+  for line in lines {
+    if _hit(line, pat, ignore) {
+      if label.is_empty() {
+        println(line)
+      } else {
+        println("${label}:${line}")
+      }
+    }
+  }
+}
+
+fn _grep_file(path String&, pat String&, ignore bool, labeled bool) {
+  let text String = try {
+    read_file(path)
+  } catch e IoErr {
+    _die("grep: cannot read ${path}")
+    ""
+  }
+  if labeled {
+    _grep_text(&text, pat, ignore, path)
+  } else {
+    let empty String = ""
+    _grep_text(&text, pat, ignore, &empty)
+  }
+}
+
+fn _read_stdin() String {
+  #Mut let parts Array<String> = []
+  loop {
+    let line String = try {
+      read_line()
+    } catch e IoErr {
+      break;
+    }
+    parts.push(line)
+  }
+  String::join(&parts, "\n")
+}
+
+fn main() {
+  let argv Array<String> = args()
+  #Mut let ignore bool = false
+  #Mut let i usize = 1
+  loop {
+    if i >= argv.len() {
+      break;
+    }
+    let s String = copy_of(argv[i])
+    if s == "-i" {
+      ignore = true
+      i += 1
+      continue;
+    }
+    break;
+  }
+  if i >= argv.len() {
+    _die("usage: grep [-i] <pattern> [file ...]")
+  }
+  let pat String = copy_of(argv[i])
+  i += 1
+  if i >= argv.len() {
+    let text String = _read_stdin()
+    let empty String = ""
+    _grep_text(&text, &pat, ignore, &empty)
+    ret;
+  }
+  let labeled bool = i + 1usize < argv.len()
+  loop {
+    if i >= argv.len() {
+      break;
+    }
+    let path String = copy_of(argv[i])
+    _grep_file(&path, &pat, ignore, labeled)
+    i += 1
+  }
+}

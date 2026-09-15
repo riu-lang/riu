@@ -1,0 +1,40 @@
+use riu.core.*
+
+; 合并 extern_cname + extern_ptr_auto
+
+extern {
+  #CName("lstrlenA")
+  fn strLen(lpString Ptr) i32
+
+  fn lstrlenA(lpString Ptr) i32
+}
+
+; extern_cname：验证 #CName 字符串语法
+fn test_cname() {
+  #Mut let a Array<u8> = [104u8, 105u8, 0u8]
+  println(strLen(a))
+}
+
+; extern_ptr_auto：验证 extern fn 边界自动转 Ptr (DRAFT §9.3)
+fn test_ptr_auto() {
+  ; Array<u8> → Ptr
+  #Mut let a Array<u8> = [104u8, 105u8, 0u8]
+  println(lstrlenA(a))
+
+  ; String → Ptr
+  #Mut let s String = "hi"
+  println(lstrlenA(s))
+
+  ; T& → Ptr (i32&)
+  #Mut let x i32 = 0i32
+  println(lstrlenA(&x))
+
+  ; Rc<i32> → Ptr
+  #Mut let b Rc<i32> = 0i32
+  println(lstrlenA(b))
+}
+
+fn main() {
+  test_cname()
+  test_ptr_auto()
+}

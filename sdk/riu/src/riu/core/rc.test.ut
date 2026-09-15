@@ -1,0 +1,205 @@
+; Rc<T> 生命周期与基础行为测试
+;
+; Rc 测试分散在 5 个文件中，各司其职：
+;   rc.test.ut        — 基础构造、字段访问、共享语义、重赋、move-return
+;   rc_operator.test.ut — 运算符自动解引用（P1）
+;   rc_method.test.ut   — 方法调用自动解引用（P2）
+;   rc_dtor.test.ut     — 析构 / typed release（B-2）
+;   rc_leak.test.ut     — 临时值泄漏计数 / RC 生命周期量化
+;
+; 本文件覆盖：基础构造与字段读、句柄复制共享、上下文驱动重赋、move-return、
+; 变量重赋走 retain-then-release、自赋值。
+
+struct BoxPair {
+  a i32
+  b i32
+
+  #Static
+  fn make(a i32, b i32) BoxPair {
+    ret Self {
+      .a = a
+      .b = b
+    }
+  }
+
+  fn set_a(v i32) {
+    $.a = v
+  }
+
+  fn sum() i32 {
+    ret $.a + $.b
+  }
+}
+
+struct BoxCell {
+  n i32
+
+  #Static
+  fn make(n i32) BoxCell {
+    ret Self {
+      .n = n
+    }
+  }
+}
+
+; ---------- box_basic：构造、字段读、句柄复制共享语义 ----------
+
+; 验证：Rc 句柄复制共享语义
+#Test
+fn test_box_basic_fields() {
+  #Mut let p Rc<BoxPair> = BoxPair::make(11, 22)
+  assert_eq(p.a, 11)
+  assert_eq(p.b, 22)
+
+  ; 句柄复制：q 与 p 共享同一 Block
+  #Mut let q Rc<BoxPair> = p
+  assert_eq(q.a, 11)
+  assert_eq(q.b, 22)
+}
+
+; ---------- box_share：通过一个句柄写穿，另一个读到 ----------
+
+; 验证：Rc 多句柄共享修改写穿
+#Test
+fn test_box_share_write_through() {
+  #Mut let p Rc<BoxPair> = BoxPair::make(10, 20)
+  #Mut let q Rc<BoxPair> = p
+  p.set_a(100i32)
+  assert_eq(q.a, 100)
+  assert_eq(q.b, 20)
+  assert_eq(p.sum(), 120i32)
+  assert_eq(q.sum(), 120i32)
+}
+
+; ---------- box_field_write：Rc<T>.field = ... 自动 deref 写入（与读路径对称） ----------
+; 回归 BUGS.md「Rc 成员写入语义层报 E3045」
+
+#Test
+fn test_box_field_write() {
+  #Mut let p Rc<BoxPair> = BoxPair::make(1, 2)
+  p.a = 100
+  p.b = 200
+  assert_eq(p.a, 100)
+  assert_eq(p.b, 200)
+
+  ; 复合赋值同样要走 deref
+  p.a += 1
+  assert_eq(p.a, 101)
+
+  ; 共享句柄：写穿后另一句柄读到新值
+  #Mut let q Rc<BoxPair> = p
+  q.a = 7
+  assert_eq(p.a, 7)
+}
+
+; ---------- box_reassign_ctor：Rc 上下文驱动构造 + 顶层重赋 ----------
+
+; 验证：Rc 上下文驱动构造与顶层重赋
+#Test
+fn test_box_reassign_ctor() {
+  #Mut let b Rc<BoxPair> = BoxPair::make(7, 8)
+  assert_eq(b.a, 7)
+  assert_eq(b.b, 8)
+  b = BoxPair::make(9, 10)
+  assert_eq(b.a, 9)
+  assert_eq(b.b, 10)
+}
+
+; ---------- box_return：函数返回 Rc<T> ----------
+
+fn make_box_cell(x i32) Rc<BoxCell> {
+  #Mut let c Rc<BoxCell> = BoxCell::make(x)
+  ret c
+}
+
+; 验证：Rc 返回移动后值不变
+#Test
+fn test_box_return_move() {
+  #Mut let b Rc<BoxCell> = make_box_cell(42)
+  assert_eq(b.n, 42)
+
+  #Mut let b2 Rc<BoxCell> = make_box_cell(7)
+  assert_eq(b2.n, 7)
+}
+
+; ---------- var_reassign_box：变量重赋 retain-then-release & 自赋值 ----------
+
+; 验证：Rc 变量重赋与 retain-release 行为，包括自赋值
+#Test
+fn test_box_var_reassign() {
+  #Mut let p Rc<BoxPair> = BoxPair::make(1, 2)
+  #Mut let q Rc<BoxPair> = BoxPair::make(3, 4)
+  #Mut let b Rc<BoxPair> = p
+  assert_eq(b.a, 1)
+  b = q
+  assert_eq(b.a, 3)
+  ; p 仍可读
+  assert_eq(p.b, 2)
+  assert_eq(q.a, 3)
+  ; 自赋值
+  b = b
+  assert_eq(b.b, 4)
+}
+
+; ---------- Rc<primitive>.method()：内置类型方法 receiver 走 by-value ABI ----------
+; 回归 BUGS.md「Rc<primitive>.method() 调用走错路径 / IR 签名 assert」
+; 单跑会读到栈残值；与直接字面量方法共存会触发 LLVM bad signature。
+
+#Test
+fn test_box_i32_to_string() {
+  let b Rc<i32> = 42
+  let s String = b.to_string()
+  assert_eq(s, "42")
+}
+
+; 验证：Rc 包装的 i32 调用 to_string 方法
+#Test
+fn test_box_i32_with_literal_method() {
+  let b Rc<i32> = 42
+  ; 字面量直接调用与 Rc 调用并存：曾触发 LLVM "Calling a function with a bad signature!"
+  let s1 String = 7i32.to_string()
+  let s2 String = b.to_string()
+  assert_eq(s1, "7")
+  assert_eq(s2, "42")
+}
+
+; 验证：Rc 包装 i64 转换为字符串
+#Test
+fn test_box_i64_to_string() {
+  let b Rc<i64> = 123
+  assert_eq(b.to_string(), "123")
+}
+
+; 验证：Rc 包装的布尔值转换为字符串
+#Test
+fn test_box_bool_to_string() {
+  let b Rc<bool> = true
+  assert_eq(b.to_string(), "true")
+}
+
+; ==================== Rc<Array> + Rc<bool>（迁自 bug_hunt） ====================
+
+#Test
+fn test_rc_array_i32() {
+  ; 验证：Rc<Array<i32>> 通过 as_ref 访问方法
+  #Mut let arr Array<i32> = [1, 2, 3]
+  let r Rc<Array<i32>> = move(arr)
+  let a Array<i32>& = as_ref(r)
+  assert_eq(a.len(), 3)
+}
+
+#Test
+fn test_rc_bool_make() {
+  ; 验证：rc:<bool>(true) 构造和自动解引用
+  let r Rc<bool> = rc:<bool>(true)
+  assert_true(r)
+}
+
+; ==================== 边界测试 ====================
+
+#Test
+fn test_rc_zero_value() {
+  ; 验证：Rc<i32> 零值构造和比较
+  let r Rc<i32> = 0
+  assert_true(r == 0)
+}

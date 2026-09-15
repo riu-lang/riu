@@ -1,0 +1,21 @@
+; echo — 把命令行参数打到 stdout（跳过 argv[0]）
+; 运行：cd examples/echo && riu build && ./build/echo.exe hello world
+
+fn main() {
+  let a Array<String> = args()
+  #Mut let first bool = true
+  #Mut let i usize = 0
+  for s in a {
+    if i == 0 {
+      i += 1
+      continue;
+    }
+    if !first {
+      print(" ")
+    }
+    first = false
+    print(s)
+    i += 1
+  }
+  println("")
+}

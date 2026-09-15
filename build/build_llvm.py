@@ -165,7 +165,7 @@ def main() -> int:
     gn_src = os.path.join(src, "llvm", "utils", "gn")
     dotfile = os.path.join(gn_src, ".gn")
     lib_dir = os.path.join(build, "lib")
-    src_stamp = os.path.join(build, "yux-llvm-src.stamp")
+    src_stamp = os.path.join(build, "riu-llvm-src.stamp")
     ninja_file = os.path.join(build, "build.ninja")
 
     if not os.path.isfile(dotfile):

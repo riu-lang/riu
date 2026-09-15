@@ -1,4 +1,0 @@
-yux
-    filter remove_matches ^\s*;
-    extension yux
-    3rd_gen_scale 2.00

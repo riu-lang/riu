@@ -1,7 +1,7 @@
-#include "yux_ffi.h"
-#include "ffi/yux_nullable.h"
-#include "ffi/yux_rc.h"
-#include "ffi/yux_string.h"
+#include "riu_ffi.h"
+#include "ffi/riu_nullable.h"
+#include "ffi/riu_rc.h"
+#include "ffi/riu_string.h"
 
 #include <stdint.h>
 
@@ -55,7 +55,7 @@ int32_t ffi_triple_sum(Triple t) {
 static int32_t g_ids[8];
 static int g_used[8];
 
-yux_ptr ffi_handle_open(int32_t id) {
+riu_ptr ffi_handle_open(int32_t id) {
     int i = 0;
     while (i < 8) {
         if (!g_used[i]) {
@@ -68,14 +68,14 @@ yux_ptr ffi_handle_open(int32_t id) {
     return 0;
 }
 
-int32_t ffi_handle_id(yux_ptr p) {
+int32_t ffi_handle_id(riu_ptr p) {
     if (!p) {
         return -1;
     }
     return *(int32_t*)p;
 }
 
-void ffi_handle_close(yux_ptr p) {
+void ffi_handle_close(riu_ptr p) {
     int i = 0;
     while (i < 8) {
         if (g_used[i] && &g_ids[i] == p) {
@@ -103,11 +103,11 @@ int32_t ffi_nlen(const char* s) {
 
 static const char k_hello[] = "hi";
 
-yux_ptr ffi_hello(void) {
-    return (yux_ptr)k_hello;
+riu_ptr ffi_hello(void) {
+    return (riu_ptr)k_hello;
 }
 
-/* D2：payload = ptr_of(Rc<i32>)。yux 仍持有，只读写，不 free。 */
+/* D2：payload = ptr_of(Rc<i32>)。riu 仍持有，只读写，不 free。 */
 int32_t ffi_rc_i32_get(void* payload) {
     if (!payload) {
         return 0;
@@ -123,28 +123,28 @@ void ffi_rc_i32_set(void* payload, int32_t v) {
 
 int32_t ffi_rc_i32_peek_retain(void* payload) {
     int32_t v;
-    yux_rc_retain_payload(payload);
+    riu_rc_retain_payload(payload);
     v = ffi_rc_i32_get(payload);
-    yux_rc_release_payload(payload); /* extra ref；yux 仍持有 */
+    riu_rc_release_payload(payload); /* extra ref；riu 仍持有 */
     return v;
 }
 
 /* n = i32?& → Ptr */
 int32_t ffi_nullable_i32_or(void* n, int32_t fallback) {
-    if (!yux_nullable_has(n)) {
+    if (!riu_nullable_has(n)) {
         return fallback;
     }
-    return *(int32_t*)yux_nullable_value(n, 4);
+    return *(int32_t*)riu_nullable_value(n, 4);
 }
 
 /* p = String& → Ptr（指向 {handle}） */
 int32_t ffi_string_len(void* string_struct) {
-    yux_string_view v = yux_string_as_view(string_struct);
+    riu_string_view v = riu_string_as_view(string_struct);
     return (int32_t)v.len;
 }
 
 int32_t ffi_string_first(void* string_struct) {
-    yux_string_view v = yux_string_as_view(string_struct);
+    riu_string_view v = riu_string_as_view(string_struct);
     if (!v.data || v.len == 0) {
         return 0;
     }

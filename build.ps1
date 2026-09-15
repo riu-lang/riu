@@ -5,9 +5,9 @@
   GN + Ninja 构建入口：vcvars → gn gen → ninja。
 
 .DESCRIPTION
-  ./build.ps1                 构建全部默认目标（yux 及附属工具）
-  ./build.ps1 yux             只构建主编译器
-  ./build.ps1 yux yux-check   一次构建多个目标
+  ./build.ps1                 构建全部默认目标（riu 及附属工具）
+  ./build.ps1 riu             只构建主编译器
+  ./build.ps1 riu riu-check   一次构建多个目标
   ./build.ps1 llvm            只确保 LLVM
   ./build.ps1 test            项目/格式化回归（tests/projects，默认并行）
   ./build.ps1 pack            打包 zip
@@ -45,7 +45,7 @@ test 参数（转发到 tests/run.ps1）:
   -Group project|format  只跑一类
   <name>                 只跑指定用例目录
 
-常用目标: yux  yux-lsp  yux-ast  yux-check  yux-test-runner  yuxrt  llvm
+常用目标: riu  riu-lsp  riu-ast  riu-check  riu-test-runner  riurt  llvm
 无目标时构建 default（全部 exe）。
 '@
 }
@@ -65,12 +65,12 @@ function ConvertTo-GnPath([string]$Path) {
     return ($Path -replace '\\', '/')
 }
 
-function Get-YuxVersion {
+function Get-RiuVersion {
     $gni = Join-Path $ProjectRoot 'build\version.gni'
     foreach ($line in Get-Content -LiteralPath $gni) {
-        if ($line -match 'yux_version\s*=\s*"([^"]+)"') { return $Matches[1] }
+        if ($line -match 'riu_version\s*=\s*"([^"]+)"') { return $Matches[1] }
     }
-    throw 'yux_version not found in build/version.gni'
+    throw 'riu_version not found in build/version.gni'
 }
 
 function Find-Tool([string]$Name) {
@@ -101,7 +101,7 @@ function Write-ArgsGn([string]$OutDir, [string]$LlvmDir, [string]$VersionStr) {
     $isDebug = if ($Mode -eq 'debug') { 'true' } else { 'false' }
     $content = @"
 is_debug = $isDebug
-yux_version_str = "$VersionStr"
+riu_version_str = "$VersionStr"
 llvm_build_dir = "$(ConvertTo-GnPath $LlvmDir)"
 "@
     $existing = ''
@@ -122,7 +122,7 @@ New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
 
 $LlvmDir = Join-Path $OutDir 'llvm'
 
-$version = Get-YuxVersion
+$version = Get-RiuVersion
 $versionStr = "v$version-$(Get-Date -Format 'yyyy-MM-dd')"
 $argsChanged = Write-ArgsGn -OutDir $OutDir -LlvmDir $LlvmDir -VersionStr $versionStr
 
@@ -159,18 +159,18 @@ if ($DoPack) {
 
 if ($DoTest) {
     if ($NinjaTargets.Count -eq 0) {
-        Write-Log "`n=== ninja yux ===" Cyan
-        & $ninja -C $OutDir yux
+        Write-Log "`n=== ninja riu ===" Cyan
+        & $ninja -C $OutDir riu
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     }
-    $yuxExe = Join-Path $OutDir 'bin\yux.exe'
+    $riuExe = Join-Path $OutDir 'bin\riu.exe'
     $runner = Join-Path $ProjectRoot 'tests\run.ps1'
     if ($Forward.Count -gt 0) {
-        $runnerArgs = @('-YuxExe', $yuxExe)
+        $runnerArgs = @('-RiuExe', $riuExe)
         $runnerArgs += $Forward.ToArray()
         & $runner @runnerArgs
     } else {
-        & $runner -YuxExe $yuxExe
+        & $runner -RiuExe $riuExe
     }
     exit $LASTEXITCODE
 }

@@ -1,0 +1,6 @@
+use riu.core.*
+use io
+
+fn main() {
+  println(io.ping())
+}

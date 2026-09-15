@@ -1,0 +1,222 @@
+; 元组（Tuple）行为测试
+;
+; 覆盖：
+;   - 构造与成员访问（.0 / .1）
+;   - 按值传参、作为函数返回值
+;   - 嵌套元组（2 层 / 3 层）+ 链式成员访问
+;   - 字面量上直接取成员 / 嵌套成员
+;   - 解构（destructure）：基本 / 从函数返回 / 三元 / 带类型标注 / var 可变
+;   - 元组成员赋值（简单 / 嵌套 / 复合赋值 += *=）
+;
+; 已知缺口：元组目前不支持包含 String/Rc 等句柄类型的 move 语义（按值拷贝）；
+; 元组与泛型交互（泛型 tuple 别名）见 alias.test.ut；零元素元组（unit）未覆盖。
+
+; 以元组为参数（不读取）
+fn take_pair(t (i32, i32)) i32 {
+  ret 1
+}
+
+; 以元组为参数并读取首元素
+fn first_of(t (i32, i32)) i32 {
+  ret t.0
+}
+
+; 返回元组
+fn make_pair() (i32, i32) {
+  ret (1, 2)
+}
+
+; 嵌套元组
+fn make_nested() ((i32, i32), i32) {
+  ret ((1, 2), 3)
+}
+
+; 验证：局部变量元组构造与访问
+#Test
+fn test_tuple_construct_local() {
+  #Mut let t (i32, i32) = (10, 20)
+  assert_eq(t.0, 10)
+  assert_eq(t.1, 20)
+}
+
+; 验证：元组按值传递的行为
+#Test
+fn test_tuple_pass_by_value() {
+  assert_eq(take_pair((7, 8)), 1)
+  assert_eq(first_of((7, 8)), 7)
+}
+
+; 验证：Tuple 返回值的正确性
+#Test
+fn test_tuple_return_value() {
+  #Mut let t (i32, i32) = make_pair()
+  assert_eq(t.0, 1)
+  assert_eq(t.1, 2)
+}
+
+; 验证：Tuple 嵌套访问与解构
+#Test
+fn test_tuple_nested() {
+  #Mut let t ((i32, i32), i32) = make_nested()
+  ; 链式 .0.0 / .0.1：lexer DOT_NUM token 让每段 .N 独立成 token
+  assert_eq(t.0.0, 1)
+  assert_eq(t.0.1, 2)
+  assert_eq(t.1, 3)
+  ; 中间变量等价路径
+  #Mut let inner (i32, i32) = t.0
+  assert_eq(inner.0, 1)
+  assert_eq(inner.1, 2)
+}
+
+; 验证：多层嵌套元组的访问与修改
+#Test
+fn test_tuple_nested_three_level() {
+  #Mut let t (((i32, i32), i32), i32) = (((10, 20), 30), 40)
+  assert_eq(t.0.0.0, 10)
+  assert_eq(t.0.0.1, 20)
+  assert_eq(t.0.1, 30)
+  assert_eq(t.1, 40)
+}
+
+; 验证：元组字面量嵌套成员访问
+#Test
+fn test_tuple_nested_member_on_literal() {
+  ; 直接对元组字面量取嵌套元素
+  assert_eq(((1, 2), 3).0.0, 1)
+  assert_eq(((1, 2), 3).0.1, 2)
+}
+
+; 验证：元组基本解构
+#Test
+fn test_tuple_destructure_basic() {
+  ; var (a, b) = (e1, e2) 平铺解构
+  #Mut let (a, b) = (10, 20)
+  assert_eq(a, 10)
+  assert_eq(b, 20)
+}
+
+; 验证：从函数调用返回的元组进行解构
+#Test
+fn test_tuple_destructure_from_call() {
+  ; 解构来自函数返回的元组
+  #Mut let (x, y) = make_pair()
+  assert_eq(x, 1)
+  assert_eq(y, 2)
+}
+
+; 验证：元组解构三元素
+#Test
+fn test_tuple_destructure_three() {
+  ; 三元元组
+  #Mut let (a, b, c) = (1, 2, 3)
+  assert_eq(a, 1)
+  assert_eq(b, 2)
+  assert_eq(c, 3)
+}
+
+; 验证：元组解构与类型标注
+#Test
+fn test_tuple_destructure_with_type_anno() {
+  ; 显式标注整体元组类型
+  #Mut let (a, b) (i32, i32) = (5, 6)
+  assert_eq(a, 5)
+  assert_eq(b, 6)
+}
+
+; 验证：Tuple 解构后元素的可变性
+#Test
+fn test_tuple_destructure_var_mutable() {
+  ; var 解构出来的元素可以再赋值
+  #Mut let (a, b) = (1, 2)
+  a = 100
+  b = 200
+  assert_eq(a, 100)
+  assert_eq(b, 200)
+}
+
+; 验证：元组字面量成员访问
+#Test
+fn test_tuple_member_on_literal() {
+  ; 直接对元组字面量取元素（应在 SSA 上 ExtractValue）
+  assert_eq((100, 200).0, 100)
+  assert_eq((100, 200).1, 200)
+}
+
+; ===== Phase 6 — 元组成员赋值 obj.0 = e =====
+
+; 验证：元组成员赋值
+#Test
+fn test_tuple_member_assign_simple() {
+  #Mut let t (i32, i32) = (1, 2)
+  t.0 = 10
+  t.1 = 20
+  assert_eq(t.0, 10)
+  assert_eq(t.1, 20)
+}
+
+; 验证：元组成员赋值与嵌套修改
+#Test
+fn test_tuple_member_assign_nested() {
+  #Mut let t ((i32, i32), i32) = ((1, 2), 3)
+  t.0.1 = 99
+  t.1 = 7
+  assert_eq(t.0.0, 1)
+  assert_eq(t.0.1, 99)
+  assert_eq(t.1, 7)
+}
+
+; 验证：元组成员复合赋值
+#Test
+fn test_tuple_member_assign_compound() {
+  #Mut let t (i32, i32) = (5, 10)
+  t.0 += 3
+  t.1 *= 2
+  assert_eq(t.0, 8)
+  assert_eq(t.1, 20)
+}
+
+; ==================== 边界测试 ====================
+
+#Test
+fn test_tuple_mixed_types() {
+  ; 验证：混合类型元组（i32, f64, bool）
+  #Mut let t (i32, f64, bool) = (42, 3.14, true)
+  assert_eq(t.0, 42)
+  assert_eq(t.1, 3.14)
+  assert_eq(t.2, true)
+}
+
+#Test
+fn test_tuple_extreme_values() {
+  ; 验证：元组含 i32 边界值
+  #Mut let t (i32, i32) = (-2147483648, 2147483647)
+  assert_eq(t.0, -2147483648)
+  assert_eq(t.1, 2147483647)
+}
+
+#Test
+fn test_tuple_destructure_mixed() {
+  ; 验证：混合类型元组解构
+  #Mut let (a, b, c) = (1, 2.5, true)
+  assert_eq(a, 1)
+  assert_eq(b, 2.5)
+  assert_eq(c, true)
+}
+
+#Test
+fn test_tuple_large_values() {
+  ; 验证：含大 i64 值的元组
+  #Mut let t (i64, i64) = (-9223372036854775808i64, 9223372036854775807i64)
+  assert_eq(t.0, -9223372036854775808i64)
+  assert_eq(t.1, 9223372036854775807i64)
+}
+
+#Test
+fn test_tuple_member_assign_zero() {
+  ; 验证：元组成员赋值为零
+  #Mut let t (i32, i32) = (10, 20)
+  t.0 = 0
+  t.1 = 0
+  assert_eq(t.0, 0)
+  assert_eq(t.1, 0)
+}

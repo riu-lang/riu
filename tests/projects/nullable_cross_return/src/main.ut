@@ -1,0 +1,8 @@
+use riu.core.*
+use lookup.*
+
+fn main() {
+  let r = find_pos(42i64)
+  println(r.has())
+  println(r.get())
+}

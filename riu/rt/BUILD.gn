@@ -1,0 +1,76 @@
+# Copyright (c) 2026. Yin-Jinlong@github
+# MPL-2.0
+
+config("riurt_public") {
+  include_dirs = [ "." ]
+}
+
+# riurt 进 /noentry 的 riu 程序与测试 DLL，不链 CRT。
+# clang-cl 默认 /GS，本地数组（如 sin.c 的 double y[2]）会引用
+# __security_cookie / __security_check_cookie。
+config("riurt_freestanding") {
+  cflags = [ "/GS-" ]
+}
+
+static_library("riurt") {
+  output_name = "riurt"
+  output_dir = "$root_out_dir/lib"
+  public_configs = [ ":riurt_public" ]
+  configs -= [ "//build/config:language_cxx" ]
+  configs += [
+    "//build/config:language_c99",
+    "//build/config:no_autolink",
+    ":riurt_freestanding",
+  ]
+  sources = [
+    "port/win32.c",
+    "mem/alloc.c",
+    "mem/ops.c",
+    "ffi/riu_rc.c",
+    "ffi/riu_nullable.c",
+    "ffi/riu_string.c",
+    "math/__cos.c",
+    "math/__expo2.c",
+    "math/__math_divzero.c",
+    "math/__math_invalid.c",
+    "math/__math_oflow.c",
+    "math/__math_uflow.c",
+    "math/__math_xflow.c",
+    "math/__rem_pio2.c",
+    "math/__rem_pio2_large.c",
+    "math/__sin.c",
+    "math/__tan.c",
+    "math/acos.c",
+    "math/asin.c",
+    "math/atan.c",
+    "math/atan2.c",
+    "math/cbrt.c",
+    "math/ceil.c",
+    "math/cos.c",
+    "math/cosh.c",
+    "math/exp.c",
+    "math/exp_data.c",
+    "math/expm1.c",
+    "math/fabs.c",
+    "math/floor.c",
+    "math/fmod.c",
+    "math/hypot.c",
+    "math/log.c",
+    "math/log1p.c",
+    "math/log10.c",
+    "math/log2.c",
+    "math/log2_data.c",
+    "math/log_data.c",
+    "math/pow.c",
+    "math/pow_data.c",
+    "math/round.c",
+    "math/scalbn.c",
+    "math/sin.c",
+    "math/sinh.c",
+    "math/sqrt.c",
+    "math/sqrt_data.c",
+    "math/tan.c",
+    "math/tanh.c",
+    "math/trunc.c",
+  ]
+}

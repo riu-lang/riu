@@ -1,0 +1,3 @@
+use riu.core.helper
+
+fn main() {}

@@ -1,0 +1,6 @@
+; require-sdk
+; 未 use riu.time：全限定不引入
+
+fn main() {
+  riu.time.sleep_ms(0)  ; check: E6001
+}

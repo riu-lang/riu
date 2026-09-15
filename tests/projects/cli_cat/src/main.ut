@@ -1,0 +1,19 @@
+; cat：读 argv[1] 指向的 UTF-8 文件，原文打到 stdout
+
+use riu.io.*
+
+fn main() {
+  let a Array<String> = args()
+  if a.len() < 2 {
+    eprintln("usage: cat <file>")
+    exit(1)
+  }
+  let path String = copy_of(a[1])
+  try {
+    let s String = read_file(&path)
+    print(s)
+  } catch e IoErr {
+    eprintln("cat: cannot read file")
+    exit(1)
+  }
+}

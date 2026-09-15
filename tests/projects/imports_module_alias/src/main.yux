@@ -1,7 +1,0 @@
-use yux.core.*
-use math
-
-fn main() {
-    println(math.square(7))
-    println(math.cube(3))
-}

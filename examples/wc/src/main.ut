@@ -1,0 +1,116 @@
+; wc — 统计行 / 词 / UTF-8 字节。无文件时读 stdin。
+; 词按 ASCII 空白切开。行 = `\n` 个数；末行无换行时仍计 1 行。
+; 运行：cd examples/wc && riu build && ./build/wc.exe 某文件.txt
+
+use riu.io.*
+
+fn _die(msg String&) {
+  eprintln(msg)
+  exit(1)
+}
+
+fn _utf8_len(text String&) usize {
+  #Mut let n usize = 0
+  loop i usize = 0 {
+    if i >= text.len() {
+      break;
+    }
+    let cp u32 = text.get(i)
+    if cp < 128u32 {
+      n += 1
+    } elif cp < 2048u32 {
+      n += 2
+    } elif cp < 65536u32 {
+      n += 3
+    } else {
+      n += 4
+    }
+    i += 1
+  }
+  n
+}
+
+fn _count(text String&) (usize, usize, usize) {
+  #Mut let lines usize = 0
+  #Mut let words usize = 0
+  #Mut let in_word bool = false
+  let n usize = text.len()
+  loop i usize = 0 {
+    if i >= n {
+      break;
+    }
+    let cp u32 = text.get(i)
+    if cp == 10 {
+      lines += 1
+    }
+    if cp.is_ascii_ws() {
+      in_word = false
+    } elif !in_word {
+      in_word = true
+      words += 1
+    }
+    i += 1
+  }
+  if n > 0 && text.get(n - 1) != 10 {
+    lines += 1
+  }
+  (lines, words, _utf8_len(text))
+}
+
+fn _print(lines usize, words usize, bytes usize, name String&) {
+  if name.is_empty() {
+    println("${lines} ${words} ${bytes}")
+  } else {
+    println("${lines} ${words} ${bytes} ${name}")
+  }
+}
+
+fn _read_stdin() String {
+  #Mut let parts Array<String> = []
+  loop {
+    let line String = try {
+      read_line()
+    } catch e IoErr {
+      break;
+    }
+    parts.push(line)
+  }
+  String::join(&parts, "\n")
+}
+
+fn main() {
+  let argv Array<String> = args()
+  if argv.len() < 2 {
+    let text String = _read_stdin()
+    let (lines, words, bytes) = _count(&text)
+    let empty String = ""
+    _print(lines, words, bytes, &empty)
+    ret;
+  }
+  #Mut let tot_l usize = 0
+  #Mut let tot_w usize = 0
+  #Mut let tot_b usize = 0
+  #Mut let i usize = 1
+  loop {
+    if i >= argv.len() {
+      break;
+    }
+    let path String = copy_of(argv[i])
+    let text String = try {
+      read_file(&path)
+    } catch e IoErr {
+      _die("wc: cannot read ${path}")
+      ""
+    }
+    let (lines, words, bytes) = _count(&text)
+    _print(lines, words, bytes, &path)
+    tot_l += lines
+    tot_w += words
+    tot_b += bytes
+    i += 1
+  }
+  if argv.len() > 2 {
+    let total String = "total"
+    _print(tot_l, tot_w, tot_b, &total)
+  }
+}

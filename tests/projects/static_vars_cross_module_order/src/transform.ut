@@ -1,0 +1,16 @@
+; transform 模块：依赖 base 模块的全局变量
+; transform 的 _riu_global_init_transform 必须在 base 之后执行
+
+use base.*
+
+; 依赖 base::BASE_VAL 和 base::BASE_MULT 初始化后才能正确计算
+let DERIVED_VAL i32 = get_base_val() * get_base_mult()
+let DERIVED_OFFSET i32 = DERIVED_VAL + 100
+
+fn get_derived_val() i32 {
+  ret DERIVED_VAL
+}
+
+fn get_derived_offset() i32 {
+  ret DERIVED_OFFSET
+}

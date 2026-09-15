@@ -1,0 +1,21 @@
+; 多模块声明同一 C 签名不冲突。裸名走本地，限定名走其它模块；LLVM 同一 C 符号。
+
+use riu.core.*
+use helper
+
+extern {
+  fn GetStdHandle(nStdHandle i32) Ptr
+}
+
+fn flag(p Ptr) i32 {
+  let n u64 = p.to_int()
+  if n == 0 {
+    ret 0
+  }
+  ret 1
+}
+
+fn main() {
+  println(flag(GetStdHandle(-11)))
+  println(flag(helper.GetStdHandle(-12)))
+}

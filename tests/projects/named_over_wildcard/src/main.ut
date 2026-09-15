@@ -1,0 +1,19 @@
+use riu.core.*
+use a.*
+use b.Ty
+
+fn main() {
+  let t = Ty {
+    .y = 7
+  }
+  let fromA = a.Ty {
+    .x = 3
+  }
+  let fromB = b.Ty {
+    .y = 4
+  }
+  println(t.y)
+  println(fromA.x)
+  println(fromB.y)
+  println(mark_a())
+}

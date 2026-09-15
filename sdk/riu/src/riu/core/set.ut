@@ -1,0 +1,41 @@
+; riu SDK - Set<T>
+; 纯 riu：内嵌 Map<T, bool> 去重。T 与 Map 键相同（标量或 String）。
+; keys() 返回克隆的 Array<T>；遍历不借出 Set 内部存储。
+
+#NoCopy
+struct Set<T> {
+  _items Map<T, bool>
+
+  #Static
+  fn make() Self {
+    Self { Map:<T, bool>::make() }
+  }
+
+  fn insert(item T) {
+    $._items.insert(item, true)
+  }
+
+  fn contains(item T&) bool {
+    $._items.contains(item)
+  }
+
+  fn remove(item T&) bool {
+    $._items.remove(item).has()
+  }
+
+  fn len() usize {
+    $._items.len()
+  }
+
+  fn is_empty() bool {
+    $._items.is_empty()
+  }
+
+  fn keys() Array<T> {
+    $._items.keys()
+  }
+
+  fn clear() {
+    $._items.clear()
+  }
+}

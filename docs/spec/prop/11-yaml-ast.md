@@ -12,7 +12,7 @@ YAML AST、深拷编译器会话、进程内并行 SemaPass。
 
 ## 评估
 
-- 反对：模块 `.decl` 已够用；进程内并行 SemaPass 不承诺
+- 反对：模块 `.ud` 已够用；进程内并行 SemaPass 不承诺
 
 ## 决定
 

@@ -1,7 +1,7 @@
 # 附录 D：诊断与错误码
 
-> 权威来源：[`yux/include/error_code.h`](../../yux/include/error_code.h) 的 `ErrorCode::E####` 与
-> [`yux/frontend/tools/diagnostic.{h,cpp}`](../../yux/frontend/tools/diagnostic.cpp) 的 `Diagnostic` / `DiagnosticEngine`。
+> 权威来源：[`riu/include/error_code.h`](../../riu/include/error_code.h) 的 `ErrorCode::E####` 与
+> [`riu/frontend/tools/diagnostic.{h,cpp}`](../../riu/frontend/tools/diagnostic.cpp) 的 `Diagnostic` / `DiagnosticEngine`。
 > 本附录是规范化摘录，与上述源码冲突时**应当**修订本附录。
 
 本附录约定编译器面向用户输出的诊断信息形态、错误码段位与全量码表。运行时诊断（panic、栈回溯等）不在本附录范围。
@@ -32,11 +32,11 @@ N | <源码行原文>
 
 ### D.1.2 多条诊断
 
-实现采用**文件级聚合**：单个 `.yux` 文件内首次抛出 `YuxError` 仍会终止该文件的后续阶段，但**不会**让整个构建立即退出；驱动层会继续尝试编译其余模块，最后再以非零退出码结束。这样多个文件中的错误可以在一次编译中一起呈现，便于一次性看清问题面。
+实现采用**文件级聚合**：单个 `.ut` 文件内首次抛出 `RiuError` 仍会终止该文件的后续阶段，但**不会**让整个构建立即退出；驱动层会继续尝试编译其余模块，最后再以非零退出码结束。这样多个文件中的错误可以在一次编译中一起呈现，便于一次性看清问题面。
 
 约束：
 
-- 同一 `.yux` 文件内的多条诊断不强求；首条错误后该文件不再继续。
+- 同一 `.ut` 文件内的多条诊断不强求；首条错误后该文件不再继续。
 - 跨文件的诊断顺序**应当**与 `loadOrder()` 一致（主模块在前，导入模块按拓扑顺序）。
 - 链接阶段在任一模块 codegen 失败时**应当**被跳过。
 
@@ -49,7 +49,7 @@ N | <源码行原文>
 | E2xxx | 语法 / AST 结构     | §2     | 文法接受但语义级 AST 构造拒绝；纯文法错误归 E1xxx   |
 | E3xxx | 类型                | §3 §4  | 类型不匹配 / 符号查找 / 字段访问 / 泛型实参等       |
 | E4xxx | 所有权 / 借用       | §8     | `T&` 借用合法性、`$` 字段 DA/DAA、构造器返回限制    |
-| E5xxx | 模块 / 包           | §10    | `yux.toml` 解析、模块发现、循环依赖、`pkg` 可见性 |
+| E5xxx | 模块 / 包           | §10    | `riu.toml` 解析、模块发现、循环依赖、`pkg` 可见性 |
 | E6xxx | 内置 / 调用         | §6 §9  | 函数 / 方法调用、`#Builtin`、内置类型方法     |
 | E7xxx | 错误处理 / panic    | §6 §8  | `#Fallible` / `!` / try-catch / `#NoReturn` / `panic` 边界（详见 DRAFT-错误.md / 待 spec 落地后补 §引用） |
 | E11xx | draft / 接口        | §12    | draft 实现穷尽性 / `#DraftLike` 误用 / orphan / 边界 |
@@ -58,13 +58,13 @@ N | <源码行原文>
 
 ## D.3 错误码表
 
-下表列出当前所有已分配的错误码及其消息模板。模板使用 `std::vformat` 占位符 `{}`，按 `throw YuxError(loc, ec, args...)` 站点（或 `SyntaxErrorListener::syntaxError`）提供的实参顺序填入。
+下表列出当前所有已分配的错误码及其消息模板。模板使用 `std::vformat` 占位符 `{}`，按 `throw RiuError(loc, ec, args...)` 站点（或 `SyntaxErrorListener::syntaxError`）提供的实参顺序填入。
 
 > 表中的"模板"列与 [`include/error_code.h`](../../include/error_code.h) 的 `DEF_ERR(code, msg)` 字面同步；任何修改**应当**两处一并完成。
 
 ### D.3.1 E1xxx — 词法 / 文法（ANTLR）
 
-由 `SyntaxErrorListener`（`yux/frontend/tools/syntax_error_listener.{h,cpp}`）接管 ANTLR 默认 ConsoleErrorListener，按 `recognizer` 是否为 `antlr4::Lexer` 派发：
+由 `SyntaxErrorListener`（`riu/frontend/tools/syntax_error_listener.{h,cpp}`）接管 ANTLR 默认 ConsoleErrorListener，按 `recognizer` 是否为 `antlr4::Lexer` 派发：
 
 | 码     | 模板                  | 触发                                  |
 |--------|-----------------------|---------------------------------------|
@@ -79,7 +79,7 @@ N | <源码行原文>
 |--------|------|
 | E2001 | `Weak<T>? is forbidden: Weak is natively nullable (upgrade returns Rc<T>?)` |
 | E2002 | `buildTypeWithRef: unknown typeWithRef alternative` |
-| E2003 | `module \`{}\` is ambiguous: both \`{}.yux\` and \`{}/\` exist` |
+| E2003 | `module \`{}\` is ambiguous: both \`{}.ut\` and \`{}/\` exist` |
 | E2004 | `module alias \`{}\` conflicts with existing symbol` |
 | E2005 | `Unknown build annotation \`#{}\`` |
 | E2006 | `Function \`{}\` has no body; only \`#Builtin\` functions may omit the body` |
@@ -90,7 +90,7 @@ N | <源码行原文>
 | E2011 | `Build annotation \`#{}\` is not allowed on this declaration (only \`fn\` accepts it)` |
 | E2012 | `\`#Test\` function \`{}\` must have signature \`fn {}(): void\` (no params, no return type, must have body)` |
 | E2013 | `\`#Test\` and \`#Builtin\` cannot both be applied to function \`{}\`` |
-| E2014 | `\`#Test\` is only allowed in \`*.test.yux\` files; \`{}\` is not a test file` |
+| E2014 | `\`#Test\` is only allowed in \`*.test.ut\` files; \`{}\` is not a test file` |
 | E2015 | `draft bounds (\`: D\`) are only allowed at declaration sites (fn/struct/draft generic params); not at type references or call-point turbofish` |
 | E2016 | `Type alias \`{}\` forms a cycle (recursive without indirection)` |
 | E2017 | `Type alias name \`{}\` conflicts with existing {} \`{}\`` |
@@ -315,20 +315,20 @@ for-in（E3160；§5.5.4）：
 
 | 码     | 模板 |
 |--------|------|
-| E5001 | `yux.toml not found in {}` |
-| E5002 | `yux.toml is missing required field \`name\`` |
-| E5003 | `yux.toml field \`name\` must be a string` |
-| E5004 | `yux.toml field \`name\` must not be empty` |
-| E5005 | `yux.toml \`lib\` must be a table` |
-| E5006 | `yux.toml \`lib.type\` must be "static" or "dynamic"` |
-| E5007 | `yux.toml \`lib.type="dynamic"\` not yet supported` |
-| E5008 | `yux.toml \`[lib]\` and \`entry\` are mutually exclusive` |
-| E5009 | `failed to parse yux.toml: {}` |
+| E5001 | `riu.toml not found in {}` |
+| E5002 | `riu.toml is missing required field \`name\`` |
+| E5003 | `riu.toml field \`name\` must be a string` |
+| E5004 | `riu.toml field \`name\` must not be empty` |
+| E5005 | `riu.toml \`lib\` must be a table` |
+| E5006 | `riu.toml \`lib.type\` must be "static" or "dynamic"` |
+| E5007 | `riu.toml \`lib.type="dynamic"\` not yet supported` |
+| E5008 | `riu.toml \`[lib]\` and \`entry\` are mutually exclusive` |
+| E5009 | `failed to parse riu.toml: {}` |
 | E5010 | `syntax errors in {}` |
 | E5011 | `circular module import: {}` |
 | E5012 | `module not found: {} (expected file {})` |
-| E5013 | `yux.toml \`entry\` must be a relative path under \`src/\`, got absolute path: {}` |
-| E5014 | `yux.toml \`entry\` resolves outside \`src/\` (\`{}\`): convention is that all sources live under \`src/\`; obj path layout may also be inconsistent`（默认 warning） |
+| E5013 | `riu.toml \`entry\` must be a relative path under \`src/\`, got absolute path: {}` |
+| E5014 | `riu.toml \`entry\` resolves outside \`src/\` (\`{}\`): convention is that all sources live under \`src/\`; obj path layout may also be inconsistent`（默认 warning） |
 | E5015 | `ambiguous bare name \`{}\`: candidates {}` |
 | E5016 | `cannot use module or package \`{}\` as a value` |
 | E5017 | `cannot use type \`{}\` as a value` |
@@ -386,7 +386,7 @@ Array 内置方法（E6042）：
 
 ### D.3.7 E7xxx — 错误处理 / panic（草案，待 spec 落地）
 
-> 由 `DRAFT-错误.md` 引入；落地章节为 §6 函数（`#Fallible`）、§4 表达式（`!` 后缀 / `tryExpr`）、§8 panic（待新建或并入相关章节）。E7001-E7014 默认严重度 = `error`；E7015-E7018 默认严重度 = `warning`。所有码挂诊断回归用例 `tests/cases/diag_throw_*.yux`（实施期落地）。
+> 由 `DRAFT-错误.md` 引入；落地章节为 §6 函数（`#Fallible`）、§4 表达式（`!` 后缀 / `tryExpr`）、§8 panic（待新建或并入相关章节）。E7001-E7014 默认严重度 = `error`；E7015-E7018 默认严重度 = `warning`。所有码挂诊断回归用例 `tests/cases/diag_throw_*.ut`（实施期落地）。
 
 | 码     | 模板（占位） | 触发 |
 |--------|-------------|------|
@@ -444,7 +444,7 @@ Array 内置方法（E6042）：
 
 ## D.4 与编译流程的关系
 
-诊断由 `DiagnosticEngine::renderYuxError` 把 `YuxError`（携带 `SourceLocation` + `ErrorCodeDef`）渲染为 D.1 形态。当前各阶段的接入情况：
+诊断由 `DiagnosticEngine::renderRiuError` 把 `RiuError`（携带 `SourceLocation` + `ErrorCodeDef`）渲染为 D.1 形态。当前各阶段的接入情况：
 
 | 阶段                | 入口                                | 是否上诊断 |
 |---------------------|-------------------------------------|------------|
@@ -452,7 +452,7 @@ Array 内置方法（E6042）：
 | AST 构造            | `ASTBuilder`                        | 已接入（E2xxx 主体） |
 | 借用检查            | `BorrowChecker` / 构造器 DAA        | 已接入（E4xxx）       |
 | 类型检查 / 代码生成 | `Compiler*`                         | 已接入（E3xxx / E6xxx 主体） |
-| 模块加载            | `Yux::loadModule` 等                | 已接入（E5xxx）       |
+| 模块加载            | `Riu::loadModule` 等                | 已接入（E5xxx）       |
 | 入口驱动            | `main.cpp::reportRuntimeError`      | 统一 catch，上诊断    |
 
 ## D.5 严重度策略与 CLI 开关
@@ -461,11 +461,11 @@ Array 内置方法（E6042）：
 
 每个错误码（`ErrorCode::EXXXX`）在 `include/error_code.h` 的 `DEF_ERR` / `DEF_WARN` / `DEF_NOTE` 宏中携带 `defaultSev`。当前所有码段（E1xxx..E6xxx / E11xx）默认 `Error`；E5xxx 中 E5014 默认 `Warning`；E7xxx 中 E7001-E7014 默认 `Error`、E7015-E7018 默认 `Warning`（DRAFT-错误.md 引入）；其余 `Warning` / `Note` 段为后续 D.5 规划保留（如未使用变量、可疑类型转换等）。
 
-默认 `Warning` 的码经 `DiagnosticEngine::emit` 非抛出发射：渲染到 stderr 后继续编译；`-Werror` / `--deny=<code>` 把其升级为 `Error` 时，emit 不重复渲染，直接抛 `YuxError` 走顶层 `renderYuxError` 路径，保持"首条 error 终止当前文件"协议。
+默认 `Warning` 的码经 `DiagnosticEngine::emit` 非抛出发射：渲染到 stderr 后继续编译；`-Werror` / `--deny=<code>` 把其升级为 `Error` 时，emit 不重复渲染，直接抛 `RiuError` 走顶层 `renderRiuError` 路径，保持"首条 error 终止当前文件"协议。
 
 ### D.5.2 CLI 开关
 
-驱动层 `yux` / `yux build` 接受以下选项（每项可重复多次）：
+驱动层 `riu` / `riu build` 接受以下选项（每项可重复多次）：
 
 | 选项                 | 语义                                               |
 |----------------------|----------------------------------------------------|
@@ -478,29 +478,29 @@ Array 内置方法（E6042）：
 
 ### D.5.3 不可降级原则
 
-默认严重度为 `error` 的码**不允许**通过 `--warn` / `--allow` 降级；尝试降级时驱动层**应当**忽略该覆盖并打印 `warning: cannot downgrade error code 'EXXXX' (default severity is error); --allow ignored` 的提示。原因：当前实现在 `Compiler::compile` 中遇到首个 `YuxError` 即抛出退出该文件，没有错误恢复机制；强行把 error 当 warning 会让后续 IR 在不一致状态下继续生成。
+默认严重度为 `error` 的码**不允许**通过 `--warn` / `--allow` 降级；尝试降级时驱动层**应当**忽略该覆盖并打印 `warning: cannot downgrade error code 'EXXXX' (default severity is error); --allow ignored` 的提示。原因：当前实现在 `Compiler::compile` 中遇到首个 `RiuError` 即抛出退出该文件，没有错误恢复机制；强行把 error 当 warning 会让后续 IR 在不一致状态下继续生成。
 
 未来如果某些码引入错误恢复路径，**可以**把它们从默认 `Error` 重新挂为 `Warning`（在 `DEF_WARN` 中重新声明），从而获得"可降级 / 默认仍报错"的双重特性。
 
 ### D.5.4 路线图（*informative*）
 
 - **高频场景 提示/修复建议**（原 v0.3 Phase 5）：
-  - **A 阶段（已落地）**：诊断渲染支持 `= help: ...` 与 `= note: ...`；`YuxError` 通过链式 `withHint` / `withNote` 携带。
+  - **A 阶段（已落地）**：诊断渲染支持 `= help: ...` 与 `= note: ...`；`RiuError` 通过链式 `withHint` / `withNote` 携带。
     已在 E2001（`Weak<T>?`）、E3078（`Weak == / !=`）、E3017 / E3018 / E3019 / E4001 / E4004（`T&`
     初始化与借用形态）、E2006 / E2007（缺函数体 vs `#Builtin`）、E6010 / E6011（泛型实参个数）以及
     E1002（`SyntaxErrorListener` 对常见 `';'` / `mismatched input` / `extraneous input` 等模式）站点附了简单 hint。
-    回归位于 `tests/cases/diag_*.yux`。
-  - **B 阶段（已落地）**：未声明标识符的拼写近似建议（Levenshtein ≤ 2）。`yux/analyzer/symbol_suggest.{h,cpp}` 沿
+    回归位于 `tests/cases/diag_*.ut`。
+  - **B 阶段（已落地）**：未声明标识符的拼写近似建议（Levenshtein ≤ 2）。`riu/analyzer/symbol_suggest.{h,cpp}` 沿
     `ScopeNode` 父链汇总可见变量与函数名，对 E3030 / E3031 / E3032 抛出处给出最近 1–3 个候选，组装为
-    `did you mean ...` 风格的 `= help:` 行；候选为空时不附 hint。回归位于 `tests/cases/diag_suggest_var.{yux,expected_err}`。
+    `did you mean ...` 风格的 `= help:` 行；候选为空时不附 hint。回归位于 `tests/cases/diag_suggest_var.{riu,expected_err}`。
   - **后续候选场景（待启）**：类型不匹配时的 `.to_<type>()` 候选；`extern` 签名不匹配；字段拼写近似（E304x）等。
 
 ## D.6 诊断回归测试
 
-诊断测试用例位于 `tests/cases/diag_*.yux`，配对 `*.expected_err`。测试运行器规则：
+诊断测试用例位于 `tests/cases/diag_*.ut`，配对 `*.expected_err`。测试运行器规则：
 
-- 编译必须以非零退出码结束；若 yux 意外编译成功（生成 `.exe`），用例失败。
-- `expected_err` 中以 `;` 开头或全空白的行是注释/空行；其余每一非空行视为**子串断言**：该字符串必须出现在 yux 进程的 stderr/stdout（合并视图）中。
+- 编译必须以非零退出码结束；若 riu 意外编译成功（生成 `.exe`），用例失败。
+- `expected_err` 中以 `;` 开头或全空白的行是注释/空行；其余每一非空行视为**子串断言**：该字符串必须出现在 riu 进程的 stderr/stdout（合并视图）中。
 - 不强求行的出现顺序、不约束未列出的额外诊断；这一形态便于断言"必须命中"的关键内容（错误码、文件:行:列、关键消息片段），而对源码片段、对齐空白、绝对路径前缀保持鲁棒。
 
 每个用例**应当**至少断言 `<basename>:line:col [Exxxx] error:` 这条诊断头，使得错误码、定位与消息文本三者中任一回归都能被捕获。

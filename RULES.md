@@ -1,8 +1,8 @@
 # RULES
 
-每会话入口（`AGENTS.md` → 本文件）。不要擅自改任务方向；卡住就停下来问。规范没写 = 不允许。不要用 Rust / C++ / Go 语义套 yux。
+每会话入口（`AGENTS.md` → 本文件）。不要擅自改任务方向；卡住就停下来问。规范没写 = 不允许。不要用 Rust / C++ / Go 语义套 riu。
 
-`yux/ast/yux*.g4` **只读**。任务看起来要改语法 → 立刻停，列问题给用户。权威：g4 + 编译器源码 > docs（冲突时改 docs）。路径 / 测试名 / 命令参数查实际文件，不凭命名猜。
+`riu/ast/riu*.g4` **只读**。任务看起来要改语法 → 立刻停，列问题给用户。权威：g4 + 编译器源码 > docs（冲突时改 docs）。路径 / 测试名 / 命令参数查实际文件，不凭命名猜。
 
 ## 工作文件
 
@@ -47,40 +47,40 @@
 
 | 场景 | 文件 |
 |------|------|
-| 写 `*.yux` | [rules/yux-syntax.md](rules/yux-syntax.md) |
-| 改 `yux/frontend/sema/` 或 `yux/yux/compiler/` | [rules/sema-codegen.md](rules/sema-codegen.md) |
+| 写 `*.ut` | [rules/riu-syntax.md](rules/riu-syntax.md) |
+| 改 `riu/frontend/sema/` 或 `riu/riu/compiler/` | [rules/sema-codegen.md](rules/sema-codegen.md) |
 | 改语言特性 / 语法 / ABI | [rules/spec-writeback.md](rules/spec-writeback.md) |
-| CLI / 脚本参数 | `yux --help`、`yux build --help`、`./build.ps1 --help` 等，不维护手册 md |
+| CLI / 脚本参数 | `riu --help`、`riu build --help`、`./build.ps1 --help` 等，不维护手册 md |
 
 ## 环境 / 构建
 
-Windows + Clang（无 MSVC 作编译器；仍需 VS 的 Windows SDK / STL）。`build/windows/x64/debug/bin` 在 PATH。`yux-check` 独立 exe，`./build.ps1 yux` 不会编它。`yux` 只有 `build` / `test` / `format`，没有 `yux file.yux`；仓库根没有 `yux.toml`，`yux build` / `yux test` 不能在仓库根跑。
+Windows + Clang（无 MSVC 作编译器；仍需 VS 的 Windows SDK / STL）。`build/windows/x64/debug/bin` 在 PATH。`riu-check` 独立 exe，`./build.ps1 riu` 不会编它。`riu` 只有 `build` / `test` / `format`，没有 `riu file.ut`；仓库根没有 `riu.toml`，`riu build` / `riu test` 不能在仓库根跑。
 
 | 改动 | 重编 |
 |------|------|
-| `yux/yux/compiler/` | `./build.ps1 yux` |
-| `yux/frontend/` | `./build.ps1 yux yux-check` |
-| `yux/ast/` | `./build.ps1 yux yux-check yux-ast` |
-| `yux/lsp/` | `./build.ps1 yux-lsp` |
-| `yux/test-runner/` | `./build.ps1 yux-test-runner` |
-| `yux/ast/yux*.g4` | `./gen-antlr.ps1` → 上面全部 |
+| `riu/riu/compiler/` | `./build.ps1 riu` |
+| `riu/frontend/` | `./build.ps1 riu riu-check` |
+| `riu/ast/` | `./build.ps1 riu riu-check riu-ast` |
+| `riu/lsp/` | `./build.ps1 riu-lsp` |
+| `riu/test-runner/` | `./build.ps1 riu-test-runner` |
+| `riu/ast/riu*.g4` | `./gen-antlr.ps1` → 上面全部 |
 
-新 `.cpp` / `.h` 写入对应 `BUILD.gn` 的 `sources`，否则 ninja 编不到。不手改 `yux/ast/gen/`（只许 `./gen-antlr.ps1`）。`frontend` / `check` / `lsp` / `ast` / `analyzer` 不加 LLVM。
+新 `.cpp` / `.h` 写入对应 `BUILD.gn` 的 `sources`，否则 ninja 编不到。不手改 `riu/ast/gen/`（只许 `./gen-antlr.ps1`）。`frontend` / `check` / `lsp` / `ast` / `analyzer` 不加 LLVM。
 
 ## 验证
 
 | 做什么 | cwd | 命令 |
 |--------|-----|------|
-| 单文件诊断 | 任意 | `yux-check <file.yux>` |
-| 诊断回归 | 仓库根 | `yux-check test tests/check-cases/`（子集 `diag_*` / `**/*`；`*` 不跨目录，递归用 `**`，无 `-r`） |
-| SDK `#Test` | `sdk/yux/` | `yux test`（`--verbose` / `--test-mod <M>` / `--threads N`） |
+| 单文件诊断 | 任意 | `riu-check <file.ut>` |
+| 诊断回归 | 仓库根 | `riu-check test tests/check-cases/`（子集 `diag_*` / `**/*`；`*` 不跨目录，递归用 `**`，无 `-r`） |
+| SDK `#Test` | `sdk/riu/` | `riu test`（`--verbose` / `--test-mod <M>` / `--threads N`） |
 | 项目回归 | 仓库根 | `./build.ps1 test`（`-Jobs 1` 串行） |
 
 中途：改了什么跑什么。收尾：先按「改动 / 重编」把 exe 编好，再跑上表三套回归。
 
-测试崩溃：DLL 无摘要行 → 在 `sdk/yux/` 下 `--verbose` → `--test-mod` → `yux build --test -d`。
+测试崩溃：DLL 无摘要行 → 在 `sdk/riu/` 下 `--verbose` → `--test-mod` → `riu build --test -d`。
 
-改完 C++ 立刻 `./format.ps1`；完成修改+测试通过后 `./lint.ps1` **0 warnings**。注释中文；`// ====` 分区；未完成 / 待验证写 `// TODO:`。新诊断码：`yux/include/error_code.h` 段内递增；用户能看到才按 spec-writeback 同步附录 D。
+改完 C++ 立刻 `./format.ps1`；完成修改+测试通过后 `./lint.ps1` **0 warnings**。注释中文；`// ====` 分区；未完成 / 待验证写 `// TODO:`。新诊断码：`riu/include/error_code.h` 段内递增；用户能看到才按 spec-writeback 同步附录 D。
 
 ## 加测试
 
@@ -88,9 +88,9 @@ Windows + Clang（无 MSVC 作编译器；仍需 VS 的 Windows SDK / STL）。`
 
 | 测什么 | 放哪 | 形态 |
 |--------|------|------|
-| SDK / 运行时 | `sdk/yux/src/**/*.test.yux` | `#Test fn`；`sdk/yux/` 下 `yux test` |
+| SDK / 运行时 | `sdk/riu/src/**/*.test.ut` | `#Test fn`；`sdk/riu/` 下 `riu test` |
 | 诊断（sema，单文件） | `tests/check-cases/` | 行尾 `; check: E1234`（可多个码）；无错则无注解；习惯名 `diag_*` / `*_ok` |
-| 整项目编跑 | `tests/projects/<name>/` | `yux.toml` + `expected.txt`（stdout） |
+| 整项目编跑 | `tests/projects/<name>/` | `riu.toml` + `expected.txt`（stdout） |
 | 预期编译失败 | 同上 | `expected_fail.txt`（对照 stderr） |
 | 格式化 | 同上 | `expected_format/` |
 
@@ -99,18 +99,18 @@ Windows + Clang（无 MSVC 作编译器；仍需 VS 的 Windows SDK / STL）。`
 ## 目录
 
 ```
-yux/                 构建子系统（各自 BUILD.gn）
-  yux/compiler/      LLVM IR（yux.exe）
-  yux/cli/           build / test / format
+riu/                 构建子系统（各自 BUILD.gn）
+  riu/compiler/      LLVM IR（riu.exe）
+  riu/cli/           build / test / format
   include/           公共头（error_code.h 等）
-  rt/                C99 运行时 yuxrt.lib
-  ast/               ANTLR4 + AST；gen/ 与 yux*.g4 不要手改
+  rt/                C99 运行时 riurt.lib
+  ast/               ANTLR4 + AST；gen/ 与 riu*.g4 不要手改
   analyzer/          语义分析器
   frontend/          sema + tools + formatter（0 LLVM）
-  check/             yux-check
-  lsp/               yux-lsp
-  test-runner/       yux test 内部 spawn
-sdk/yux/src/yux/core/  自举 runtime + *.test.yux
+  check/             riu-check
+  lsp/               riu-lsp
+  test-runner/       riu test 内部 spawn
+sdk/riu/src/riu/core/  自举 runtime + *.test.ut
 docs/spec/           语言规范；docs/dev/ 旧实施日志（只读归档）
 notes/               本版落地
 examples/            用户示例（非回归）

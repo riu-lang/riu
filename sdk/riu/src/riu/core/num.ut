@@ -1,0 +1,1543 @@
+; riu SDK - 内置数字类型（i8/u8/i16/u16/i32/u32/i64/u64/isize/usize/f64/f32）
+; 编译器特例化：方法体由 #Builtin 标注，编译器在调用点合成 IR
+; to_<类型> 方法、算术/比较/位/一元运算符均为编译器 intrinsic
+
+#Impl(Number)
+#Impl(ToString)
+#Builtin
+struct i8 {
+  #Cval
+  #Inline
+  MAX i8 = 127
+
+  #Cval
+  #Inline
+  MIN i8 = -128
+
+  #Builtin
+  fn to_i8() i8
+
+  #Builtin
+  fn to_u8() u8
+
+  #Builtin
+  fn to_i16() i16
+
+  #Builtin
+  fn to_u16() u16
+
+  #Builtin
+  fn to_i32() i32
+
+  #Builtin
+  fn to_u32() u32
+
+  #Builtin
+  fn to_i64() i64
+
+  #Builtin
+  fn to_u64() u64
+
+  #Builtin
+  fn to_f64() f64
+
+  #Builtin
+  fn to_f32() f32
+
+  #Builtin
+  fn to_bool() bool
+
+  ; 算术运算符
+  #Builtin
+  fn plus(other i8) i8
+
+  #Builtin
+  fn minus(other i8) i8
+
+  #Builtin
+  fn mul(other i8) i8
+
+  #Builtin
+  fn div(other i8) i8
+
+  #Builtin
+  fn mod(other i8) i8
+
+  ; 比较运算符
+  #Builtin
+  fn eq(other i8) bool
+
+  #Builtin
+  fn ne(other i8) bool
+
+  #Builtin
+  fn lt(other i8) bool
+
+  #Builtin
+  fn le(other i8) bool
+
+  #Builtin
+  fn gt(other i8) bool
+
+  #Builtin
+  fn ge(other i8) bool
+
+  ; 位运算符
+  #Builtin
+  fn and(other i8) i8
+
+  #Builtin
+  fn and(other i8&) i8
+
+  #Builtin
+  fn or(other i8) i8
+
+  #Builtin
+  fn or(other i8&) i8
+
+  #Builtin
+  fn xor(other i8) i8
+
+  #Builtin
+  fn xor(other i8&) i8
+
+  #Builtin
+  fn shl(other i8) i8
+
+  #Builtin
+  fn shl(other i8&) i8
+
+  #Builtin
+  fn shr(other i8) i8
+
+  #Builtin
+  fn shr(other i8&) i8
+
+  ; 一元运算符
+  #Builtin
+  fn neg() i8
+
+  #Builtin
+  fn inv() i8
+
+  fn to_string() String {
+    $.to_i64().to_string()
+  }
+}
+
+#Impl(Number)
+#Impl(ToString)
+#Builtin
+struct u8 {
+  #Cval
+  #Inline
+  MAX u8 = 255
+
+  #Cval
+  #Inline
+  MIN u8 = 0
+
+  #Builtin
+  fn to_i8() i8
+
+  #Builtin
+  fn to_u8() u8
+
+  #Builtin
+  fn to_i16() i16
+
+  #Builtin
+  fn to_u16() u16
+
+  #Builtin
+  fn to_i32() i32
+
+  #Builtin
+  fn to_u32() u32
+
+  #Builtin
+  fn to_i64() i64
+
+  #Builtin
+  fn to_u64() u64
+
+  #Builtin
+  fn to_f64() f64
+
+  #Builtin
+  fn to_f32() f32
+
+  #Builtin
+  fn to_bool() bool
+
+  ; 算术运算符
+  #Builtin
+  fn plus(other u8) u8
+
+  #Builtin
+  fn minus(other u8) u8
+
+  #Builtin
+  fn mul(other u8) u8
+
+  #Builtin
+  fn div(other u8) u8
+
+  #Builtin
+  fn mod(other u8) u8
+
+  ; 比较运算符
+  #Builtin
+  fn eq(other u8) bool
+
+  #Builtin
+  fn ne(other u8) bool
+
+  #Builtin
+  fn lt(other u8) bool
+
+  #Builtin
+  fn le(other u8) bool
+
+  #Builtin
+  fn gt(other u8) bool
+
+  #Builtin
+  fn ge(other u8) bool
+
+  ; 位运算符
+  #Builtin
+  fn and(other u8) u8
+
+  #Builtin
+  fn and(other u8&) u8
+
+  #Builtin
+  fn or(other u8) u8
+
+  #Builtin
+  fn or(other u8&) u8
+
+  #Builtin
+  fn xor(other u8) u8
+
+  #Builtin
+  fn xor(other u8&) u8
+
+  #Builtin
+  fn shl(other u8) u8
+
+  #Builtin
+  fn shl(other u8&) u8
+
+  #Builtin
+  fn shr(other u8) u8
+
+  #Builtin
+  fn shr(other u8&) u8
+
+  ; 一元运算符
+  #Builtin
+  fn neg() u8
+
+  #Builtin
+  fn inv() u8
+
+  fn to_string() String {
+    $.to_u64().to_string()
+  }
+}
+
+#Impl(Number)
+#Impl(ToString)
+#Builtin
+struct i16 {
+  #Cval
+  #Inline
+  MAX i16 = 32767
+
+  #Cval
+  #Inline
+  MIN i16 = -32768
+
+  #Builtin
+  fn to_i8() i8
+
+  #Builtin
+  fn to_u8() u8
+
+  #Builtin
+  fn to_i16() i16
+
+  #Builtin
+  fn to_u16() u16
+
+  #Builtin
+  fn to_i32() i32
+
+  #Builtin
+  fn to_u32() u32
+
+  #Builtin
+  fn to_i64() i64
+
+  #Builtin
+  fn to_u64() u64
+
+  #Builtin
+  fn to_f64() f64
+
+  #Builtin
+  fn to_f32() f32
+
+  #Builtin
+  fn to_bool() bool
+
+  ; 算术运算符
+  #Builtin
+  fn plus(other i16) i16
+
+  #Builtin
+  fn minus(other i16) i16
+
+  #Builtin
+  fn mul(other i16) i16
+
+  #Builtin
+  fn div(other i16) i16
+
+  #Builtin
+  fn mod(other i16) i16
+
+  ; 比较运算符
+  #Builtin
+  fn eq(other i16) bool
+
+  #Builtin
+  fn ne(other i16) bool
+
+  #Builtin
+  fn lt(other i16) bool
+
+  #Builtin
+  fn le(other i16) bool
+
+  #Builtin
+  fn gt(other i16) bool
+
+  #Builtin
+  fn ge(other i16) bool
+
+  ; 位运算符
+  #Builtin
+  fn and(other i16) i16
+
+  #Builtin
+  fn and(other i16&) i16
+
+  #Builtin
+  fn or(other i16) i16
+
+  #Builtin
+  fn or(other i16&) i16
+
+  #Builtin
+  fn xor(other i16) i16
+
+  #Builtin
+  fn xor(other i16&) i16
+
+  #Builtin
+  fn shl(other i16) i16
+
+  #Builtin
+  fn shl(other i16&) i16
+
+  #Builtin
+  fn shr(other i16) i16
+
+  #Builtin
+  fn shr(other i16&) i16
+
+  ; 一元运算符
+  #Builtin
+  fn neg() i16
+
+  #Builtin
+  fn inv() i16
+
+  fn to_string() String {
+    $.to_i64().to_string()
+  }
+}
+
+#Impl(Number)
+#Impl(ToString)
+#Builtin
+struct u16 {
+  #Cval
+  #Inline
+  MAX u16 = 65535
+
+  #Cval
+  #Inline
+  MIN u16 = 0
+
+  #Builtin
+  fn to_i8() i8
+
+  #Builtin
+  fn to_u8() u8
+
+  #Builtin
+  fn to_i16() i16
+
+  #Builtin
+  fn to_u16() u16
+
+  #Builtin
+  fn to_i32() i32
+
+  #Builtin
+  fn to_u32() u32
+
+  #Builtin
+  fn to_i64() i64
+
+  #Builtin
+  fn to_u64() u64
+
+  #Builtin
+  fn to_f64() f64
+
+  #Builtin
+  fn to_f32() f32
+
+  #Builtin
+  fn to_bool() bool
+
+  ; 算术运算符
+  #Builtin
+  fn plus(other u16) u16
+
+  #Builtin
+  fn minus(other u16) u16
+
+  #Builtin
+  fn mul(other u16) u16
+
+  #Builtin
+  fn div(other u16) u16
+
+  #Builtin
+  fn mod(other u16) u16
+
+  ; 比较运算符
+  #Builtin
+  fn eq(other u16) bool
+
+  #Builtin
+  fn ne(other u16) bool
+
+  #Builtin
+  fn lt(other u16) bool
+
+  #Builtin
+  fn le(other u16) bool
+
+  #Builtin
+  fn gt(other u16) bool
+
+  #Builtin
+  fn ge(other u16) bool
+
+  ; 位运算符
+  #Builtin
+  fn and(other u16) u16
+
+  #Builtin
+  fn and(other u16&) u16
+
+  #Builtin
+  fn or(other u16) u16
+
+  #Builtin
+  fn or(other u16&) u16
+
+  #Builtin
+  fn xor(other u16) u16
+
+  #Builtin
+  fn xor(other u16&) u16
+
+  #Builtin
+  fn shl(other u16) u16
+
+  #Builtin
+  fn shl(other u16&) u16
+
+  #Builtin
+  fn shr(other u16) u16
+
+  #Builtin
+  fn shr(other u16&) u16
+
+  ; 一元运算符
+  #Builtin
+  fn neg() u16
+
+  #Builtin
+  fn inv() u16
+
+  fn to_string() String {
+    $.to_u64().to_string()
+  }
+}
+
+#Impl(Number)
+#Impl(ToString)
+#Builtin
+struct i32 {
+  #Cval
+  #Inline
+  MAX i32 = 2147483647
+
+  #Cval
+  #Inline
+  MIN i32 = -2147483648
+
+  #Builtin
+  fn to_i8() i8
+
+  #Builtin
+  fn to_u8() u8
+
+  #Builtin
+  fn to_i16() i16
+
+  #Builtin
+  fn to_u16() u16
+
+  #Builtin
+  fn to_i32() i32
+
+  #Builtin
+  fn to_u32() u32
+
+  #Builtin
+  fn to_i64() i64
+
+  #Builtin
+  fn to_u64() u64
+
+  #Builtin
+  fn to_f64() f64
+
+  #Builtin
+  fn to_f32() f32
+
+  #Builtin
+  fn to_bool() bool
+
+  ; 算术运算符
+  #Builtin
+  fn plus(other i32) i32
+
+  #Builtin
+  fn minus(other i32) i32
+
+  #Builtin
+  fn mul(other i32) i32
+
+  #Builtin
+  fn div(other i32) i32
+
+  #Builtin
+  fn mod(other i32) i32
+
+  ; 比较运算符
+  #Builtin
+  fn eq(other i32) bool
+
+  #Builtin
+  fn ne(other i32) bool
+
+  #Builtin
+  fn lt(other i32) bool
+
+  #Builtin
+  fn le(other i32) bool
+
+  #Builtin
+  fn gt(other i32) bool
+
+  #Builtin
+  fn ge(other i32) bool
+
+  ; 位运算符
+  #Builtin
+  fn and(other i32) i32
+
+  #Builtin
+  fn and(other i32&) i32
+
+  #Builtin
+  fn or(other i32) i32
+
+  #Builtin
+  fn or(other i32&) i32
+
+  #Builtin
+  fn xor(other i32) i32
+
+  #Builtin
+  fn xor(other i32&) i32
+
+  #Builtin
+  fn shl(other i32) i32
+
+  #Builtin
+  fn shl(other i32&) i32
+
+  #Builtin
+  fn shr(other i32) i32
+
+  #Builtin
+  fn shr(other i32&) i32
+
+  ; 一元运算符
+  #Builtin
+  fn neg() i32
+
+  #Builtin
+  fn inv() i32
+
+  fn to_string() String {
+    $.to_i64().to_string()
+  }
+}
+
+#Impl(Number)
+#Impl(ToString)
+#Builtin
+struct u32 {
+  #Cval
+  #Inline
+  MAX u32 = 4294967295
+
+  #Cval
+  #Inline
+  MIN u32 = 0
+
+  #Builtin
+  fn to_i8() i8
+
+  #Builtin
+  fn to_u8() u8
+
+  #Builtin
+  fn to_i16() i16
+
+  #Builtin
+  fn to_u16() u16
+
+  #Builtin
+  fn to_i32() i32
+
+  #Builtin
+  fn to_u32() u32
+
+  #Builtin
+  fn to_i64() i64
+
+  #Builtin
+  fn to_u64() u64
+
+  #Builtin
+  fn to_f64() f64
+
+  #Builtin
+  fn to_f32() f32
+
+  #Builtin
+  fn to_bool() bool
+
+  #Builtin
+  fn as_f32() f32
+
+  ; 算术运算符
+  #Builtin
+  fn plus(other u32) u32
+
+  #Builtin
+  fn minus(other u32) u32
+
+  #Builtin
+  fn mul(other u32) u32
+
+  #Builtin
+  fn div(other u32) u32
+
+  #Builtin
+  fn mod(other u32) u32
+
+  ; 比较运算符
+  #Builtin
+  fn eq(other u32) bool
+
+  #Builtin
+  fn ne(other u32) bool
+
+  #Builtin
+  fn lt(other u32) bool
+
+  #Builtin
+  fn le(other u32) bool
+
+  #Builtin
+  fn gt(other u32) bool
+
+  #Builtin
+  fn ge(other u32) bool
+
+  ; 位运算符
+  #Builtin
+  fn and(other u32) u32
+
+  #Builtin
+  fn and(other u32&) u32
+
+  #Builtin
+  fn or(other u32) u32
+
+  #Builtin
+  fn or(other u32&) u32
+
+  #Builtin
+  fn xor(other u32) u32
+
+  #Builtin
+  fn xor(other u32&) u32
+
+  #Builtin
+  fn shl(other u32) u32
+
+  #Builtin
+  fn shl(other u32&) u32
+
+  #Builtin
+  fn shr(other u32) u32
+
+  #Builtin
+  fn shr(other u32&) u32
+
+  ; 一元运算符
+  #Builtin
+  fn neg() u32
+
+  #Builtin
+  fn inv() u32
+
+  fn to_string() String {
+    $.to_u64().to_string()
+  }
+
+  fn is_ascii() bool {
+    $ < 128u32
+  }
+
+  fn is_ascii_digit() bool {
+    $ >= c'0' && $ <= c'9'
+  }
+
+  fn is_ascii_alpha() bool {
+    ($ >= c'A' && $ <= c'Z') || ($ >= c'a' && $ <= c'z')
+  }
+
+  ; U+0009..U+000D 与空格 U+0020
+  fn is_ascii_ws() bool {
+    ($ >= 9u32 && $ <= 13u32) || $ == 32u32
+  }
+}
+
+#Impl(Number)
+#Impl(ToString)
+#Builtin
+struct i64 {
+  #Cval
+  #Inline
+  MAX i64 = 9223372036854775807
+
+  #Cval
+  #Inline
+  MIN i64 = -9223372036854775808
+
+  #Builtin
+  fn to_i8() i8
+
+  #Builtin
+  fn to_u8() u8
+
+  #Builtin
+  fn to_i16() i16
+
+  #Builtin
+  fn to_u16() u16
+
+  #Builtin
+  fn to_i32() i32
+
+  #Builtin
+  fn to_u32() u32
+
+  #Builtin
+  fn to_i64() i64
+
+  #Builtin
+  fn to_u64() u64
+
+  #Builtin
+  fn to_f64() f64
+
+  #Builtin
+  fn to_f32() f32
+
+  #Builtin
+  fn to_bool() bool
+
+  ; 算术运算符
+  #Builtin
+  fn plus(other i64) i64
+
+  #Builtin
+  fn minus(other i64) i64
+
+  #Builtin
+  fn mul(other i64) i64
+
+  #Builtin
+  fn div(other i64) i64
+
+  #Builtin
+  fn mod(other i64) i64
+
+  ; 比较运算符
+  #Builtin
+  fn eq(other i64) bool
+
+  #Builtin
+  fn ne(other i64) bool
+
+  #Builtin
+  fn lt(other i64) bool
+
+  #Builtin
+  fn le(other i64) bool
+
+  #Builtin
+  fn gt(other i64) bool
+
+  #Builtin
+  fn ge(other i64) bool
+
+  ; 位运算符
+  #Builtin
+  fn and(other i64) i64
+
+  #Builtin
+  fn and(other i64&) i64
+
+  #Builtin
+  fn or(other i64) i64
+
+  #Builtin
+  fn or(other i64&) i64
+
+  #Builtin
+  fn xor(other i64) i64
+
+  #Builtin
+  fn xor(other i64&) i64
+
+  #Builtin
+  fn shl(other i64) i64
+
+  #Builtin
+  fn shl(other i64&) i64
+
+  #Builtin
+  fn shr(other i64) i64
+
+  #Builtin
+  fn shr(other i64&) i64
+
+  ; 一元运算符
+  #Builtin
+  fn neg() i64
+
+  #Builtin
+  fn inv() i64
+
+  fn to_string() String {
+    #Mut let out Array<u32> = []
+    #Mut let buf [u8 * 21] = [0u8 ...]
+    #Mut let is_neg = $ < 0
+    #Mut let v i64 = $
+    if is_neg {
+      v = -$
+    }
+    ; i 出 loop 后仍要用：提到外层（§5.7 块作用域）
+    #Mut let i i64 = 0
+    loop {
+      if v == 0 {
+        break;
+      }
+      #Mut let digit i64 = v % 10
+      buf[20 - i] = 48 + digit.to_u8()
+      v /= 10
+      i += 1
+    }
+    if i == 0 {
+      buf[20] = 48
+      i = 1
+    }
+    if is_neg {
+      out.push(c'-')
+    }
+    #Mut let start i64 = 21 - i
+    #Mut let k i64 = 0
+    loop {
+      if k >= i {
+        break;
+      }
+      out.push(buf[start + k].to_u32())
+      k += 1
+    }
+    String::_take_buf(move(out))
+  }
+}
+
+#Impl(Number)
+#Impl(ToString)
+#Builtin
+struct u64 {
+  #Cval
+  #Inline
+  MAX u64 = 18446744073709551615
+
+  #Cval
+  #Inline
+  MIN u64 = 0
+
+  #Builtin
+  fn to_i8() i8
+
+  #Builtin
+  fn to_u8() u8
+
+  #Builtin
+  fn to_i16() i16
+
+  #Builtin
+  fn to_u16() u16
+
+  #Builtin
+  fn to_i32() i32
+
+  #Builtin
+  fn to_u32() u32
+
+  #Builtin
+  fn to_i64() i64
+
+  #Builtin
+  fn to_u64() u64
+
+  #Builtin
+  fn to_f64() f64
+
+  #Builtin
+  fn to_f32() f32
+
+  #Builtin
+  fn to_bool() bool
+
+  #Builtin
+  fn as_f64() f64
+
+  ; 算术运算符
+  #Builtin
+  fn plus(other u64) u64
+
+  #Builtin
+  fn minus(other u64) u64
+
+  #Builtin
+  fn mul(other u64) u64
+
+  #Builtin
+  fn div(other u64) u64
+
+  #Builtin
+  fn mod(other u64) u64
+
+  ; 比较运算符
+  #Builtin
+  fn eq(other u64) bool
+
+  #Builtin
+  fn ne(other u64) bool
+
+  #Builtin
+  fn lt(other u64) bool
+
+  #Builtin
+  fn le(other u64) bool
+
+  #Builtin
+  fn gt(other u64) bool
+
+  #Builtin
+  fn ge(other u64) bool
+
+  ; 位运算符
+  #Builtin
+  fn and(other u64) u64
+
+  #Builtin
+  fn and(other u64&) u64
+
+  #Builtin
+  fn or(other u64) u64
+
+  #Builtin
+  fn or(other u64&) u64
+
+  #Builtin
+  fn xor(other u64) u64
+
+  #Builtin
+  fn xor(other u64&) u64
+
+  #Builtin
+  fn shl(other u64) u64
+
+  #Builtin
+  fn shl(other u64&) u64
+
+  #Builtin
+  fn shr(other u64) u64
+
+  #Builtin
+  fn shr(other u64&) u64
+
+  ; 一元运算符
+  #Builtin
+  fn neg() u64
+
+  #Builtin
+  fn inv() u64
+
+  fn to_string() String {
+    #Mut let out Array<u32> = []
+    #Mut let buf [u8 * 21] = [0u8 ...]
+    #Mut let v u64 = $
+    ; i 出 loop 后仍要用：提到外层（§5.7 块作用域）
+    #Mut let i i64 = 0
+    loop {
+      if v == 0 {
+        break;
+      }
+      #Mut let digit u64 = v % 10
+      buf[20 - i] = 48 + digit.to_u8()
+      v /= 10
+      i += 1
+    }
+    if i == 0 {
+      buf[20] = 48
+      i = 1
+    }
+    #Mut let start i64 = 21 - i
+    #Mut let k i64 = 0
+    loop {
+      if k >= i {
+        break;
+      }
+      out.push(buf[start + k].to_u32())
+      k += 1
+    }
+    String::_take_buf(move(out))
+  }
+}
+
+#Impl(Number)
+#Impl(ToString)
+#Builtin
+struct isize {
+  #Cval
+  #Inline
+  MAX isize = 9223372036854775807
+
+  #Cval
+  #Inline
+  MIN isize = -9223372036854775808
+
+  #Builtin
+  fn to_i8() i8
+
+  #Builtin
+  fn to_u8() u8
+
+  #Builtin
+  fn to_i16() i16
+
+  #Builtin
+  fn to_u16() u16
+
+  #Builtin
+  fn to_i32() i32
+
+  #Builtin
+  fn to_u32() u32
+
+  #Builtin
+  fn to_i64() i64
+
+  #Builtin
+  fn to_u64() u64
+
+  #Builtin
+  fn to_f64() f64
+
+  #Builtin
+  fn to_f32() f32
+
+  #Builtin
+  fn to_bool() bool
+
+  #Builtin
+  fn to_isize() isize
+
+  #Builtin
+  fn to_usize() usize
+
+  ; 算术运算符
+  #Builtin
+  fn plus(other isize) isize
+
+  #Builtin
+  fn minus(other isize) isize
+
+  #Builtin
+  fn mul(other isize) isize
+
+  #Builtin
+  fn div(other isize) isize
+
+  #Builtin
+  fn mod(other isize) isize
+
+  ; 比较运算符
+  #Builtin
+  fn eq(other isize) bool
+
+  #Builtin
+  fn ne(other isize) bool
+
+  #Builtin
+  fn lt(other isize) bool
+
+  #Builtin
+  fn le(other isize) bool
+
+  #Builtin
+  fn gt(other isize) bool
+
+  #Builtin
+  fn ge(other isize) bool
+
+  ; 位运算符
+  #Builtin
+  fn and(other isize) isize
+
+  #Builtin
+  fn and(other isize&) isize
+
+  #Builtin
+  fn or(other isize) isize
+
+  #Builtin
+  fn or(other isize&) isize
+
+  #Builtin
+  fn xor(other isize) isize
+
+  #Builtin
+  fn xor(other isize&) isize
+
+  #Builtin
+  fn shl(other isize) isize
+
+  #Builtin
+  fn shl(other isize&) isize
+
+  #Builtin
+  fn shr(other isize) isize
+
+  #Builtin
+  fn shr(other isize&) isize
+
+  ; 一元运算符
+  #Builtin
+  fn neg() isize
+
+  #Builtin
+  fn inv() isize
+
+  fn to_string() String {
+    $.to_i64().to_string()
+  }
+}
+
+#Impl(Number)
+#Impl(ToString)
+#Builtin
+struct usize {
+  #Cval
+  #Inline
+  MAX usize = 18446744073709551615
+
+  #Cval
+  #Inline
+  MIN usize = 0
+
+  #Builtin
+  fn to_i8() i8
+
+  #Builtin
+  fn to_u8() u8
+
+  #Builtin
+  fn to_i16() i16
+
+  #Builtin
+  fn to_u16() u16
+
+  #Builtin
+  fn to_i32() i32
+
+  #Builtin
+  fn to_u32() u32
+
+  #Builtin
+  fn to_i64() i64
+
+  #Builtin
+  fn to_u64() u64
+
+  #Builtin
+  fn to_f64() f64
+
+  #Builtin
+  fn to_f32() f32
+
+  #Builtin
+  fn to_bool() bool
+
+  #Builtin
+  fn to_isize() isize
+
+  #Builtin
+  fn to_usize() usize
+
+  ; 算术运算符
+  #Builtin
+  fn plus(other usize) usize
+
+  #Builtin
+  fn minus(other usize) usize
+
+  #Builtin
+  fn mul(other usize) usize
+
+  #Builtin
+  fn div(other usize) usize
+
+  #Builtin
+  fn mod(other usize) usize
+
+  ; 比较运算符
+  #Builtin
+  fn eq(other usize) bool
+
+  #Builtin
+  fn ne(other usize) bool
+
+  #Builtin
+  fn lt(other usize) bool
+
+  #Builtin
+  fn le(other usize) bool
+
+  #Builtin
+  fn gt(other usize) bool
+
+  #Builtin
+  fn ge(other usize) bool
+
+  ; 位运算符
+  #Builtin
+  fn and(other usize) usize
+
+  #Builtin
+  fn and(other usize&) usize
+
+  #Builtin
+  fn or(other usize) usize
+
+  #Builtin
+  fn or(other usize&) usize
+
+  #Builtin
+  fn xor(other usize) usize
+
+  #Builtin
+  fn xor(other usize&) usize
+
+  #Builtin
+  fn shl(other usize) usize
+
+  #Builtin
+  fn shl(other usize&) usize
+
+  #Builtin
+  fn shr(other usize) usize
+
+  #Builtin
+  fn shr(other usize&) usize
+
+  ; 一元运算符
+  #Builtin
+  fn neg() usize
+
+  #Builtin
+  fn inv() usize
+
+  fn to_string() String {
+    $.to_u64().to_string()
+  }
+}
+
+#Impl(Number)
+#Impl(ToString)
+#Builtin
+struct f64 {
+  #Cval
+  #Inline
+  MAX f64 = 1.7976931348623157e308f64
+
+  #Cval
+  #Inline
+  MIN f64 = -1.7976931348623157e308f64
+
+  #Builtin
+  fn to_i8() i8
+
+  #Builtin
+  fn to_u8() u8
+
+  #Builtin
+  fn to_i16() i16
+
+  #Builtin
+  fn to_u16() u16
+
+  #Builtin
+  fn to_i32() i32
+
+  #Builtin
+  fn to_u32() u32
+
+  #Builtin
+  fn to_i64() i64
+
+  #Builtin
+  fn to_u64() u64
+
+  #Builtin
+  fn to_f64() f64
+
+  #Builtin
+  fn to_f32() f32
+
+  #Builtin
+  fn to_bool() bool
+
+  #Builtin
+  fn to_bits() u64
+
+  ; 算术运算符
+  #Builtin
+  fn plus(other f64) f64
+
+  #Builtin
+  fn minus(other f64) f64
+
+  #Builtin
+  fn mul(other f64) f64
+
+  #Builtin
+  fn div(other f64) f64
+
+  #Builtin
+  fn mod(other f64) f64
+
+  ; 比较运算符
+  #Builtin
+  fn eq(other f64) bool
+
+  #Builtin
+  fn ne(other f64) bool
+
+  #Builtin
+  fn lt(other f64) bool
+
+  #Builtin
+  fn le(other f64) bool
+
+  #Builtin
+  fn gt(other f64) bool
+
+  #Builtin
+  fn ge(other f64) bool
+
+  ; 一元运算符
+  #Builtin
+  fn neg() f64
+
+  fn to_string() String {
+    #Mut let out Array<u32> = []
+    #Mut let is_neg = $ < 0.0f64
+    #Mut let v f64 = $
+    if is_neg {
+      v = 0.0f64 - $
+    }
+    if is_neg {
+      out.push(c'-')
+    }
+    ; 整数部分：复用 i64.to_string 后逐码点 push
+    let int_part String = v.to_i64().to_string()
+    loop ii usize = 0 {
+      if ii >= int_part.len() {
+        break;
+      }
+      out.push(int_part.get(ii))
+      ii += 1
+    }
+    out.push(c'.')
+    #Mut let frac f64 = v - v.to_i64().to_f64()
+    loop i i64 = 0 {
+      if i == 6 {
+        break;
+      }
+      frac *= 10.0f64
+      #Mut let digit i64 = frac.to_i64()
+      out.push((48 + digit.to_u8()).to_u32())
+      frac -= digit.to_f64()
+      i += 1
+    }
+    String::_take_buf(move(out))
+  }
+}
+
+#Impl(Number)
+#Impl(ToString)
+#Builtin
+struct f32 {
+  #Cval
+  #Inline
+  MAX f32 = 3.40282347e38f32
+
+  #Cval
+  #Inline
+  MIN f32 = -3.40282347e38f32
+
+  #Builtin
+  fn to_i8() i8
+
+  #Builtin
+  fn to_u8() u8
+
+  #Builtin
+  fn to_i16() i16
+
+  #Builtin
+  fn to_u16() u16
+
+  #Builtin
+  fn to_i32() i32
+
+  #Builtin
+  fn to_u32() u32
+
+  #Builtin
+  fn to_i64() i64
+
+  #Builtin
+  fn to_u64() u64
+
+  #Builtin
+  fn to_f64() f64
+
+  #Builtin
+  fn to_f32() f32
+
+  #Builtin
+  fn to_bool() bool
+
+  #Builtin
+  fn to_bits() u32
+
+  ; 算术运算符
+  #Builtin
+  fn plus(other f32) f32
+
+  #Builtin
+  fn minus(other f32) f32
+
+  #Builtin
+  fn mul(other f32) f32
+
+  #Builtin
+  fn div(other f32) f32
+
+  #Builtin
+  fn mod(other f32) f32
+
+  ; 比较运算符
+  #Builtin
+  fn eq(other f32) bool
+
+  #Builtin
+  fn ne(other f32) bool
+
+  #Builtin
+  fn lt(other f32) bool
+
+  #Builtin
+  fn le(other f32) bool
+
+  #Builtin
+  fn gt(other f32) bool
+
+  #Builtin
+  fn ge(other f32) bool
+
+  ; 一元运算符
+  #Builtin
+  fn neg() f32
+
+  fn to_string() String {
+    $.to_f64().to_string()
+  }
+}

@@ -1,0 +1,1325 @@
+; riu.io：write/read/append 回合 + 缺文件 NotFound；覆盖分层文件 API
+; 路径 / 环境 / 目录；io_err_text。不调用 read_line（会堵 stdin）。临时文件名互不抢；失败路径可能留文件，由 gitignore 兜底。
+
+use riu.io.*
+
+extern {
+  #CName("SetFileAttributesW")
+  fn _TestSetFileAttributesW(path Ptr, attrs u32) i32
+}
+
+fn _cleanup(path String&) {
+  try {
+    remove(path)
+  } catch e IoErr {
+  }
+}
+
+fn _cleanup_all(path String&) {
+  try {
+    remove_all(path)
+  } catch e IoErr {
+  }
+}
+
+fn _fail_io(op String&, e IoErr) {
+  match e {
+    IoErr::Eof => fail("${op}: Eof")
+    IoErr::NotFound => fail("${op}: NotFound")
+    IoErr::AccessDenied => fail("${op}: AccessDenied")
+    IoErr::InvalidUtf8 => fail("${op}: InvalidUtf8")
+    IoErr::Closed => fail("${op}: Closed")
+    IoErr::Other(code) => fail("${op}: Other(${code})")
+  }
+}
+
+fn _expect_closed(op String&, e IoErr) {
+  match e {
+    IoErr::Closed => {
+    }
+    IoErr::Eof => fail("${op}: Eof")
+    IoErr::NotFound => fail("${op}: NotFound")
+    IoErr::AccessDenied => fail("${op}: AccessDenied")
+    IoErr::InvalidUtf8 => fail("${op}: InvalidUtf8")
+    IoErr::Other(code) => fail("${op}: Other(${code})")
+  }
+}
+
+fn _expect_regular(kind FileKind) {
+  match kind {
+    FileKind::Regular => {
+    }
+    FileKind::Directory => fail("expected regular file, got directory")
+    FileKind::Link => fail("expected regular file, got link")
+    FileKind::Other => fail("expected regular file, got other")
+  }
+}
+
+fn _expect_directory(kind FileKind) {
+  match kind {
+    FileKind::Directory => {
+    }
+    FileKind::Regular => fail("expected directory, got regular file")
+    FileKind::Link => fail("expected directory, got link")
+    FileKind::Other => fail("expected directory, got other")
+  }
+}
+
+fn _expect_link(kind FileKind) {
+  match kind {
+    FileKind::Link => {
+    }
+    FileKind::Regular => fail("expected link, got regular file")
+    FileKind::Directory => fail("expected link, got directory")
+    FileKind::Other => fail("expected link, got other")
+  }
+}
+
+; 静态 fallible 调用当前需置于 try 内；包装后供测试用普通 `!` 传播。
+fn _open_input(path Path&) FileInputStream ! IoErr {
+  let stream FileInputStream = try {
+    FileInputStream::open(&path)
+  } catch e IoErr {
+    ret e
+  }
+  ret move(stream)
+}
+
+fn _create_output(path Path&) FileOutputStream ! IoErr {
+  let stream FileOutputStream = try {
+    FileOutputStream::create(&path)
+  } catch e IoErr {
+    ret e
+  }
+  ret move(stream)
+}
+
+fn _append_output(path Path&) FileOutputStream ! IoErr {
+  let stream FileOutputStream = try {
+    FileOutputStream::append(&path)
+  } catch e IoErr {
+    ret e
+  }
+  ret move(stream)
+}
+
+; 验证：write_file 后 read_file 读回 ASCII（兼容 facade）
+#Test
+fn test_write_read_roundtrip() {
+  let path String = "_riu_io_rw.txt"
+  try {
+    write_file(&path, "hello")
+  } catch e IoErr {
+    _fail_io("write", e)
+  }
+  let s String = try {
+    read_file(&path)
+  } catch e IoErr {
+    _cleanup(&path);
+    _fail_io("read", e);
+    ""
+  }
+  _cleanup(&path);
+  assert_eq(s, "hello")
+}
+
+; 短内容（1–2 字节）经 String::from_bytes 跨模块往返
+#Test
+fn test_write_read_short() {
+  let path String = "_riu_io_short.txt"
+  try {
+    write_file(&path, "hi")
+  } catch e IoErr {
+    _fail_io("write_short", e)
+  }
+  let s String = try {
+    read_file(&path)
+  } catch e IoErr {
+    _cleanup(&path);
+    _fail_io("read_short", e);
+    ""
+  }
+  _cleanup(&path);
+  assert_eq(s, "hi")
+}
+
+; 验证：中文内容按 UTF-8 往返
+#Test
+fn test_write_read_chinese() {
+  let path String = "_riu_io_zh.txt"
+  try {
+    write_file(&path, "你好")
+  } catch e IoErr {
+    _fail_io("write_zh", e)
+  }
+  let s String = try {
+    read_file(&path)
+  } catch e IoErr {
+    _cleanup(&path);
+    _fail_io("read_zh", e);
+    ""
+  }
+  _cleanup(&path);
+  assert_eq(s, "你好")
+}
+
+; 验证：append_file 接在已有内容后面
+#Test
+fn test_append_file() {
+  let path String = "_riu_io_append.txt"
+  try {
+    write_file(&path, "ab")
+  } catch e IoErr {
+    _fail_io("write_ab", e)
+  }
+  try {
+    append_file(&path, "cd")
+  } catch e IoErr {
+    _cleanup(&path);
+    _fail_io("append", e)
+  }
+  let s String = try {
+    read_file(&path)
+  } catch e IoErr {
+    _cleanup(&path);
+    _fail_io("read_append", e);
+    ""
+  }
+  _cleanup(&path);
+  assert_eq(s, "abcd")
+}
+
+; 验证：空内容写出后读回空串
+#Test
+fn test_write_read_empty() {
+  let path String = "_riu_io_empty.txt"
+  try {
+    write_file(&path, "")
+  } catch e IoErr {
+    _fail_io("write_empty", e)
+  }
+  let s String = try {
+    read_file(&path)
+  } catch e IoErr {
+    _cleanup(&path);
+    _fail_io("read_empty", e);
+    ""
+  }
+  _cleanup(&path);
+  assert_eq(s, "")
+}
+
+; 验证：缺文件 → IoErr::NotFound
+#Test
+fn test_read_missing_not_found() {
+  let path String = "_riu_io_no_such_file.txt"
+  _cleanup(&path);
+  try {
+    let _s String = read_file(&path)
+    fail("missing file should error");
+  } catch e IoErr {
+    match e {
+      IoErr::NotFound => {
+      }
+      IoErr::Eof => fail("missing: Eof")
+      IoErr::AccessDenied => fail("missing: AccessDenied")
+      IoErr::InvalidUtf8 => fail("missing: InvalidUtf8")
+      IoErr::Closed => fail("missing: Closed")
+      IoErr::Other(code) => fail("missing: Other(${code})")
+    };
+  }
+}
+
+; ==================== 路径 ====================
+
+#Test
+fn test_join_dirname() {
+  assert_eq(join("a", "b"), "a\\b")
+  assert_eq(join("a\\", "b"), "a\\b")
+  assert_eq(join("a", "\\b"), "a\\b")
+  assert_eq(join("", "b"), "b")
+  assert_eq(join("a", ""), "a")
+  assert_eq(dirname("a\\b\\c"), "a\\b")
+  assert_eq(dirname("a"), ".")
+  assert_eq(dirname("\\foo"), "\\")
+  assert_eq(dirname("a\\"), ".")
+}
+
+; ==================== exists / remove / mkdir / list_dir / cwd / env ====================
+
+#Test
+fn test_exists_missing() {
+  let path String = "_riu_io_exists_nope.txt"
+  _cleanup(&path);
+  assert_false(exists(&path))
+}
+
+#Test
+fn test_cwd_nonempty() {
+  try {
+    let d String = cwd()
+    assert_true(d.len() > 0)
+  } catch e IoErr {
+    _fail_io("cwd", e)
+  }
+}
+
+#Test
+fn test_env_path() {
+  let v String? = env("PATH")
+  assert_true(v.has())
+  assert_true(v.get().len() > 0)
+  let miss String? = env("RIU_NO_SUCH_ENV_VAR_ZXQ")
+  assert_false(miss.has())
+}
+
+#Test
+fn test_mkdir_list_remove() {
+  let dir String = "_riu_io_dir"
+  let file String = join(&dir, "a.txt")
+  _cleanup(&file);
+  _cleanup(&dir);
+  try {
+    mkdir(&dir)
+  } catch e IoErr {
+    _fail_io("mkdir", e)
+  }
+  assert_true(exists(&dir))
+  try {
+    write_file(&file, "x")
+  } catch e IoErr {
+    _cleanup(&file);
+    _cleanup(&dir);
+    _fail_io("write_in_dir", e)
+  }
+  let names Array<String> = try {
+    list_dir(&dir)
+  } catch e IoErr {
+    _cleanup(&file);
+    _cleanup(&dir);
+    _fail_io("list_dir", e);
+    []
+  }
+  #Mut let found bool = false
+  for n in names {
+    if n == "a.txt" {
+      found = true
+    }
+  }
+  _cleanup(&file);
+  _cleanup(&dir);
+  assert_true(found)
+}
+
+#Test
+fn test_list_dir_missing() {
+  let dir String = "_riu_io_dir_nope"
+  _cleanup(&dir);
+  try {
+    let _n Array<String> = list_dir(&dir)
+    fail("missing dir should error");
+  } catch e IoErr {
+    match e {
+      IoErr::NotFound => {
+      }
+      IoErr::Eof => fail("list missing: Eof")
+      IoErr::AccessDenied => fail("list missing: AccessDenied")
+      IoErr::InvalidUtf8 => fail("list missing: InvalidUtf8")
+      IoErr::Closed => fail("list missing: Closed")
+      IoErr::Other(code) => fail("list missing: Other(${code})")
+    }
+  }
+}
+
+#Test
+fn test_basename() {
+  assert_eq(basename("a\\b\\c"), "c")
+  assert_eq(basename("a/b/c"), "c")
+  assert_eq(basename("a\\b\\c\\"), "c")
+  assert_eq(basename("a"), "a")
+  assert_eq(basename(""), "")
+  assert_eq(basename("\\foo"), "foo")
+}
+
+#Test
+fn test_is_dir_file() {
+  let dir String = "_riu_io_kind_dir"
+  let file String = join(&dir, "f.txt")
+  _cleanup_all(&dir);
+  try {
+    mkdir(&dir)
+  } catch e IoErr {
+    _fail_io("mkdir_kind", e)
+  }
+  try {
+    write_file(&file, "x")
+  } catch e IoErr {
+    _cleanup_all(&dir);
+    _fail_io("write_kind", e)
+  }
+  assert_true(is_dir(&dir))
+  assert_false(is_file(&dir))
+  assert_true(is_file(&file))
+  assert_false(is_dir(&file))
+  assert_false(is_dir("_riu_io_kind_nope"))
+  assert_false(is_file("_riu_io_kind_nope"))
+  assert_false(is_link(&file))
+  _cleanup_all(&dir);
+}
+
+#Test
+fn test_abs_exists() {
+  let path String = "_riu_io_abs.txt"
+  _cleanup(&path);
+  try {
+    write_file(&path, "a")
+  } catch e IoErr {
+    _fail_io("write_abs", e)
+  }
+  let full String = try {
+    abs(&path)
+  } catch e IoErr {
+    _cleanup(&path);
+    _fail_io("abs", e);
+    ""
+  }
+  _cleanup(&path);
+  assert_true(full.len() > path.len())
+  assert_true(full.contains("_riu_io_abs.txt"))
+}
+
+#Test
+fn test_remove_all_tree() {
+  let dir String = "_riu_io_rm_tree"
+  let nested String = join(&dir, "sub")
+  let file String = join(&nested, "a.txt")
+  _cleanup_all(&dir);
+  try {
+    mkdir(&dir)
+    mkdir(&nested)
+    write_file(&file, "x")
+  } catch e IoErr {
+    _cleanup_all(&dir);
+    _fail_io("setup_rm_tree", e)
+  }
+  try {
+    remove_all(&dir)
+  } catch e IoErr {
+    _fail_io("remove_all", e)
+  }
+  assert_false(exists(&dir))
+}
+
+#Test
+fn test_hardlink_roundtrip() {
+  let a String = "_riu_io_hl_a.txt"
+  let b String = "_riu_io_hl_b.txt"
+  _cleanup(&a);
+  _cleanup(&b);
+  try {
+    write_file(&a, "hi")
+  } catch e IoErr {
+    _fail_io("write_hl", e)
+  }
+  try {
+    hardlink(&a, &b)
+  } catch e IoErr {
+    _cleanup(&a);
+    _cleanup(&b);
+    _fail_io("hardlink", e)
+  }
+  let s String = try {
+    read_file(&b)
+  } catch e IoErr {
+    _cleanup(&a);
+    _cleanup(&b);
+    _fail_io("read_hl", e);
+    ""
+  }
+  _cleanup(&b);
+  _cleanup(&a);
+  assert_eq(s, "hi")
+}
+
+#Test
+fn test_junction_roundtrip() {
+  let dir String = "_riu_io_jn_dir"
+  let link String = "_riu_io_jn_link"
+  let file String = join(&dir, "x.txt")
+  _cleanup_all(&link);
+  _cleanup_all(&dir);
+  try {
+    mkdir(&dir)
+    write_file(&file, "z")
+    junction(&dir, &link)
+  } catch e IoErr {
+    _cleanup_all(&link);
+    _cleanup_all(&dir);
+    _fail_io("junction", e)
+  }
+  assert_true(is_dir(&link))
+  assert_true(is_link(&link))
+  let linkFile File = File::from(&link)
+  let linkInfo FileInfo = try {
+    linkFile.info()
+  } catch e IoErr {
+    _cleanup_all(&link)
+    _cleanup_all(&dir)
+    _fail_io("junction_info", e)
+    ret;
+  }
+  _expect_link(linkInfo.kind)
+  let via String = join(&link, "x.txt")
+  let s String = try {
+    read_file(&via)
+  } catch e IoErr {
+    _cleanup_all(&link);
+    _cleanup_all(&dir);
+    _fail_io("read_jn", e);
+    ""
+  }
+  try {
+    remove_all(&link)
+  } catch e IoErr {
+    _cleanup_all(&link);
+    _cleanup_all(&dir);
+    _fail_io("remove_jn", e)
+  }
+  assert_true(exists(&file))
+  _cleanup_all(&dir);
+  assert_eq(s, "z")
+}
+
+#Test
+fn test_symlink_file_or_skip() {
+  let a String = "_riu_io_sy_a.txt"
+  let b String = "_riu_io_sy_b.txt"
+  _cleanup(&a);
+  _cleanup(&b);
+  try {
+    write_file(&a, "sy")
+  } catch e IoErr {
+    _fail_io("write_sy", e)
+  }
+  try {
+    symlink(&a, &b)
+  } catch e IoErr {
+    match e {
+      IoErr::AccessDenied => {
+        _cleanup(&a);
+        ret;
+      }
+      IoErr::Other(code) => {
+        if code == 1314u32 {
+          _cleanup(&a);
+          ret;
+        }
+        _cleanup(&a);
+        _cleanup(&b);
+        _fail_io("symlink", e)
+      }
+      IoErr::Eof => {
+        _cleanup(&a);
+        _fail_io("symlink", e)
+      }
+      IoErr::NotFound => {
+        _cleanup(&a);
+        _fail_io("symlink", e)
+      }
+      IoErr::InvalidUtf8 => {
+        _cleanup(&a);
+        _fail_io("symlink", e)
+      }
+      IoErr::Closed => {
+        _cleanup(&a);
+        _fail_io("symlink", e)
+      }
+    }
+  }
+  let s String = try {
+    read_file(&b)
+  } catch e IoErr {
+    _cleanup(&a);
+    _cleanup(&b);
+    _fail_io("read_sy", e);
+    ""
+  }
+  assert_true(is_link(&b))
+  _cleanup(&b);
+  _cleanup(&a);
+  assert_eq(s, "sy")
+}
+
+; ==================== Path / File 对象 API ====================
+
+#Test
+fn test_path_object_operations() {
+  let baseRaw String = "a"
+  let emptyRaw String = ""
+  let basePath Path = Path::from(&baseRaw)
+  let child Path = basePath.join("b")
+  assert_eq(basePath.to_string(), "a")
+  assert_eq(child.to_string(), "a\\b")
+  assert_eq(child.name(), "b")
+  assert_eq(child.parent().to_string(), "a")
+
+  let empty Path = Path::from(&emptyRaw)
+  assert_eq(empty.name(), "")
+  assert_eq(empty.parent().to_string(), ".")
+
+  let raw String = "_riu_io_path_missing.txt"
+  _cleanup(&raw)
+  let missing Path = Path::from(&raw)
+  let absolute Path = try {
+    missing.absolute()
+  } catch e IoErr {
+    _fail_io("path_absolute", e)
+    ret;
+  }
+  assert_eq(absolute.name(), raw)
+  let entry File = File::at(&absolute)
+  assert_false(entry.exists())
+
+  let fooRaw String = "foo"
+  let fooUpperRaw String = "FOO"
+  let barRaw String = "bar"
+  let foo Path = Path::from(&fooRaw)
+  let fooUpper Path = Path::from(&fooUpperRaw)
+  let bar Path = Path::from(&barRaw)
+  assert_true(foo.same_as(&fooUpper))
+  assert_false(foo.same_as(&bar))
+  let fooAbs Path = try {
+    foo.absolute()
+  } catch e IoErr {
+    _fail_io("path_same_as_abs", e)
+    ret;
+  }
+  assert_true(foo.same_as(&fooAbs))
+  assert_false(foo.is_empty())
+  assert_true(empty.is_empty())
+  assert_eq("${foo}", "foo")
+}
+
+#Test
+fn test_file_info_list_and_methods() {
+  let dirRaw String = "_riu_io_file_api"
+  let aRaw String = join(&dirRaw, "a.txt")
+  let bRaw String = join(&dirRaw, "b.txt")
+  _cleanup_all(&dirRaw)
+
+  let dir File = File::from(&dirRaw)
+  try {
+    dir.mkdir()
+    write_file(&aRaw, "abc")
+    write_file(&bRaw, "")
+  } catch e IoErr {
+    _cleanup_all(&dirRaw)
+    _fail_io("file_setup", e)
+  }
+
+  assert_true(dir.exists())
+  assert_true(dir.is_dir())
+  assert_false(dir.is_file())
+  assert_false(dir.is_link())
+  let dirInfo FileInfo = try {
+    dir.info()
+  } catch e IoErr {
+    _cleanup_all(&dirRaw)
+    _fail_io("dir_info", e)
+    ret;
+  }
+  _expect_directory(dirInfo.kind)
+
+  let a File = File::from(&aRaw)
+  let aInfo FileInfo = try {
+    a.info()
+  } catch e IoErr {
+    _cleanup_all(&dirRaw)
+    _fail_io("file_info", e)
+    ret;
+  }
+  _expect_regular(aInfo.kind)
+  assert_eq(aInfo.size, 3u64)
+  assert_false(aInfo.readonly)
+  assert_eq(a.path().name(), "a.txt")
+  assert_true(a.is_file())
+  assert_false(a.is_dir())
+  assert_false(a.is_link())
+  assert_eq("${a}", aRaw)
+  assert_true(a.same_as(&a))
+  assert_false(a.same_as(&dir))
+
+  let children Array<File> = try {
+    dir.list()
+  } catch e IoErr {
+    _cleanup_all(&dirRaw)
+    _fail_io("file_list", e)
+    ret;
+  }
+  assert_eq(children.len(), 2)
+  #Mut let foundA bool = false
+  #Mut let foundB bool = false
+  for child in children {
+    let name String = child.path().name()
+    if name == "a.txt" {
+      foundA = true
+    } elif name == "b.txt" {
+      foundB = true
+    }
+  }
+  assert_true(foundA)
+  assert_true(foundB)
+
+  let b File = File::from(&bRaw)
+  try {
+    a.remove()
+    b.remove()
+    dir.remove()
+  } catch e IoErr {
+    _cleanup_all(&dirRaw)
+    _fail_io("file_remove", e)
+  }
+  assert_false(dir.exists())
+}
+
+#Test
+fn test_file_hardlink_to() {
+  let aRaw String = "_riu_io_fhl_a.txt"
+  let bRaw String = "_riu_io_fhl_b.txt"
+  _cleanup(&aRaw)
+  _cleanup(&bRaw)
+  try {
+    write_file(&aRaw, "hi")
+  } catch e IoErr {
+    _fail_io("write_fhl", e)
+  }
+  let a File = File::from(&aRaw)
+  let b File = File::from(&bRaw)
+  try {
+    b.hardlink_to(&a)
+  } catch e IoErr {
+    _cleanup(&aRaw)
+    _cleanup(&bRaw)
+    _fail_io("hardlink_to", e)
+  }
+  let s String = try {
+    read_file(&bRaw)
+  } catch e IoErr {
+    _cleanup(&aRaw)
+    _cleanup(&bRaw)
+    _fail_io("read_fhl", e)
+    ""
+  }
+  _cleanup(&bRaw)
+  _cleanup(&aRaw)
+  assert_eq(s, "hi")
+}
+
+#Test
+fn test_file_junction_to() {
+  let dirRaw String = "_riu_io_fjn_dir"
+  let linkRaw String = "_riu_io_fjn_link"
+  let fileRaw String = join(&dirRaw, "x.txt")
+  _cleanup_all(&linkRaw)
+  _cleanup_all(&dirRaw)
+  let dir File = File::from(&dirRaw)
+  let link File = File::from(&linkRaw)
+  try {
+    dir.mkdir()
+    write_file(&fileRaw, "z")
+    link.junction_to(&dir)
+  } catch e IoErr {
+    _cleanup_all(&linkRaw)
+    _cleanup_all(&dirRaw)
+    _fail_io("junction_to", e)
+  }
+  assert_true(link.is_dir())
+  assert_true(link.is_link())
+  let via String = join(&linkRaw, "x.txt")
+  let s String = try {
+    read_file(&via)
+  } catch e IoErr {
+    _cleanup_all(&linkRaw)
+    _cleanup_all(&dirRaw)
+    _fail_io("read_fjn", e)
+    ""
+  }
+  try {
+    link.remove_all()
+  } catch e IoErr {
+    _cleanup_all(&linkRaw)
+    _cleanup_all(&dirRaw)
+    _fail_io("remove_fjn", e)
+  }
+  assert_true(exists(&fileRaw))
+  _cleanup_all(&dirRaw)
+  assert_eq(s, "z")
+}
+
+#Test
+fn test_file_symlink_to_or_skip() {
+  let aRaw String = "_riu_io_fsy_a.txt"
+  let bRaw String = "_riu_io_fsy_b.txt"
+  _cleanup(&aRaw)
+  _cleanup(&bRaw)
+  try {
+    write_file(&aRaw, "sy")
+  } catch e IoErr {
+    _fail_io("write_fsy", e)
+  }
+  let a File = File::from(&aRaw)
+  let b File = File::from(&bRaw)
+  try {
+    b.symlink_to(&a)
+  } catch e IoErr {
+    match e {
+      IoErr::AccessDenied => {
+        _cleanup(&aRaw)
+        ret;
+      }
+      IoErr::Other(code) => {
+        if code == 1314u32 {
+          _cleanup(&aRaw)
+          ret;
+        }
+        _cleanup(&aRaw)
+        _cleanup(&bRaw)
+        _fail_io("symlink_to", e)
+      }
+      IoErr::Eof => {
+        _cleanup(&aRaw)
+        _fail_io("symlink_to", e)
+      }
+      IoErr::NotFound => {
+        _cleanup(&aRaw)
+        _fail_io("symlink_to", e)
+      }
+      IoErr::InvalidUtf8 => {
+        _cleanup(&aRaw)
+        _fail_io("symlink_to", e)
+      }
+      IoErr::Closed => {
+        _cleanup(&aRaw)
+        _fail_io("symlink_to", e)
+      }
+    }
+  }
+  let s String = try {
+    read_file(&bRaw)
+  } catch e IoErr {
+    _cleanup(&aRaw)
+    _cleanup(&bRaw)
+    _fail_io("read_fsy", e)
+    ""
+  }
+  assert_true(b.is_link())
+  _cleanup(&bRaw)
+  _cleanup(&aRaw)
+  assert_eq(s, "sy")
+}
+
+#Test
+fn test_file_info_readonly() {
+  let raw String = "_riu_io_readonly.txt"
+  _cleanup(&raw)
+  try {
+    write_file(&raw, "x")
+  } catch e IoErr {
+    _fail_io("readonly_setup", e)
+  }
+
+  #Mut let wide Array<u16> = [95u16, 114u16, 105u16, 117u16, 95u16, 105u16, 111u16, 95u16, 114u16, 101u16, 97u16, 100u16, 111u16, 110u16, 108u16, 121u16, 46u16, 116u16, 120u16, 116u16, 0u16]
+  if _TestSetFileAttributesW(wide, 1u32) == 0 {
+    _cleanup(&raw)
+    fail("set readonly failed")
+  }
+
+  let file File = File::from(&raw)
+  let info FileInfo = try {
+    file.info()
+  } catch e IoErr {
+    _TestSetFileAttributesW(wide, 128u32);
+    _cleanup(&raw)
+    _fail_io("readonly_info", e)
+    ret;
+  }
+  assert_true(info.readonly)
+  assert_eq(_TestSetFileAttributesW(wide, 128u32), 1)
+  _cleanup(&raw)
+}
+
+; ==================== 文件流 ====================
+
+#Test
+fn test_stream_chunk_progress_and_close() {
+  let raw String = "_riu_io_stream_chunks.bin"
+  _cleanup(&raw)
+  let path Path = Path::from(&raw)
+  #Mut let bytes Array<u8> = []
+  loop i usize = 0 {
+    if i >= 600 {
+      break;
+    }
+    bytes.push(65u8)
+    i += 1
+  }
+
+  let output FileOutputStream = try {
+    _create_output(&path)
+  } catch e IoErr {
+    _fail_io("stream_create", e)
+    ret;
+  }
+  try {
+    output.write(&bytes)
+    output.flush()
+    output.close()
+    output.close()
+  } catch e IoErr {
+    _cleanup(&raw)
+    _fail_io("stream_write_close", e)
+  }
+  assert_false(output.is_open())
+
+  let input FileInputStream = try {
+    _open_input(&path)
+  } catch e IoErr {
+    _cleanup(&raw)
+    _fail_io("stream_open", e)
+    ret;
+  }
+  let zero Array<u8> = try {
+    input.read(0usize)
+  } catch e IoErr {
+    _cleanup(&raw)
+    _fail_io("stream_read_zero", e)
+    ret;
+  }
+  let first Array<u8> = try {
+    input.read(257usize)
+  } catch e IoErr {
+    _cleanup(&raw)
+    _fail_io("stream_read_first", e)
+    ret;
+  }
+  let second Array<u8> = try {
+    input.read(300usize)
+  } catch e IoErr {
+    _cleanup(&raw)
+    _fail_io("stream_read_second", e)
+    ret;
+  }
+  let third Array<u8> = try {
+    input.read(100usize)
+  } catch e IoErr {
+    _cleanup(&raw)
+    _fail_io("stream_read_third", e)
+    ret;
+  }
+  let eof Array<u8> = try {
+    input.read(1usize)
+  } catch e IoErr {
+    _cleanup(&raw)
+    _fail_io("stream_read_eof", e)
+    ret;
+  }
+  assert_eq(zero.len(), 0)
+  assert_eq(first.len(), 257)
+  assert_eq(second.len(), 300)
+  assert_eq(third.len(), 43)
+  assert_eq(eof.len(), 0)
+  assert_eq(copy_of(first[0]), 65u8)
+  assert_eq(copy_of(third[42]), 65u8)
+  try {
+    input.close()
+    input.close()
+  } catch e IoErr {
+    _cleanup(&raw)
+    _fail_io("stream_input_close", e)
+  }
+  assert_false(input.is_open())
+  _cleanup(&raw)
+}
+
+#Test
+fn test_stream_text_append_and_truncate() {
+  let raw String = "_riu_io_stream_text.txt"
+  _cleanup(&raw)
+  let path Path = Path::from(&raw)
+
+  let first FileOutputStream = try {
+    _create_output(&path)
+  } catch e IoErr {
+    _fail_io("text_create_first", e)
+    ret;
+  }
+  try {
+    first.write_string("旧内容")
+    first.close()
+  } catch e IoErr {
+    _cleanup(&raw)
+    _fail_io("text_write_first", e)
+  }
+
+  let truncated FileOutputStream = try {
+    _create_output(&path)
+  } catch e IoErr {
+    _cleanup(&raw)
+    _fail_io("text_create_truncate", e)
+    ret;
+  }
+  try {
+    truncated.write_string("新")
+    truncated.close()
+  } catch e IoErr {
+    _cleanup(&raw)
+    _fail_io("text_write_truncate", e)
+  }
+
+  let appended FileOutputStream = try {
+    _append_output(&path)
+  } catch e IoErr {
+    _cleanup(&raw)
+    _fail_io("text_append_open", e)
+    ret;
+  }
+  try {
+    appended.write_string("内容")
+    appended.close()
+  } catch e IoErr {
+    _cleanup(&raw)
+    _fail_io("text_append_write", e)
+  }
+
+  let input FileInputStream = try {
+    _open_input(&path)
+  } catch e IoErr {
+    _cleanup(&raw)
+    _fail_io("text_input_open", e)
+    ret;
+  }
+  let content String = try {
+    input.read_to_string()
+  } catch e IoErr {
+    _cleanup(&raw)
+    _fail_io("text_input_read", e)
+    ret;
+  }
+  _cleanup(&raw)
+  assert_eq(content, "新内容")
+}
+
+#Test
+fn test_stream_closed_errors() {
+  let raw String = "_riu_io_stream_closed.txt"
+  _cleanup(&raw)
+  let path Path = Path::from(&raw)
+  let empty Array<u8> = []
+
+  let output FileOutputStream = try {
+    _create_output(&path)
+  } catch e IoErr {
+    _fail_io("closed_create", e)
+    ret;
+  }
+  try {
+    output.close()
+  } catch e IoErr {
+    _cleanup(&raw)
+    _fail_io("closed_output_close", e)
+  }
+  try {
+    output.write(&empty)
+    fail("write on closed stream should fail")
+  } catch e IoErr {
+    _expect_closed("closed_write", e)
+  }
+  try {
+    output.flush()
+    fail("flush on closed stream should fail")
+  } catch e IoErr {
+    _expect_closed("closed_flush", e)
+  }
+
+  let input FileInputStream = try {
+    _open_input(&path)
+  } catch e IoErr {
+    _cleanup(&raw)
+    _fail_io("closed_input_open", e)
+    ret;
+  }
+  try {
+    input.close()
+  } catch e IoErr {
+    _cleanup(&raw)
+    _fail_io("closed_input_close", e)
+  }
+  try {
+    input.read(1usize)
+    fail("read on closed stream should fail")
+  } catch e IoErr {
+    _expect_closed("closed_read", e)
+  }
+  _cleanup(&raw)
+}
+
+#Test
+fn test_stream_invalid_utf8_and_missing() {
+  let raw String = "_riu_io_stream_invalid_utf8.bin"
+  _cleanup(&raw)
+  let path Path = Path::from(&raw)
+  let invalid Array<u8> = [0xC0u8, 0x80u8]
+  let output FileOutputStream = try {
+    _create_output(&path)
+  } catch e IoErr {
+    _fail_io("invalid_create", e)
+    ret;
+  }
+  try {
+    output.write(&invalid)
+    output.close()
+  } catch e IoErr {
+    _cleanup(&raw)
+    _fail_io("invalid_write", e)
+  }
+  let input FileInputStream = try {
+    _open_input(&path)
+  } catch e IoErr {
+    _cleanup(&raw)
+    _fail_io("invalid_open", e)
+    ret;
+  }
+  try {
+    input.read_to_string()
+    fail("invalid UTF-8 should fail")
+  } catch e IoErr {
+    match e {
+      IoErr::InvalidUtf8 => {
+      }
+      IoErr::Eof => _fail_io("invalid_decode", e)
+      IoErr::NotFound => _fail_io("invalid_decode", e)
+      IoErr::AccessDenied => _fail_io("invalid_decode", e)
+      IoErr::Closed => _fail_io("invalid_decode", e)
+      IoErr::Other(code) => _fail_io("invalid_decode", e)
+    }
+  }
+  _cleanup(&raw)
+
+  let missingRaw String = "_riu_io_stream_no_such_file.txt"
+  _cleanup(&missingRaw)
+  let missing Path = Path::from(&missingRaw)
+  try {
+    FileInputStream::open(&missing)
+    fail("missing stream should fail")
+  } catch e IoErr {
+    match e {
+      IoErr::NotFound => {
+      }
+      IoErr::Eof => _fail_io("stream_missing", e)
+      IoErr::AccessDenied => _fail_io("stream_missing", e)
+      IoErr::InvalidUtf8 => _fail_io("stream_missing", e)
+      IoErr::Closed => _fail_io("stream_missing", e)
+      IoErr::Other(code) => _fail_io("stream_missing", e)
+    }
+  }
+}
+
+#Test
+fn test_stream_move_transfer() {
+  let raw String = "_riu_io_stream_move.txt"
+  _cleanup(&raw)
+  try {
+    write_file(&raw, "move")
+  } catch e IoErr {
+    _fail_io("move_setup", e)
+  }
+  let path Path = Path::from(&raw)
+  let source FileInputStream = try {
+    _open_input(&path)
+  } catch e IoErr {
+    _cleanup(&raw)
+    _fail_io("move_open", e)
+    ret;
+  }
+  let moved FileInputStream = move(source)
+  let content String = try {
+    moved.read_to_string()
+  } catch e IoErr {
+    _cleanup(&raw)
+    _fail_io("move_read", e)
+    ret;
+  }
+  _cleanup(&raw)
+  assert_eq(content, "move")
+}
+
+; ==================== io_err_text ====================
+
+#Test
+fn test_io_err_text_named() {
+  assert_eq(io_err_text(IoErr::Eof), "End of file")
+  assert_eq(io_err_text(IoErr::NotFound), "File not found")
+  assert_eq(io_err_text(IoErr::AccessDenied), "Access denied")
+  assert_eq(io_err_text(IoErr::InvalidUtf8), "Invalid UTF-8")
+  assert_eq(io_err_text(IoErr::Closed), "File already closed")
+}
+
+; FormatMessageW 文案随系统语言，只断言拿到了非回退串。
+#Test
+fn test_io_err_text_win32() {
+  let s2 String = io_err_text(IoErr::Other(2u32))
+  assert_true(s2.len() > 0)
+  assert_false(s2.starts_with("Win32 "))
+  let s5 String = io_err_text(IoErr::Other(5u32))
+  assert_true(s5.len() > 0)
+  assert_false(s5.starts_with("Win32 "))
+  let s1314 String = io_err_text(IoErr::Other(1314u32))
+  assert_true(s1314.len() > 0)
+  assert_false(s1314.starts_with("Win32 "))
+}
+
+#Test
+fn test_mkdir_all_copy_rename() {
+  let root String = "_riu_io_mkdir_all"
+  let nested String = join(&root, "a")
+  let deep String = join(&nested, "b")
+  let src String = join(&deep, "x.txt")
+  let copied String = join(&deep, "y.txt")
+  let renamed String = join(&deep, "z.txt")
+  _cleanup_all(&root)
+  try {
+    mkdir_all(&deep)
+    write_file(&src, "hi")
+    copy_file(&src, &copied)
+    rename(&copied, &renamed)
+  } catch e IoErr {
+    _cleanup_all(&root)
+    _fail_io("mkdir_all_copy_rename", e)
+  }
+  assert_true(is_dir(&deep))
+  let got String = try {
+    read_file(&renamed)
+  } catch e IoErr {
+    _cleanup_all(&root)
+    _fail_io("read_renamed", e)
+    ""
+  }
+  assert_eq(got, "hi")
+  assert_true(exists(&src))
+  assert_false(exists(&copied))
+  _cleanup_all(&root)
+}
+
+#Test
+fn test_read_write_bytes_and_mtime() {
+  let path String = "_riu_io_bytes.bin"
+  _cleanup(&path)
+  #Mut let raw Array<u8> = []
+  raw.push(0u8)
+  raw.push(255u8)
+  raw.push(10u8)
+  try {
+    write_bytes(&path, &raw)
+  } catch e IoErr {
+    _fail_io("write_bytes", e)
+  }
+  let got Array<u8> = try {
+    read_bytes(&path)
+  } catch e IoErr {
+    _cleanup(&path)
+    _fail_io("read_bytes", e)
+    ret;
+  }
+  assert_eq(got.len(), 3)
+  assert_eq(copy_of(got[0]), 0u8)
+  assert_eq(copy_of(got[1]), 255u8)
+  let info FileInfo = try {
+    File::from(&path).info()
+  } catch e IoErr {
+    _cleanup(&path)
+    _fail_io("mtime_info", e)
+    ret;
+  }
+  assert_true(info.mtime > 1600000000)
+  _cleanup(&path)
+}
+
+#Test
+fn test_path_extension_stem() {
+  assert_eq(extension("a.txt"), "txt")
+  assert_eq(stem("a.txt"), "a")
+  assert_eq(extension("a.tar.gz"), "gz")
+  assert_eq(stem("a.tar.gz"), "a.tar")
+  assert_eq(extension(".gitignore"), "")
+  assert_eq(stem(".gitignore"), ".gitignore")
+  assert_eq(with_extension("a.txt", "md"), "a.md")
+  assert_eq(with_extension("a", "txt"), "a.txt")
+  assert_eq(with_extension("a.txt", ""), "a")
+  let raw String = "dir/foo.rs"
+  let p Path = Path::from(&raw)
+  assert_eq(p.extension(), "rs")
+  assert_eq(p.stem(), "foo")
+}
+
+#Test
+fn test_set_env_and_temp_dir() {
+  let name String = "_RIU_SDK_TEST_ENV"
+  try {
+    set_env(&name, "ok")
+  } catch e IoErr {
+    _fail_io("set_env", e)
+  }
+  let v String? = env(&name)
+  assert_eq(v.get(), "ok")
+  try {
+    unset_env(&name)
+  } catch e IoErr {
+    _fail_io("unset_env", e)
+  }
+  assert_false(env(&name).has())
+  let tmp String = try {
+    temp_dir()
+  } catch e IoErr {
+    _fail_io("temp_dir", e)
+    ""
+  }
+  assert_true(is_dir(&tmp))
+}
+
+#Test
+fn test_chdir_restore() {
+  let old String = try {
+    cwd()
+  } catch e IoErr {
+    _fail_io("cwd_old", e)
+    ""
+  }
+  let dir String = "_riu_io_chdir"
+  _cleanup_all(&dir)
+  try {
+    mkdir(&dir)
+    chdir(&dir)
+  } catch e IoErr {
+    _cleanup_all(&dir)
+    _fail_io("chdir", e)
+  }
+  let now String = try {
+    cwd()
+  } catch e IoErr {
+    try {
+      chdir(&old)
+    } catch e2 IoErr {
+    }
+    _cleanup_all(&dir)
+    _fail_io("cwd_new", e)
+    ""
+  }
+  try {
+    chdir(&old)
+  } catch e IoErr {
+    _cleanup_all(&dir)
+    _fail_io("chdir_back", e)
+  }
+  assert_true(now.contains("_riu_io_chdir"))
+  _cleanup_all(&dir)
+}

@@ -1,0 +1,81 @@
+; 函数返回 T&（引用返回）行为测试
+;
+; 覆盖：
+;   - 方法返回字段引用（&$.field）
+;   - 方法返回 Self&（$）
+;   - 通过返回的引用修改源 struct 字段（写穿）
+;
+; 自由函数透传 T& 形参已收：只允许 `$rodata`。泛型 struct 方法返回 T&
+; 见 generic_method_ref_return.test.ut。T& 借用基础见 ref.test.ut。
+
+struct P {
+  x i32
+  y i32
+
+  #Static
+  fn make(x i32, y i32) P {
+    ret Self {
+      .x = x
+      .y = y
+    }
+  }
+
+  ; 方法返回字段引用（根 = $）
+  fn x_ref() i32& = &$.x
+
+  ; 方法返回 Self&（源 = $）
+  fn me() Self& = $
+}
+
+; 验证：方法返回字段引用
+#Test
+fn test_method_field_ref() {
+  #Mut let a P = P::make(7, 8)
+  let rx i32& = a.x_ref()
+  assert_eq(rx, 7)
+}
+
+; 验证：方法返回自身引用
+#Test
+fn test_method_self_ref() {
+  #Mut let a P = P::make(1, 2)
+  let r P& = a.me()
+  assert_eq(r.x, 1)
+  assert_eq(r.y, 2)
+}
+
+; ==================== ref 返回后修改源值（迁自 bug_hunt） ====================
+
+struct BHRefData {
+  val i32
+
+  #Static
+  fn make(val i32) Self {
+    Self {
+      .val = val
+    }
+  }
+
+  fn get_val() i32& = &$.val
+}
+
+#Test
+fn test_ref_return_modify() {
+  ; 验证：通过返回的 ref 修改源字段
+  #Mut let s BHRefData = BHRefData::make(42)
+  #Mut let r i32& = s.get_val()
+  r = 99
+  assert_eq(s.val, 99)
+}
+
+; ==================== 边界测试 ====================
+
+#Test
+fn test_ref_return_zero_value() {
+  ; 验证：ref 返回零值字段
+  #Mut let s BHRefData = BHRefData::make(0)
+  #Mut let r i32& = s.get_val()
+  assert_eq(r, 0)
+  r = -1
+  assert_eq(s.val, -1)
+}

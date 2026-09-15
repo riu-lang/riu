@@ -8,7 +8,7 @@ $ErrorActionPreference = 'Stop'
 
 $ProjectRoot = $PSScriptRoot
 $CommitHash = if ($args.Count -gt 0) { [string]$args[0] } else { 'HEAD' }
-$LangDefFile = Join-Path $ProjectRoot 'yux_lang_def.txt'
+$LangDefFile = Join-Path $ProjectRoot 'riu_lang_def.txt'
 $ClocExe = Join-Path $ProjectRoot 'bin\cloc-2.10.exe'
 
 if (-not (Test-Path -LiteralPath $ClocExe)) {

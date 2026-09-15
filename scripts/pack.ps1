@@ -2,7 +2,7 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Pack yux zip (replaces xmake pack / xpack).
+  Pack riu zip (replaces xmake pack / xpack).
 #>
 param(
     [Parameter(Mandatory = $true)][string]$OutDir,
@@ -11,7 +11,7 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
-$stage = Join-Path $OutDir "pack-stage\yux"
+$stage = Join-Path $OutDir "pack-stage\riu"
 if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
 New-Item -ItemType Directory -Path $stage -Force | Out-Null
 
@@ -24,7 +24,7 @@ function Copy-To([string]$Src, [string]$Dst) {
 $binDir = Join-Path $stage 'bin'
 New-Item -ItemType Directory -Path $binDir -Force | Out-Null
 $isDebug = ($OutDir -match '[\\/]debug([\\/]|$)')
-foreach ($exe in @('yux.exe', 'yux-lsp.exe', 'yux-ast.exe', 'yux-check.exe', 'yux-test-runner.exe')) {
+foreach ($exe in @('riu.exe', 'riu-lsp.exe', 'riu-ast.exe', 'riu-check.exe', 'riu-test-runner.exe')) {
     $src = Join-Path $OutDir "bin\$exe"
     if (-not (Test-Path -LiteralPath $src)) { throw "missing $src — build all targets first" }
     Copy-Item -LiteralPath $src -Destination (Join-Path $binDir $exe)
@@ -36,16 +36,16 @@ foreach ($exe in @('yux.exe', 'yux-lsp.exe', 'yux-ast.exe', 'yux-check.exe', 'yu
     }
 }
 
-$libSrc = Join-Path $OutDir 'lib\yuxrt.lib'
+$libSrc = Join-Path $OutDir 'lib\riurt.lib'
 if (-not (Test-Path -LiteralPath $libSrc)) { throw "missing $libSrc" }
 New-Item -ItemType Directory -Path (Join-Path $stage 'lib') -Force | Out-Null
-Copy-Item -LiteralPath $libSrc -Destination (Join-Path $stage 'lib\yuxrt.lib')
+Copy-Item -LiteralPath $libSrc -Destination (Join-Path $stage 'lib\riurt.lib')
 
-# sdk：排除 build/ 与 .yux/
+# sdk：排除 build/ 与 .ut/
 $sdkDst = Join-Path $stage 'sdk'
 Copy-Item -LiteralPath (Join-Path $ProjectRoot 'sdk') -Destination $sdkDst -Recurse -Force
 Get-ChildItem -LiteralPath $sdkDst -Recurse -Directory -Force | Where-Object {
-    $_.Name -eq 'build' -or $_.Name -eq '.yux'
+    $_.Name -eq 'build' -or $_.Name -eq '.ut'
 } | ForEach-Object { Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue }
 
 Copy-Item -LiteralPath (Join-Path $ProjectRoot 'examples') -Destination (Join-Path $stage 'examples') -Recurse -Force
@@ -71,7 +71,7 @@ foreach ($t in $licenses) {
     }
 }
 
-$zipName = "yux-$Version.zip"
+$zipName = "riu-$Version.zip"
 $zipPath = Join-Path $OutDir $zipName
 if (Test-Path -LiteralPath $zipPath) { Remove-Item -LiteralPath $zipPath -Force }
 $stageParent = Split-Path $stage -Parent

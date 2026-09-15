@@ -1,6 +1,6 @@
 # §12 spec（接口与约束）
 
-本章规范 yux 的 **spec**（接口契约）机制：通过 `#Spec` 注解声明方法签名与静态字段契约、通过 `#Impl(D)` 顶行注解在 struct 声明上宣告实现关系、泛型边界 `<T : D1 + D2>`、跨包 orphan 限制，以及内置 `ToString` / `Number` / `copy_of`。本章对应草案 [`draft/DRAFT-spec-unify.md`](draft/DRAFT-spec-unify.md)（v1 已落地）。
+本章规范 riu 的 **spec**（接口契约）机制：通过 `#Spec` 注解声明方法签名与静态字段契约、通过 `#Impl(D)` 顶行注解在 struct 声明上宣告实现关系、泛型边界 `<T : D1 + D2>`、跨包 orphan 限制，以及内置 `ToString` / `Number` / `copy_of`。本章对应草案 [`draft/DRAFT-spec-unify.md`](draft/DRAFT-spec-unify.md)（v1 已落地）。
 
 > 设计基调：**默认严格 / 显式优先 / 零运行时开销**。spec 是封闭契约，必须由 `#Impl(D)` 显式宣告并由 struct body 提供方法实现。v1 一律单态化静态分发，无 vtable、无隐式签名表参数。运行时多态形态另由 §12.9 `Dyn<D>` 提供。
 
@@ -33,7 +33,7 @@ specStaticField ::= fieldAnno* ID type codeLineEnd
 
 §12.1.1.5 spec 是名义类型（§3.4.1），用于 `<T : D>` 边界、`#Impl(D)` 注解的实参、`Dyn<D>` 类型参数等位置；**不**可直接出现在值表达式位（spec 没有值，只是契约）。
 
-```yux
+```riu
 #Spec
 struct ToString {
   fn to_string() String
@@ -123,7 +123,7 @@ draftBound ::= modulePath? ID genericDef?     ; 例：ToString / pkg.Display / T
 
 §12.3.2.1 spec 体内单个 `fn` **不得**再引入泛型形参：
 
-```yux
+```riu
 #Spec
 struct Bad {
   fn map<U>(x U) U      ; ❌ E1104
@@ -198,9 +198,9 @@ struct Bad {
 
 ### §12.7.1 `ToString`
 
-§12.7.1.1 `sdk/yux/src/yux/core/base.yux` 内置 spec：
+§12.7.1.1 `sdk/riu/src/riu/core/base.ut` 内置 spec：
 
-```yux
+```riu
 #Spec
 struct ToString {
   fn to_string() String
@@ -209,14 +209,14 @@ struct ToString {
 
 `ToString` 是 v0.6 字符串模板 `"$expr"` 的"可插值"约束，属强契约；用户类型必须显式 `#Impl(ToString)` 才会进入插值路径，避免 debug-string 被误命中显示文本。
 
-§12.7.1.2 各内置类型以 `#Impl(ToString) struct T { ... fn to_string() String { ... } ... }` 形态显式实现；方法体可走 `#Builtin`（§11.2）或直接 yux 实现，二者并存。数值类型在 `num.yux`，`String` 在 `string.yux`，`bool` 在 `base.yux`。当前实施：
+§12.7.1.2 各内置类型以 `#Impl(ToString) struct T { ... fn to_string() String { ... } ... }` 形态显式实现；方法体可走 `#Builtin`（§11.2）或直接 riu 实现，二者并存。数值类型在 `num.ut`，`String` 在 `string.ut`，`bool` 在 `base.ut`。当前实施：
 
-```yux
+```riu
 #Impl(ToString)
 #Builtin
 struct i64 {
   ; ... 内置算术 / 转换方法 ...
-  fn to_string() String { ... }   ; yux 实现
+  fn to_string() String { ... }   ; riu 实现
 }
 
 #Impl(ToString)
@@ -235,7 +235,7 @@ struct String {
 
 §12.7.2.1 v1 内置 spec `Any` **已删除**（spec-unify v1，2026-05-19）。早期形态：
 
-```yux
+```riu
 #DraftLike
 draft Any { }    ; v0.x，已废
 ```
@@ -257,15 +257,15 @@ draft Any { }    ; v0.x，已废
 - 复制语义按 T 档位：
   - **值类型**（标量 / 用户 struct / `[T*N]`）：memcpy + 字段级 retain（§7.4.3 / §7.4.4）。
   - **堆句柄**（`Rc<U>` / `String` / `Weak<U>` / `StringBuilder`）：句柄复制 + RC retain，沿用 §8.5 callee-clean 协议。
-  - **`Heap<T>` / `Heap<T>?`**：深拷——重新 `__yux_heap_alloc` + 写入 inner T + 递归 retain inner 子句柄字段（[`draft/DRAFT-heap-types.md`](draft/DRAFT-heap-types.md) Phase 6）。
+  - **`Heap<T>` / `Heap<T>?`**：深拷——重新 `__riu_heap_alloc` + 写入 inner T + 递归 retain inner 子句柄字段（[`draft/DRAFT-heap-types.md`](draft/DRAFT-heap-types.md) Phase 6）。
   - **`Array<T>` / 其它 `#NoCopy`**：拒绝（E4031）。`Array<T>` 深拷贝走 `arr.clone()`（§9.2.2.3）。
 - `x` 的借用根（如对应的 `box` / 局部变量）在 `copy_of` 调用语句结束后仍可正常使用（临时借用 + 立即释放，按 §8.8 临时帧）。
 - 与 `as_ref` 不互锁：原 `x` 视图与返回的 owned 副本各自独立析构。
 - **不**接受 `Ptr`；turbofish 可省，T 由实参推断。
 
-§12.7.3.3 占位签名置于 `base.yux`，`#Builtin` 形态；编译器在调用点合成 IR（§11.2.3）。
+§12.7.3.3 占位签名置于 `base.ut`，`#Builtin` 形态；编译器在调用点合成 IR（§11.2.3）。
 
-```yux
+```riu
 fn use_owned<T : D>(x T) { ... }
 
 fn caller(box Rc<MyType>) {
@@ -275,9 +275,9 @@ fn caller(box Rc<MyType>) {
 
 ### §12.7.4 `Eq` / `Ord` / `ToJson`
 
-§12.7.4.1 SDK 另有三个内置 spec，声明在 `base.yux`，方法与默认体见 §12.10.6：
+§12.7.4.1 SDK 另有三个内置 spec，声明在 `base.ut`，方法与默认体见 §12.10.6：
 
-```yux
+```riu
 #Spec
 struct Eq {
   fn eq(other Self&) bool
@@ -305,9 +305,9 @@ struct ToJson {
 
 ### §12.7.5 `Number`
 
-§12.7.5.1 SDK 在 `base.yux` 声明 `Number` 作为所有内置数字类型的公共边界；`i8` / `u8` / `i16` / `u16` / `i32` / `u32` / `i64` / `u64` / `isize` / `usize` / `f64` / `f32` 均显式 `#Impl(Number)`。
+§12.7.5.1 SDK 在 `base.ut` 声明 `Number` 作为所有内置数字类型的公共边界；`i8` / `u8` / `i16` / `u16` / `i32` / `u32` / `i64` / `u64` / `isize` / `usize` / `f64` / `f32` 均显式 `#Impl(Number)`。
 
-```yux
+```riu
 #Spec
 struct Number {
   #Cval
@@ -343,7 +343,7 @@ struct Number {
 }
 ```
 
-§12.7.5.2 数值运算与比较契约使用**按值** `Self` 参数，直接由 `num.yux` 的 `#Builtin` intrinsic 实现。这些方法不提供 `$ + other` / `$ == other` 形式的默认体：运算符本身就会分发到 `plus` / `eq` 等同名方法，默认体会形成递归。
+§12.7.5.2 数值运算与比较契约使用**按值** `Self` 参数，直接由 `num.ut` 的 `#Builtin` intrinsic 实现。这些方法不提供 `$ + other` / `$ == other` 形式的默认体：运算符本身就会分发到 `plus` / `eq` 等同名方法，默认体会形成递归。
 
 §12.7.5.3 `to_bool` 不属于 `Number`；它是具体数字类型的便利转换，不作为数值泛型契约。`to_string` 由独立 `ToString` spec 承担；`to_bits` / `to_isize` / `to_usize` 及位运算方法不是全部内置数字的交集，也不进入 `Number`。
 
@@ -383,7 +383,7 @@ v1 / v0.5 **明确不做**：
 | owned dyn | `Dyn<D>` | 指向 `[RC head \| U 实例]`，与 `Rc<U>` 同源 | 标准 RC；强引用为 0 时调 `vtable[0]` 析构 |
 | 借用 dyn | `Dyn<D&>` | 借自栈或堆，不持有所有权 | 不动 RC，按 §8.6 借用栈追踪 |
 
-§12.9.1.2 `Dyn` 是编译器内置类型名（非关键字），**不**写在 `base.yux`；不引入 `dyn` 关键字（沿用 `Dyn<D>` 类型名形态，与 `Rc<T>` / `Weak<T>` 一致）。
+§12.9.1.2 `Dyn` 是编译器内置类型名（非关键字），**不**写在 `base.ut`；不引入 `dyn` 关键字（沿用 `Dyn<D>` 类型名形态，与 `Rc<T>` / `Weak<T>` 一致）。
 
 §12.9.1.3 `Dyn<D>` 与 `Dyn<D&>` 不可互转，与 `T` ↔ `T&` 同理（§8.3）。同一 `U` 对不同 spec `D1` / `D2` 有**独立** vtable，互不复用。
 
@@ -422,13 +422,13 @@ v1 / v0.5 **明确不做**：
 
 §12.9.5.1 构造形态走 **turbofish** 类型构造：
 
-```yux
+```riu
 let b Rc<U>      = U(...)
 let d Dyn<D>     = Dyn:<D>(b)        ; Rc<U> → Dyn<D>，移交 RC
 let r Dyn<D&>    = Dyn:<D&>(ref)     ; U& 或 Rc<U> → Dyn<D&>，借用
 ```
 
-§12.9.5.2 调用站语法**应当**带 `:`（`Dyn:<D>(x)`）；无 `:` 写法 `Dyn<D>(x)` 仅在**类型位**有效（§B.2 / §B.2a）。`:` 前缀见 `yuxParser.g4` `exprCall` 形态。
+§12.9.5.2 调用站语法**应当**带 `:`（`Dyn:<D>(x)`）；无 `:` 写法 `Dyn<D>(x)` 仅在**类型位**有效（§B.2 / §B.2a）。`:` 前缀见 `riuParser.g4` `exprCall` 形态。
 
 §12.9.5.3 构造检查：
 
@@ -454,7 +454,7 @@ let r Dyn<D&>    = Dyn:<D&>(ref)     ; U& 或 Rc<U> → Dyn<D&>，借用
 §12.9.7.1 每个 `(具体类型 U, spec D)` 对生成一份静态 vtable：
 
 ```
-__yux_vtable.<U全限定>.<D全限定>:
+__riu_vtable.<U全限定>.<D全限定>:
   [0] dtor:        fn(ptr) void          ; U 的类型特定析构
   [1] D.method_0:  fn(ptr, ...) -> R     ; 按 D 声明序
   ...
@@ -480,7 +480,7 @@ __yux_vtable.<U全限定>.<D全限定>:
 
 ### §12.9.10 FFI / `extern` 边界
 
-§12.9.10.1 `Dyn<D>` / `Dyn<D&>` **不得**跨 `extern` 边界（vtable 布局是 yux 内部 ABI，不暴露给 C），报 **E1136**。
+§12.9.10.1 `Dyn<D>` / `Dyn<D&>` **不得**跨 `extern` 边界（vtable 布局是 riu 内部 ABI，不暴露给 C），报 **E1136**。
 
 ### §12.9.11 不在本节范围
 
@@ -501,7 +501,7 @@ __yux_vtable.<U全限定>.<D全限定>:
 
 §12.10.1.1 spec body 内每条方法签名**可选**附带函数体；带体即为该签名的"默认方法体"：
 
-```yux
+```riu
 #Spec
 struct Ord {
   fn cmp(other Self&) i32                             ; 仅签名 — 必须实现
@@ -573,7 +573,7 @@ struct Ord {
 
 ### §12.10.6 SDK 内置 spec
 
-§12.10.6.1 `sdk/yux/src/yux/core/base.yux` 中 5 个内置 spec（`ToString` / `ToJson` / `Eq` / `Ord` / `Number`）的方法体策略如下：
+§12.10.6.1 `sdk/riu/src/riu/core/base.ut` 中 5 个内置 spec（`ToString` / `ToJson` / `Eq` / `Ord` / `Number`）的方法体策略如下：
 
 - `Ord.lt` / `Ord.le` / `Ord.gt` / `Ord.ge` 由 `Ord.cmp` 默认体推导；
 - `Eq.ne` 由 `Eq.eq` 默认体推导；
@@ -616,7 +616,7 @@ exprDot ::= expr LineEnd* '?'? '.' ID ('@' ID)? ...
 
 §12.10.8.3 `@SpecA` 是 escape hatch：即便 T 覆盖了 `m`，`$.m@SpecA()` 仍指向 SpecA 的默认方法体。典型用法是在 §12.10.5 E3132 消歧覆盖体内 delegate 到 spec 默认体：
 
-```yux
+```riu
 #Impl(A)
 #Impl(B)
 struct S {

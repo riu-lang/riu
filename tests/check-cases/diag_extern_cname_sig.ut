@@ -1,0 +1,9 @@
+; require-sdk
+; 与 SDK 公开 base 的 `riurt_alloc(u64) Ptr` 同 C 名但签名不同 → E2036
+
+extern {
+  fn riurt_alloc() i32  ; check: E2036
+}
+
+fn main() {
+}

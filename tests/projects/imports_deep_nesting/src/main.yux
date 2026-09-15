@@ -1,6 +1,0 @@
-use yux.core.*
-use a
-
-fn main() {
-    println(a.b.c.deep.value())
-}

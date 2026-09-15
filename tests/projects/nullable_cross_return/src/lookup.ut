@@ -1,0 +1,8 @@
+use riu.core.*
+
+fn find_pos(needle i64) i64? {
+  if needle > 0i64 {
+    ret needle
+  }
+  null
+}

@@ -1,2 +1,2 @@
-specs.yux:
+specs.ut:
 diag-cross-file-anchor

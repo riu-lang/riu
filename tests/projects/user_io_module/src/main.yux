@@ -1,6 +1,0 @@
-use yux.core.*
-use io
-
-fn main() {
-  println(io.ping())
-}

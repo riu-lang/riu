@@ -1,0 +1,74 @@
+; Rc<T> 方法调用自动解引用测试
+;
+; Rc 测试分散在 5 个文件中，详见 rc.test.ut 头部注释。
+;
+; 本文件覆盖（P2）：Rc<Array<i32>>.len()/is_empty()、Rc<i32/f64/bool>.to_string()、
+; Rc<String>.len()
+
+; ==================== Rc<Array<T>> 方法 ====================
+
+; 验证：Rc<Array<i32>> 的 len() 方法返回数组长度
+#Test
+fn test_rc_array_len() {
+  #Mut let arr Array<i32> = [1, 2, 3]
+  let r Rc<Array<i32>> = move(arr)
+  assert_eq(r.len(), 3)
+}
+
+; 验证：Rc 包装的空数组 is_empty 方法返回 true
+#Test
+fn test_rc_array_is_empty() {
+  #Mut let arr Array<i32> = []
+  let r Rc<Array<i32>> = move(arr)
+  assert_true(r.is_empty())
+}
+
+; 验证：新构造的 Rc<Array> 长度应为 0
+#Test
+fn test_rc_array_cap() {
+  #Mut let arr Array<i32> = []
+  let r Rc<Array<i32>> = move(arr)
+  ; 新构造的 Rc<Array> 长度应为 0
+  assert_eq(r.len(), 0)
+}
+
+; ==================== Rc<builtin> SDK 方法 ====================
+
+; 验证：Rc 包装的 i32 转换为字符串
+#Test
+fn test_rc_i32_to_string() {
+  let r Rc<i32> = 42
+  assert_eq(r.to_string(), "42")
+}
+
+; 验证：Rc 包装的 f64 转换为字符串时的行为
+#Test
+fn test_rc_f64_to_string() {
+  let r Rc<f64> = 3.14
+  assert_eq(r.to_string(), "3.140000")
+}
+
+; 验证：Rc 包装的 bool 转换为字符串
+#Test
+fn test_rc_bool_to_string() {
+  let r Rc<bool> = true
+  assert_eq(r.to_string(), "true")
+}
+
+; ==================== Rc<struct> 方法（已工作，回归验证） ====================
+
+; 验证：Rc 包装的字符串长度获取
+#Test
+fn test_rc_string_len() {
+  let s String = "hello"
+  let r Rc<String> = move(s)
+  assert_eq(r.len(), 5)
+}
+
+; 验证：Rc 包装的空字符串长度为零
+#Test
+fn test_rc_string_is_empty_via_len() {
+  let s String = ""
+  let r Rc<String> = move(s)
+  assert_eq(r.len(), 0)
+}

@@ -1,7 +1,0 @@
-use yux.core.*
-use shapes.*
-
-fn main() {
-    let p = Point::make(3, 4)
-    println(p.sum())
-}

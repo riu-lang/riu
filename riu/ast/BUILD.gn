@@ -1,0 +1,56 @@
+# Copyright (c) 2026. Yin-Jinlong@github
+# MPL-2.0
+
+config("riu_ast_public") {
+  include_dirs = [
+    "//riu",
+    "//riu/include",
+    "//riu/ast/gen",
+    "//third_party/toml11/single_include",
+  ]
+}
+
+static_library("riu_ast") {
+  public_configs = [ ":riu_ast_public" ]
+  public_deps = [ "//build/third_party:antlr4_static" ]
+
+  # ast_builder_decl.cpp / expr_node.cpp 构建期用 frontend 头
+  include_dirs = [ "//riu/frontend" ]
+
+  sources = [
+    "ast_builder.cpp",
+    "ast_builder_decl.cpp",
+    "ast_builder_struct.cpp",
+    "ast_builder_fn.cpp",
+    "ast_builder_stmt.cpp",
+    "ast_builder_expr.cpp",
+    "ast_builder_type.cpp",
+    "riu.cpp",
+    "parse_program.cpp",
+    "mod_decl.cpp",
+    "mangler.cpp",
+    "type_path.cpp",
+    "node/expr_node.cpp",
+    "node/file_node.cpp",
+    "node/fn_node.cpp",
+    "node/global_const_node.cpp",
+    "node/global_var_node.cpp",
+    "node/literal_node.cpp",
+    "node/node.cpp",
+    "node/statement_node.cpp",
+    "node/struct_node.cpp",
+    "node/type_node.cpp",
+    "gen/riu/riuLexer.cpp",
+    "gen/riu/riuParser.cpp",
+    "gen/riu/riuParserBaseVisitor.cpp",
+    "gen/riu/riuParserVisitor.cpp",
+  ]
+}
+
+executable("riu-ast") {
+  output_dir = "$root_out_dir/bin"
+  defines = [ "RIU_VERSION=\"$riu_version_str\"" ]
+  deps = [ "//riu/frontend:riu_frontend" ]
+  include_dirs = [ "//third_party/cli11/include" ]
+  sources = [ "ast_main.cpp" ]
+}

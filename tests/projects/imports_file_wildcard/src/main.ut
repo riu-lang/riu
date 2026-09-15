@@ -1,0 +1,7 @@
+use riu.core.*
+use helper.*
+
+fn main() {
+    greet()
+    println(add42(8))
+}

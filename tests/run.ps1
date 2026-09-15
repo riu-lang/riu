@@ -11,7 +11,7 @@ $ErrorActionPreference = 'Stop'
 
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 $ProjectsDir = Join-Path $PSScriptRoot 'projects'
-$YuxExe = $null
+$RiuExe = $null
 $Group = $null
 $VerboseLog = $false
 $Jobs = 0
@@ -25,10 +25,10 @@ $i = 0
 $argv = @($args)
 while ($i -lt $argv.Count) {
     $a = [string]$argv[$i]
-    if ($a -in @('-YuxExe', '--yux')) {
+    if ($a -in @('-RiuExe', '--riu')) {
         $i++
-        if ($i -ge $argv.Count) { throw '-YuxExe requires a path' }
-        $YuxExe = [string]$argv[$i]
+        if ($i -ge $argv.Count) { throw '-RiuExe requires a path' }
+        $RiuExe = [string]$argv[$i]
     } elseif ($a -in @('-Group', '--group', '-g')) {
         $i++
         if ($i -ge $argv.Count) { throw '-Group requires a name' }
@@ -42,30 +42,30 @@ while ($i -lt $argv.Count) {
     } elseif ($a.Length -gt 0 -and -not $a.StartsWith('-')) {
         $n = $a
         if ($n.StartsWith('project_')) { $n = $n.Substring(8) }
-        if ($n.StartsWith('yux_tests/')) { $n = $n.Substring(10) }
+        if ($n.StartsWith('riu_tests/')) { $n = $n.Substring(10) }
         if ($n.StartsWith('project_')) { $n = $n.Substring(8) }
         [void]$Names.Add($n)
     }
     $i++
 }
 
-if (-not $YuxExe) {
-    $cand = Join-Path $ProjectRoot 'build\windows\x64\debug\bin\yux.exe'
-    if (Test-Path -LiteralPath $cand) { $YuxExe = $cand }
+if (-not $RiuExe) {
+    $cand = Join-Path $ProjectRoot 'build\windows\x64\debug\bin\riu.exe'
+    if (Test-Path -LiteralPath $cand) { $RiuExe = $cand }
 }
-if (-not $YuxExe) {
-    $cmd = Get-Command yux -ErrorAction SilentlyContinue
-    if ($cmd) { $YuxExe = $cmd.Source }
+if (-not $RiuExe) {
+    $cmd = Get-Command riu -ErrorAction SilentlyContinue
+    if ($cmd) { $RiuExe = $cmd.Source }
 }
-if (-not $YuxExe -or -not (Test-Path -LiteralPath $YuxExe)) {
-    throw 'yux.exe not found. Build with ./build.ps1 yux first, or pass -YuxExe.'
+if (-not $RiuExe -or -not (Test-Path -LiteralPath $RiuExe)) {
+    throw 'riu.exe not found. Build with ./build.ps1 riu first, or pass -RiuExe.'
 }
 
 function Get-Cases {
     $list = @()
     Get-ChildItem -LiteralPath $ProjectsDir -Directory | ForEach-Object {
         $d = $_.FullName
-        $toml = Join-Path $d 'yux.toml'
+        $toml = Join-Path $d 'riu.toml'
         if (-not (Test-Path -LiteralPath $toml)) { return }
         $expected = Join-Path $d 'expected.txt'
         $fmt = Join-Path $d 'expected_format'
@@ -135,7 +135,7 @@ function Invoke-OneCase {
         [Parameter(Mandatory)]
         $Case,
         [Parameter(Mandatory)]
-        [string]$YuxExe
+        [string]$RiuExe
     )
     $ok = $false
     $err = ''
@@ -145,7 +145,7 @@ function Invoke-OneCase {
             if (Test-Path -LiteralPath $buildDir) { Remove-Item -LiteralPath $buildDir -Recurse -Force }
             $pre = Join-Path $Case.Dir 'prebuild.ps1'
             if (Test-Path -LiteralPath $pre) {
-                $env:YuxExe = $YuxExe
+                $env:RiuExe = $RiuExe
                 $pwsh = $null
                 $cmd = Get-Command pwsh -ErrorAction SilentlyContinue
                 if ($cmd) { $pwsh = $cmd.Source } else {
@@ -162,7 +162,7 @@ function Invoke-OneCase {
                 }
             }
             if ($err -eq '') {
-                $r = Invoke-Capture $YuxExe @('build', $Case.Name) $Case.Dir
+                $r = Invoke-Capture $RiuExe @('build', $Case.Name) $Case.Dir
                 $exe = Join-Path $buildDir "$($Case.Name).exe"
                 if ($r.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $exe)) {
                     $err = "compile failed`n$($r.Stderr)$($r.Stdout)"
@@ -192,7 +192,7 @@ function Invoke-OneCase {
         } elseif ($Case.Kind -eq 'fail') {
             $buildDir = Join-Path $Case.Dir 'build'
             if (Test-Path -LiteralPath $buildDir) { Remove-Item -LiteralPath $buildDir -Recurse -Force }
-            $r = Invoke-Capture $YuxExe @('build', $Case.Name) $Case.Dir
+            $r = Invoke-Capture $RiuExe @('build', $Case.Name) $Case.Dir
             $combined = (Strip-Cr "$($r.Stderr)$($r.Stdout)")
             if ($r.ExitCode -eq 0) {
                 $err = "expected compile failure, got exit 0`n$combined"
@@ -214,15 +214,15 @@ function Invoke-OneCase {
                 Remove-Item -LiteralPath $buildDir -Recurse -Force -ErrorAction SilentlyContinue
             }
         } else {
-            $toml = Get-Content -LiteralPath (Join-Path $Case.Dir 'yux.toml') -Raw
+            $toml = Get-Content -LiteralPath (Join-Path $Case.Dir 'riu.toml') -Raw
             if ($toml -notmatch 'entry\s*=\s*"([^"]+)"') {
-                $err = "yux.toml missing entry"
+                $err = "riu.toml missing entry"
             } else {
                 $srcFile = Join-Path $Case.Dir "src\$($Matches[1])"
                 if (-not (Test-Path -LiteralPath $srcFile)) {
                     $err = "source not found: $srcFile"
                 } else {
-                    $r = Invoke-Capture $YuxExe @('format', $srcFile) $Case.Dir
+                    $r = Invoke-Capture $RiuExe @('format', $srcFile) $Case.Dir
                     if ($r.ExitCode -ne 0) {
                         $err = "format failed`n$($r.Stderr)$($r.Stdout)"
                     } else {
@@ -266,7 +266,7 @@ function Write-CaseResult {
 function Invoke-CasesParallel {
     param(
         [array]$Cases,
-        [string]$YuxExe,
+        [string]$RiuExe,
         [int]$JobCount
     )
 
@@ -288,7 +288,7 @@ function Invoke-CasesParallel {
         foreach ($c in $Cases) {
             $ps = [powershell]::Create()
             $ps.RunspacePool = $pool
-            [void]$ps.AddCommand('Invoke-OneCase').AddParameter('Case', $c).AddParameter('YuxExe', $YuxExe)
+            [void]$ps.AddCommand('Invoke-OneCase').AddParameter('Case', $c).AddParameter('RiuExe', $RiuExe)
             $running.Add([pscustomobject]@{
                     PS     = $ps
                     Handle = $ps.BeginInvoke()
@@ -348,8 +348,8 @@ function Invoke-CasesParallel {
 $cases = @(Get-Cases)
 if ($Group) {
     $g = $Group.ToLowerInvariant()
-    if ($g -in @('yux/project', 'project')) { $cases = @($cases | Where-Object { $_.Kind -eq 'project' }) }
-    elseif ($g -in @('yux/format', 'format')) { $cases = @($cases | Where-Object { $_.Kind -eq 'format' }) }
+    if ($g -in @('riu/project', 'project')) { $cases = @($cases | Where-Object { $_.Kind -eq 'project' }) }
+    elseif ($g -in @('riu/format', 'format')) { $cases = @($cases | Where-Object { $_.Kind -eq 'format' }) }
     else { throw "unknown group: $Group (use project or format)" }
 }
 if ($Names.Count -gt 0) {
@@ -368,15 +368,15 @@ $pass = 0
 $fail = 0
 $failed = New-Object System.Collections.Generic.List[string]
 
-Write-Log "yux: $YuxExe" DarkGray
+Write-Log "riu: $RiuExe" DarkGray
 Write-Log "cases: $($cases.Count)  jobs: $jobCount`n" Cyan
 
 if ($jobCount -le 1 -or $cases.Count -le 1) {
     foreach ($c in $cases) {
-        Write-CaseResult (Invoke-OneCase -Case $c -YuxExe $YuxExe)
+        Write-CaseResult (Invoke-OneCase -Case $c -RiuExe $RiuExe)
     }
 } else {
-    Invoke-CasesParallel -Cases $cases -YuxExe $YuxExe -JobCount $jobCount
+    Invoke-CasesParallel -Cases $cases -RiuExe $RiuExe -JobCount $jobCount
 }
 
 Write-Log "`n$pass passed, $fail failed, $($cases.Count) total" $(if ($fail -eq 0) { 'Green' } else { 'Red' })

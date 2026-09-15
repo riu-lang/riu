@@ -1,0 +1,3 @@
+name="pkg_invalid_wildcard_alias"
+version="1.0.0"
+entry="main.ut"

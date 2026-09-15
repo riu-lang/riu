@@ -1,0 +1,4 @@
+use riu.core.*
+use helper
+
+fn main() { println(helper.value()) }

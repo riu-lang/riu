@@ -15,7 +15,7 @@
 | 产生式 | production | §2.1 | EBNF / ANTLR 文法规则 |
 | 拼合运算符 | composed operator | §2.4 | 词法单字符、语法层拼出的多字符算符（`<=` `??` `?.` 等） |
 | 显式换行槽 | explicit line-break slot | §2.3.2 | 产生式写明的 `LineEnd*`；不是隐式续行 |
-| 关键字 | keyword | §A.1 | `yux.g4` 独立 lexer token |
+| 关键字 | keyword | §A.1 | `riu.g4` 独立 lexer token |
 | 上下文标识符 | contextual identifier | §A.2 | 内置类型名等非关键字保留名 |
 | 注解 | build annotation | §11 | `#Name` 形态的编译期标签 |
 
@@ -116,30 +116,29 @@
 |---|---|---|---|
 | 模块 | module | §10 | 文件级编译单元 |
 | 包 | package | §10.1.3 | 目录形式的模块容器 |
-| 项目 | project | §10.1 | `yux.toml` 标记的根 |
-| 入口 | entry | §10.1.1 | `yux.toml` 的 `entry` 字段 |
+| 项目 | project | §10.1 | `riu.toml` 标记的根 |
+| 入口 | entry | §10.1.1 | `riu.toml` 的 `entry` 字段 |
 | 源根 | source root | §10.1.3 | `<projectRoot>/src/`，模块解析起点 |
 | `pkg` 文件 | pkg file | §10.2.4 | 包目录的再导出清单；有 `pkg` 时同时是包外可见性边界 |
-| 文件模块 | file module | §10.1.3 / §10.2.2 | 由单个 `.yux` 文件构成的模块 |
-| 包模块 | package module | §10.1.3 / §10.2.4 | 由含 `pkg` / 多个 `.yux` 的目录构成的模块 |
+| 文件模块 | file module | §10.1.3 / §10.2.2 | 由单个 `.ut`（U Text）文件构成的模块 |
+| `.ud` | module decl cache | §10 | 模块声明缓存（接口 + 泛型体骨架） |
+| 包模块 | package module | §10.1.3 / §10.2.4 | 由含 `pkg` / 多个 `.ut` 的目录构成的模块 |
 | 通配导入 | wildcard import | §10.2.3 | `use a.b.*` 扁平化导入 |
 | 导出名 | exported name | §10.2.4.7 | `pkg` 行给出的名字；有 `as` 则只用别名 |
 | 定向开放 | directed export | §10.2.4 | `pkg` 行 `to`：只对名单内的包 / 模块可见 |
 | `_` 前缀私有 | underscore-private | §10.3.2 | 仅当前模块可见 |
-| `yux.core` | yux core SDK | §10.4 | 内置 SDK 模块名 |
-| `base.yux` | SDK base | §10.4 | 内置类型 / 内置函数声明源 |
+| `riu.core` | riu core SDK | §10.4 | 内置 SDK 模块名 |
+| `base.ut` | SDK base | §10.4 | 内置类型 / 内置函数声明源 |
 | 构建注解 | build annotation | §11 | `#Name` 形态 |
 | `#Builtin` | compiler-internal annotation | §11.2 | 编译器合成实现 |
-| `#Test` | test annotation | §11.3 | 标记单元测试函数；仅 `*.test.yux` 中允许 |
-| `#DraftLike` | draft-like annotation | §11.4 / §12.4 | 开放结构化匹配的 draft |
-| 测试文件 | test file | §11.3.3 | 以 `.test.yux` 结尾；`yux test` 专属 |
-| `yux test` | yux test command | §11.3.4 | 收集并执行项目下 `#Test` 函数的子命令 |
+| `#Test` | test annotation | §11.3 | 标记单元测试函数；仅 `*.test.ut` 中允许 |
+| 测试文件 | test file | §11.3.3 | 以 `.test.ut` 结尾；`riu test` 专属 |
+| `riu test` | riu test command | §11.3.4 | 收集并执行项目下 `#Test` 函数的子命令 |
 
-## C.6a draft（接口与约束）
+## C.6a spec（接口与约束）
 
 | 术语 | 英文 | 出处 | 简述 |
 |---|---|---|---|
-| draft | draft (interface contract) | §12 | 一组方法签名集合；显式 `:` 实现 + 可选 `#DraftLike` 结构化匹配 |
 | 显式实现 | explicit impl | §12.2 | `Type : D1 + D2 { ... }` 块；穷尽且不多余 |
 | 结构化匹配 | structural match | §12.4 | `#DraftLike` draft 按 §12.3 签名等价命中 |
 | spec 边界 | spec bound | §6.4.4 / §12.4 | `<T : D1 + D2>` 内联约束（产生式名 `draftBound` 为 g4 历史名；旧称 draft 边界） |
@@ -148,14 +147,13 @@
 | Rc forward | box forward | §12.6 | `Rc<U>` 上调 D 方法走 §8.6.7.3 自动解引用 + 归一 |
 | `as_ref` | as_ref | §8.3.5.5 | `Rc<T> → T&` builtin |
 | `copy_of` | copy_of | §12.7.3 | `T& → T` 显式拷贝 builtin |
-| `Any` | any | §12.7.2 | 空签名集 draft；所有 owned 类型自动满足 |
-| `ToString` | to_string draft | §12.7.1 | 内置 `fn to_string() String` 契约；不标 `#DraftLike` |
+| `ToString` | to_string spec | §12.7.1 | 内置 `fn to_string() String` 契约； |
 
 ## C.7 编译期 / 实现
 
 | 术语 | 英文 | 出处 | 简述 |
 |---|---|---|---|
-| ANTLR4 | ANTLR4 | §2.1 / `yux.g4` | 文法工具与左递归优先级 |
+| ANTLR4 | ANTLR4 | §2.1 / `riu.g4` | 文法工具与左递归优先级 |
 | 优先级 | precedence | §4.2 | 由 `expr` 分支顺序决定 |
 | 单态化 | monomorphization | §6.4 | 泛型按实参实例化 |
 | informative | informative | §index | 非规范性说明 |

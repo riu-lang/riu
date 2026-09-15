@@ -13,7 +13,7 @@ config("llvm_public") {
     "$_llvm_out/gen/lld/include",
   ]
   lib_dirs = [ "$_llvm_out/lib" ]
-  ldflags = [ "@" + rebase_path("$_llvm_out/yux_llvm_libs.rsp") ]
+  ldflags = [ "@" + rebase_path("$_llvm_out/riu_llvm_libs.rsp") ]
   libs = [
     "psapi.lib",
     "shell32.lib",
@@ -29,7 +29,7 @@ action("build_llvm") {
   pool = "//:console"
 
   _stamp = "$root_out_dir/llvm.stamp"
-  _rsp = "$_llvm_out/yux_llvm_libs.rsp"
+  _rsp = "$_llvm_out/riu_llvm_libs.rsp"
   _src = rebase_path("//third_party/llvm")
   _build = rebase_path(_llvm_out, root_build_dir)
   _stamp_arg = rebase_path(_stamp, root_build_dir)

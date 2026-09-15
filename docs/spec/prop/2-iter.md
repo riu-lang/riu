@@ -12,7 +12,7 @@
 
 for-in 从「只认数组」扩成两套协议；Map / Set 可直接 `for`；Array 上已落地的急切 `filter` / `map` **保持急切**，不改惰性。
 
-yux 约束（不能按别的语言套）：
+riu 约束（不能按别的语言套）：
 
 - 字段不能存 `T&`（E4039）。用户 struct 做不出「借着集合走」的迭代器对象。
 - `Array` / `Map` / `Set` 是 `#NoCopy`，不能靠复制句柄共享底层缓冲。
@@ -56,9 +56,9 @@ Ambiguous（同一类型既 Indexed 又 Iter）：Indexed 优先，与数组行�
 
 待 #15 落地且本条待实施后回写 §5.5.4 / §9 / §10.4.1.5 / §12.7 / 附录 C/D。
 
-### spec（SDK `base.yux`）
+### spec（SDK `base.ut`）
 
-```yux
+```riu
 #Spec
 struct Indexed<T> {
   fn len() usize
@@ -101,7 +101,7 @@ struct Iter<T> {
 - `Set<T>`：`#Impl(Indexed<T>)`，转发到内嵌 Map。
 - 用户例子（#15 之后）：
 
-```yux
+```riu
 #Impl(Iter<i32>)
 struct Counter {
   #Mut

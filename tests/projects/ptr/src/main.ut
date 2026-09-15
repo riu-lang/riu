@@ -1,0 +1,67 @@
+use riu.core.*
+
+; 合并 ptr_eq_null + ptr_of
+
+; 辅助函数
+fn yes_no(b bool) String {
+  ret if b {
+    "yes"
+  } else {
+    "no"
+  }
+}
+
+; ptr_eq_null：验证 Ptr == null / != null
+fn test_eq_null() {
+  #Mut let h Ptr = ptr_from_addr(1u64)
+  if h == null {
+    println("null")
+  } else {
+    println("non-null")
+  }
+  #Mut let n Ptr = null
+  if n == null {
+    println("null-literal-eq-null")
+  } else {
+    println("unexpected")
+  }
+}
+
+; ptr_of：验证 ptr_of:<T>(obj) Ptr 显式取裸指针
+struct Pair {
+  a i32
+  b i32
+
+  #Static
+  fn make(a i32, b i32) Pair {
+    ret Self {
+      .a = a
+      .b = b
+    }
+  }
+}
+
+fn test_ptr_of() {
+  ; Rc<Pair>：同一句柄两次 ptr_of 应得到同一 payload 地址
+  #Mut let p Rc<Pair> = Pair::make(123i32, 456i32)
+  #Mut let pp1 Ptr = ptr_of:<Rc<Pair>>(p)
+  #Mut let pp2 Ptr = ptr_of:<Rc<Pair>>(p)
+  println(yes_no(pp1.to_int() == pp2.to_int()))
+
+  ; Array<i32>：同变量两次 ptr_of 应一致
+  #Mut let a Array<i32> = [10i32, 20i32, 30i32]
+  #Mut let ap1 Ptr = ptr_of:<Array<i32>>(a)
+  #Mut let ap2 Ptr = ptr_of:<Array<i32>>(a)
+  println(yes_no(ap1.to_int() == ap2.to_int()))
+
+  ; String：同变量两次 ptr_of 应一致
+  #Mut let s String = "hi"
+  #Mut let sp1 Ptr = ptr_of:<String>(s)
+  #Mut let sp2 Ptr = ptr_of:<String>(s)
+  println(yes_no(sp1.to_int() == sp2.to_int()))
+}
+
+fn main() {
+  test_eq_null()
+  test_ptr_of()
+}

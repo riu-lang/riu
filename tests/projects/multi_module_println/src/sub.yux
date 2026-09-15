@@ -1,6 +1,0 @@
-use yux.core.*
-
-fn sub_say() {
-    println("sub")
-    println(7)
-}

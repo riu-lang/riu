@@ -1,4 +1,0 @@
-use yux.core.*
-use helper
-
-fn main() { println(helper.value()) }

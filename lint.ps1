@@ -101,7 +101,7 @@ function Show-Help {
 用法:
   ./lint.ps1              仅 git 变动/未跟踪的 C/C++
   ./lint.ps1 --all        compile_commands.json 中的项目源
-  ./lint.ps1 yux/x.cpp    指定文件
+  ./lint.ps1 riu/x.cpp    指定文件
   ./lint.ps1 -h / --help  帮助
 
 固定使用 build/windows/x64/debug/compile_commands.json（./build.ps1 --gen-only）。提交须 0 warnings。

@@ -27,7 +27,7 @@
 - 内存安全
     - 不直接接触指针
     - 内存由编译器管理，用户只关心业务代码，以及把数据放栈还是堆
-    - 指针单向转换 `yux -> ptr`
+    - 指针单向转换 `riu -> ptr`
     - 限制外部函数（后期），类 `rust`
 - 代码生成代码（后期）
     - 类 `rust`
@@ -51,7 +51,7 @@
 - SDK 公开方法签名稳定
 - 已知 blocker 清零
 
-已满足、不再挡退出：spec-default-body / spec-reflect；闭包捕获；模块 `.decl`。
+已满足、不再挡退出：spec-default-body / spec-reflect；闭包捕获；模块 `.ud`。
 
 未关闭的语言/SDK 项见 [`docs/spec/prop/`](docs/spec/prop/)（状态以提议文件为准）。
 

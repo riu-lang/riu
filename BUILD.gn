@@ -7,11 +7,11 @@ pool("console") {
 
 group("default") {
   deps = [
-    "//yux/ast:yux-ast",
-    "//yux/check:yux-check",
-    "//yux/lsp:yux-lsp",
-    "//yux/test-runner:yux-test-runner",
-    "//yux/yux:yux",
+    "//riu/ast:riu-ast",
+    "//riu/check:riu-check",
+    "//riu/lsp:riu-lsp",
+    "//riu/test-runner:riu-test-runner",
+    "//riu/riu:riu",
   ]
 }
 

@@ -1,0 +1,8 @@
+; require-sdk-modules
+; 文件流拥有 OS 句柄，已有输入流不可隐式复制。
+
+use riu.io.*
+
+fn copy_input(stream FileInputStream) {
+  let copied FileInputStream = stream  ; check: E4031  #NoCopy 文件输入流不可隐式复制
+}

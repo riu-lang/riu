@@ -1,0 +1,10 @@
+base.*
+num.*
+string.*
+assert.*
+panic.*
+exit.*
+math
+map.*
+set.*
+helper to riu.io

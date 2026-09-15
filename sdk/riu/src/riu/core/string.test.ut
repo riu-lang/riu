@@ -1,0 +1,1046 @@
+; String 行为测试
+;
+; 覆盖：
+;   - 等值比较（== / !=）
+;   - contains / starts_with / ends_with（含 String& 形参直接调用）
+;   - to_upper / to_lower（ASCII；非 ASCII 码点不变）
+;   - split（空 sep、连续 sep、首尾 sep、Unicode）
+;   - trim / trim_left / trim_right（ASCII 空白）；lines（\n / \r\n）
+;   - 转义序列与原始字符串（\n \t \r \0 \v \b \\ \" \' \$ \xNN \uNNNN r"..."）
+;   - \$ 转义与字符串模板插值（$id / ${expr} / UTF-8）
+;   - ToString 自动分发（i32 / i64 / u64 / bool / f64）
+;   - String + 链式连接（含左右非 String、混合类型链）
+;   - 边界条件（空字符串、纯插值）
+;   - parse_i32 / parse_i64 / parse_u32 / parse_u64 / parse_usize / parse_bool
+;   - is_empty / replace / repeat
+;   - slice / slice_from（越界夹取）
+;   - index_of / last_index_of / strip_prefix / strip_suffix
+;   - String::from_codepoint / String::join
+;   - cmp / < <= > >=
+
+; ==================== 等值比较 ====================
+
+; 验证：基本字符串等值比较
+#Test
+fn test_string_eq_basic() {
+  let a String = "hello"
+  let b String = "hello"
+  assert_eq(a, b)
+}
+
+; 验证：String 与字符串字面量的相等性比较
+#Test
+fn test_string_eq_literal() {
+  let s String = "world"
+  assert_eq(s, "world")
+}
+
+; 验证：空字符串相等性检查
+#Test
+fn test_string_eq_empty() {
+  let a String = ""
+  let b String = ""
+  assert_eq(a, b)
+}
+
+; ==================== contains / starts_with ====================
+
+; 验证：String 的 contains 方法是否能正确检测子字符串
+#Test
+fn test_string_contains_full() {
+  let s String = "hello world"
+  assert_contains(s, "hello")
+  assert_contains(s, "world")
+  assert_contains(s, "o w")
+  assert_contains(s, "d")
+}
+
+; 验证：空字符串作为子串是否被正确包含在任何字符串中
+#Test
+fn test_string_contains_empty_needle() {
+  let s String = "anything"
+  assert_contains(s, "")
+}
+
+; 验证：String 的 starts_with 方法基本用法
+#Test
+fn test_string_starts_with_basic() {
+  let s String = "hello world"
+  assert_starts_with(s, "hello")
+  assert_starts_with(s, "h")
+  assert_starts_with(s, "hello world")
+}
+
+; 验证：空字符串作为前缀时，String 的 starts_with 方法返回 true
+#Test
+fn test_string_starts_with_empty_prefix() {
+  let s String = "x"
+  assert_starts_with(s, "")
+}
+
+; String& 形参直接调用
+#Test
+fn test_string_starts_with_direct() {
+  let s String = "hello world"
+  assert_true(s.starts_with("hello"))
+  assert_false(s.starts_with("world"))
+}
+
+; 验证：String 的 contains 方法是否能正确判断子字符串存在
+#Test
+fn test_string_contains_direct() {
+  let s String = "foo bar baz"
+  assert_true(s.contains("bar"))
+  assert_false(s.contains("qux"))
+}
+
+; ==================== ends_with ====================
+
+; 验证：String 的 ends_with 方法基本用法
+#Test
+fn test_string_ends_with_basic() {
+  let s String = "hello world"
+  assert_true(s.ends_with("world"))
+  assert_true(s.ends_with("d"))
+  assert_true(s.ends_with("hello world"))
+  assert_false(s.ends_with("hello"))
+}
+
+; 验证：空字符串作为后缀时，String 的 ends_with 方法返回 true
+#Test
+fn test_string_ends_with_empty_suffix() {
+  let s String = "x"
+  assert_true(s.ends_with(""))
+  let empty String = ""
+  assert_true(empty.ends_with(""))
+}
+
+; 验证：后缀长于接收者时 ends_with 返回 false
+#Test
+fn test_string_ends_with_longer_suffix() {
+  let s String = "ab"
+  assert_false(s.ends_with("abc"))
+}
+
+; 验证：UTF-8 码点后缀
+#Test
+fn test_string_ends_with_utf8() {
+  let s String = "你好世界"
+  assert_true(s.ends_with("世界"))
+  assert_false(s.ends_with("你好"))
+}
+
+; ==================== to_upper / to_lower ====================
+
+; 验证：ASCII 大小写转换
+#Test
+fn test_string_to_upper_ascii() {
+  assert_eq("Hello".to_upper(), "HELLO")
+  assert_eq("hello".to_upper(), "HELLO")
+  assert_eq("ABC123".to_upper(), "ABC123")
+  assert_eq("".to_upper(), "")
+}
+
+; 验证：to_upper 不转换非 ASCII 码点（含 Latin-1 / CJK）
+#Test
+fn test_string_to_upper_non_ascii_unchanged() {
+  assert_eq("café".to_upper(), "CAFé")
+  assert_eq("你好Hello".to_upper(), "你好HELLO")
+}
+
+; 验证：ASCII 小写转换
+#Test
+fn test_string_to_lower_ascii() {
+  assert_eq("Hello".to_lower(), "hello")
+  assert_eq("HELLO".to_lower(), "hello")
+  assert_eq("xyz".to_lower(), "xyz")
+  assert_eq("".to_lower(), "")
+}
+
+; 验证：to_lower 不转换非 ASCII 码点
+#Test
+fn test_string_to_lower_non_ascii_unchanged() {
+  assert_eq("CAFÉ".to_lower(), "cafÉ")
+  assert_eq("你好HELLO".to_lower(), "你好hello")
+}
+
+; ==================== split ====================
+
+; 验证：按单码点分隔符切分
+#Test
+fn test_string_split_comma() {
+  let parts Array<String> = "a,b,c".split(",")
+  assert_eq(parts.len(), 3)
+  assert_eq(parts[0], "a")
+  assert_eq(parts[1], "b")
+  assert_eq(parts[2], "c")
+}
+
+; 验证：连续分隔符产生空段
+#Test
+fn test_string_split_consecutive_sep() {
+  let parts Array<String> = "a,,b".split(",")
+  assert_eq(parts.len(), 3)
+  assert_eq(parts[0], "a")
+  assert_eq(parts[1], "")
+  assert_eq(parts[2], "b")
+}
+
+; 验证：首尾分隔符产生空段
+#Test
+fn test_string_split_leading_trailing_sep() {
+  let parts Array<String> = ",a,".split(",")
+  assert_eq(parts.len(), 3)
+  assert_eq(parts[0], "")
+  assert_eq(parts[1], "a")
+  assert_eq(parts[2], "")
+}
+
+; 验证：无匹配时整串作为唯一段
+#Test
+fn test_string_split_no_match() {
+  let parts Array<String> = "abc".split(",")
+  assert_eq(parts.len(), 1)
+  assert_eq(parts[0], "abc")
+}
+
+; 验证：空接收者 + 非空 sep → 单个空段
+#Test
+fn test_string_split_empty_haystack() {
+  let parts Array<String> = "".split(",")
+  assert_eq(parts.len(), 1)
+  assert_eq(parts[0], "")
+}
+
+; 验证：空 sep 按码点切开
+#Test
+fn test_string_split_empty_sep() {
+  let parts Array<String> = "abc".split("")
+  assert_eq(parts.len(), 3)
+  assert_eq(parts[0], "a")
+  assert_eq(parts[1], "b")
+  assert_eq(parts[2], "c")
+}
+
+; 验证：空接收者 + 空 sep → 空数组
+#Test
+fn test_string_split_empty_both() {
+  let parts Array<String> = "".split("")
+  assert_eq(parts.len(), 0)
+}
+
+; 验证：多码点分隔符
+#Test
+fn test_string_split_multi_cp_sep() {
+  let parts Array<String> = "a::b::c".split("::")
+  assert_eq(parts.len(), 3)
+  assert_eq(parts[0], "a")
+  assert_eq(parts[1], "b")
+  assert_eq(parts[2], "c")
+}
+
+; 验证：UTF-8 切分
+#Test
+fn test_string_split_utf8() {
+  let parts Array<String> = "你好,世界".split(",")
+  assert_eq(parts.len(), 2)
+  assert_eq(parts[0], "你好")
+  assert_eq(parts[1], "世界")
+}
+
+; ==================== trim / trim_left / trim_right ====================
+
+#Test
+fn test_string_trim_both() {
+  assert_eq("  hi  ".trim(), "hi")
+  assert_eq("\t hi \n".trim(), "hi")
+  assert_eq("hi".trim(), "hi")
+  assert_eq("".trim(), "")
+  assert_eq("   ".trim(), "")
+}
+
+#Test
+fn test_string_trim_left() {
+  assert_eq("  hi  ".trim_left(), "hi  ")
+  assert_eq("hi".trim_left(), "hi")
+  assert_eq("".trim_left(), "")
+}
+
+#Test
+fn test_string_trim_right() {
+  assert_eq("  hi  ".trim_right(), "  hi")
+  assert_eq("hi".trim_right(), "hi")
+  assert_eq("".trim_right(), "")
+}
+
+#Test
+fn test_string_trim_crlf_ws() {
+  assert_eq("\r\nfoo\r\n".trim(), "foo")
+}
+
+; ==================== lines ====================
+
+#Test
+fn test_string_lines_lf() {
+  let parts Array<String> = "a\nb\nc".lines()
+  assert_eq(parts.len(), 3)
+  assert_eq(parts[0], "a")
+  assert_eq(parts[1], "b")
+  assert_eq(parts[2], "c")
+}
+
+#Test
+fn test_string_lines_crlf() {
+  let parts Array<String> = "a\r\nb\r\nc".lines()
+  assert_eq(parts.len(), 3)
+  assert_eq(parts[0], "a")
+  assert_eq(parts[1], "b")
+  assert_eq(parts[2], "c")
+}
+
+#Test
+fn test_string_lines_trailing_nl() {
+  let parts Array<String> = "a\nb\n".lines()
+  assert_eq(parts.len(), 2)
+  assert_eq(parts[0], "a")
+  assert_eq(parts[1], "b")
+}
+
+#Test
+fn test_string_lines_empty_and_lone_nl() {
+  let empty Array<String> = "".lines()
+  assert_eq(empty.len(), 0)
+  let one Array<String> = "\n".lines()
+  assert_eq(one.len(), 1)
+  assert_eq(one[0], "")
+}
+
+#Test
+fn test_string_lines_blank_middle() {
+  let parts Array<String> = "a\n\nb".lines()
+  assert_eq(parts.len(), 3)
+  assert_eq(parts[0], "a")
+  assert_eq(parts[1], "")
+  assert_eq(parts[2], "b")
+}
+
+#Test
+fn test_string_lines_no_nl() {
+  let parts Array<String> = "abc".lines()
+  assert_eq(parts.len(), 1)
+  assert_eq(parts[0], "abc")
+}
+
+; ==================== 转义序列 ====================
+
+; 验证：字符串转义序列 \n 的长度和内容
+#Test
+fn test_string_escape_newline_codepoint() {
+  let s String = "a\nb"
+  assert_eq(s.len(), 3)
+  assert_eq(s.get(0), 97u32)
+  assert_eq(s.get(1), 10u32)
+  assert_eq(s.get(2), 98u32)
+}
+
+; 验证：String 转义字符 \t 和 Unicode 码点处理
+#Test
+fn test_string_escape_tab_codepoint() {
+  let s String = "x\ty"
+  assert_eq(s.len(), 3)
+  assert_eq(s.get(1), 9u32)
+}
+
+; 验证：String 转义字符和 Unicode 码点处理
+#Test
+fn test_string_escape_quote_codepoint() {
+  let s String = "\""
+  assert_eq(s.len(), 1)
+  assert_eq(s.get(0), 34u32)
+}
+
+; 验证：\r 回车码点
+#Test
+fn test_string_escape_cr_codepoint() {
+  let s String = "a\rb"
+  assert_eq(s.len(), 3)
+  assert_eq(s.get(1), 13u32)
+}
+
+; 验证：\0 空字符码点
+#Test
+fn test_string_escape_nul_codepoint() {
+  let s String = "a\0b"
+  assert_eq(s.len(), 3)
+  assert_eq(s.get(1), 0u32)
+}
+
+; 验证：\\ 反斜杠码点；\\q 是反斜杠+q 而非未知转义
+#Test
+fn test_string_escape_backslash_codepoint() {
+  let s String = "\\q"
+  assert_eq(s.len(), 2)
+  assert_eq(s.get(0), 92u32)
+  assert_eq(s.get(1), 113u32)
+}
+
+; 验证：\' 单引号码点
+#Test
+fn test_string_escape_squote_codepoint() {
+  let s String = "\'"
+  assert_eq(s.len(), 1)
+  assert_eq(s.get(0), 39u32)
+}
+
+; 验证：\v 垂直制表码点
+#Test
+fn test_string_escape_vt_codepoint() {
+  let s String = "\v"
+  assert_eq(s.len(), 1)
+  assert_eq(s.get(0), 11u32)
+}
+
+; 验证：\b 退格码点
+#Test
+fn test_string_escape_bs_codepoint() {
+  let s String = "\b"
+  assert_eq(s.len(), 1)
+  assert_eq(s.get(0), 8u32)
+}
+
+; 验证：\xNN 单字节
+#Test
+fn test_string_escape_hex_codepoint() {
+  let s String = "\x41"
+  assert_eq(s.len(), 1)
+  assert_eq(s.get(0), 65u32)
+}
+
+; 验证：\uNNNN BMP 码点
+#Test
+fn test_string_escape_unicode_codepoint() {
+  let s String = "\u4e2d"
+  assert_eq(s.len(), 1)
+  assert_eq(s.get(0), 20013u32)
+}
+
+; ==================== 原始字符串 ====================
+
+; 验证：原始字符串中的反斜杠和换行符保持不变
+#Test
+fn test_string_raw_keeps_backslash() {
+  let s String = r"\n"
+  assert_eq(s.len(), 2)
+  assert_eq(s.get(0), 92u32)
+  assert_eq(s.get(1), 110u32)
+}
+
+; 验证：Raw string 的长度和字符访问
+#Test
+fn test_string_raw_path() {
+  let s String = r"C:\path"
+  assert_eq(s.len(), 7)
+  assert_eq(s.get(2), 92u32)
+}
+
+; ==================== \$ 转义 ====================
+
+; 验证：字符串中的美元符号转义码点处理
+#Test
+fn test_string_dollar_escape_codepoint() {
+  let s String = "price=\$5"
+  assert_eq(s.len(), 8)
+  assert_eq(s.get(6), 36u32)
+}
+
+; 验证：字符串中美元符号的转义处理
+#Test
+fn test_string_dollar_escape_only() {
+  let s String = "\$"
+  assert_eq(s.len(), 1)
+  assert_eq(s.get(0), 36u32)
+}
+
+; ==================== 字符串模板插值（$id / ${expr}） ====================
+
+; 验证：字符串模板插值 $id 行为
+#Test
+fn test_string_template_dollar_id() {
+  let name String = "riu"
+  let s String = "hello, $name!"
+  assert_eq(s.len(), 11)
+  assert_eq(s, "hello, riu!")
+}
+
+; 验证：字符串模板中变量被正确替换
+#Test
+fn test_string_template_id_surrounded() {
+  let name String = "x"
+  let s String = "[$name]"
+  assert_eq(s, "[x]")
+}
+
+; 验证：字符串模板中的大括号插值功能
+#Test
+fn test_string_template_brace_interp() {
+  let a String = "x"
+  let b String = "y"
+  let s String = "${a}=${b}"
+  assert_eq(s, "x=y")
+}
+
+; 验证：字符串模板混合文本与变量替换
+#Test
+fn test_string_template_mixed_text() {
+  let v String = "world"
+  let s String = "hi ${v}, bye"
+  assert_eq(s, "hi world, bye")
+}
+
+; 验证：空占位符在字符串模板中的处理
+#Test
+fn test_string_template_empty_part() {
+  let a String = "ab"
+  let b String = "cd"
+  let s String = "${a}${b}"
+  assert_eq(s, "abcd")
+}
+
+; 验证：字符串模板处理 UTF-8 编码字符
+#Test
+fn test_string_template_utf8_part() {
+  let v String = "中"
+  let s String = "前${v}后"
+  assert_eq(s.len(), 3)
+  assert_eq(s.get(0), 21069u32)
+  assert_eq(s.get(1), 20013u32)
+  assert_eq(s.get(2), 21518u32)
+}
+
+; ==================== ToString 自动分发 ====================
+
+; 验证：字符串模板中整数插值
+#Test
+fn test_string_template_i32_interp() {
+  let n i32 = 42
+  let s String = "n=${n}"
+  assert_eq(s, "n=42")
+}
+
+; 验证：字符串模板中插入 i64 字面量
+#Test
+fn test_string_template_i64_literal_interp() {
+  let s String = "x=${1234}"
+  assert_eq(s, "x=1234")
+}
+
+; 验证：字符串模板中布尔值的插值
+#Test
+fn test_string_template_bool_interp() {
+  let b bool = true
+  let s String = "b=${b}"
+  assert_eq(s, "b=true")
+  let s2 String = "b=${false}"
+  assert_eq(s2, "b=false")
+}
+
+; 验证：字符串模板中插入 u64 类型变量
+#Test
+fn test_string_template_u64_interp() {
+  let n u64 = 0
+  let s String = "n=${n}"
+  assert_eq(s, "n=0")
+}
+
+; 验证：String 模板中 f64 插值固定 6 位小数
+#Test
+fn test_string_template_f64_interp() {
+  let f f64 = 3.14f64
+  let s String = "${f}"
+  ; "3.140000" — f64 固定 6 位小数
+  assert_eq(s.len(), 8)
+}
+
+; 验证：f32 插值走 ToString（委派 f64，6 位小数）
+#Test
+fn test_string_template_f32_interp() {
+  let f f32 = 2.5f32
+  let s String = "${f}"
+  assert_eq(s, "2.500000")
+}
+
+; 验证：usize 插值走 ToString
+#Test
+fn test_string_template_usize_interp() {
+  let n usize = 8
+  let s String = "n=${n}"
+  assert_eq(s, "n=8")
+}
+
+; 验证：字符串模板混合类型插值
+#Test
+fn test_string_template_mixed_kind_interp() {
+  let name String = "riu"
+  let n i32 = 7
+  let s String = "$name v${n}"
+  assert_eq(s, "riu v7")
+}
+
+; 验证：`${}` 内为完整 if 表达式（§4.3.1.5）
+#Test
+fn test_string_template_if_expr_interp() {
+  let n i32 = 1
+  let s String = "v=${if n > 0 { 1 } else { 0 }}"
+  assert_eq(s, "v=1")
+  let n2 i32 = 0 - 3
+  let s2 String = "v=${if n2 > 0 { 1 } else { 0 }}"
+  assert_eq(s2, "v=0")
+}
+
+; ==================== String + 链式连接 ====================
+
+; 验证：String 链式连接操作
+#Test
+fn test_string_plus_two() {
+  let a String = "foo"
+  let b String = "bar"
+  let s String = a + b
+  assert_eq(s, "foobar")
+}
+
+; 验证：字符串连接操作符 "+" 的连续使用
+#Test
+fn test_string_plus_chain() {
+  let a String = "a"
+  let b String = "b"
+  let c String = "c"
+  let d String = "d"
+  let s String = a + b + c + d
+  assert_eq(s, "abcd")
+}
+
+; 验证：String 与字符串字面量相加
+#Test
+fn test_string_plus_with_literal() {
+  let name String = "riu"
+  let s String = "hello, " + name + "!"
+  assert_eq(s, "hello, riu!")
+}
+
+; 验证：字符串与整数拼接生成新字符串
+#Test
+fn test_string_plus_to_string() {
+  let n i32 = 42
+  let s String = "n=" + n
+  assert_eq(s, "n=42")
+}
+
+; 验证：字符串与非字符串相加的行为
+#Test
+fn test_string_plus_left_non_string() {
+  let n i64 = 7
+  let s String = n + " items"
+  assert_eq(s, "7 items")
+}
+
+; 验证：字符串拼接与混合类型连接
+#Test
+fn test_string_plus_mixed_chain() {
+  let name String = "riu"
+  let v i32 = 6
+  let ok bool = true
+  let s String = name + " v" + v + " ok=" + ok
+  assert_eq(s, "riu v6 ok=true")
+}
+
+; 验证：空字符串与非空字符串相加，结果为非空字符串
+#Test
+fn test_string_plus_empty_left() {
+  let s String = "" + "tail"
+  assert_eq(s, "tail")
+}
+
+; 验证：String 连接 UTF-8 字符串
+#Test
+fn test_string_plus_utf8() {
+  let a String = "你好"
+  let b String = "世界"
+  let s String = a + "，" + b
+  assert_eq(s, "你好，世界")
+}
+
+; 验证：括号表达式在字符串拼接中的使用
+#Test
+fn test_string_plus_nested_expr() {
+  ; 括号表达式在 + 链中
+  let x i32 = 10
+  let y i32 = 20
+  let s String = "sum = " + (x + y)
+  assert_eq(s, "sum = 30")
+}
+
+; ==================== len 边界（迁自 bug_hunt） ====================
+
+#Test
+fn test_string_empty_len() {
+  ; 验证：空字符串 len() == 0
+  let s String = ""
+  assert_eq(s.len(), 0)
+}
+
+#Test
+fn test_string_single_char() {
+  ; 验证：单字符字符串 len() == 1
+  let s String = "x"
+  assert_eq(s.len(), 1)
+}
+
+; ==================== parse_i32 ====================
+
+#Test
+fn test_parse_i32_basic() {
+  let z i32? = "0".parse_i32()
+  assert_eq(z.get(), 0)
+  let p i32? = "42".parse_i32()
+  assert_eq(p.get(), 42)
+  let n i32? = "-1".parse_i32()
+  assert_eq(n.get(), -1)
+  let plus i32? = "+7".parse_i32()
+  assert_eq(plus.get(), 7)
+}
+
+#Test
+fn test_parse_i32_bounds() {
+  let mx i32? = "2147483647".parse_i32()
+  assert_eq(mx.get(), 2147483647)
+  let mn i32? = "-2147483648".parse_i32()
+  assert_eq(mn.get(), -2147483648)
+}
+
+#Test
+fn test_parse_i32_invalid() {
+  assert_false("".parse_i32().has())
+  assert_false("-".parse_i32().has())
+  assert_false("+".parse_i32().has())
+  assert_false("12a".parse_i32().has())
+  assert_false(" 1".parse_i32().has())
+  assert_false("1 ".parse_i32().has())
+  assert_false("2147483648".parse_i32().has())
+  assert_false("-2147483649".parse_i32().has())
+}
+
+; ==================== is_empty / replace / repeat ====================
+
+#Test
+fn test_string_is_empty() {
+  assert_true("".is_empty())
+  assert_false("a".is_empty())
+  assert_false(" ".is_empty())
+}
+
+#Test
+fn test_string_replace_basic() {
+  assert_eq("hello world".replace("world", "riu"), "hello riu")
+  assert_eq("aaa".replace("a", "b"), "bbb")
+  assert_eq("ababa".replace("ab", "X"), "XXa")
+}
+
+#Test
+fn test_string_replace_empty_from() {
+  assert_eq("ab".replace("", "x"), "ab")
+  assert_eq("".replace("", "x"), "")
+}
+
+#Test
+fn test_string_replace_missing() {
+  assert_eq("hello".replace("z", "q"), "hello")
+}
+
+#Test
+fn test_string_replace_unicode() {
+  assert_eq("你好世界".replace("世界", "riu"), "你好riu")
+}
+
+#Test
+fn test_string_repeat() {
+  assert_eq("ab".repeat(3), "ababab")
+  assert_eq("x".repeat(1), "x")
+  assert_eq("ab".repeat(0), "")
+  assert_eq("".repeat(5), "")
+}
+
+; ==================== slice / slice_from ====================
+
+#Test
+fn test_string_slice_basic() {
+  let s String = "hello"
+  assert_eq(s.slice(1, 4), "ell")
+  assert_eq(s.slice(0, 5), "hello")
+  assert_eq(s.slice(2, 2), "")
+  assert_eq(s.slice(0, 0), "")
+}
+
+#Test
+fn test_string_slice_clamp() {
+  let s String = "abcd"
+  assert_eq(s.slice(3, 99), "d")
+  assert_eq(s.slice(10, 20), "")
+  assert_eq(s.slice(3, 1), "")
+  assert_eq(s.slice(0, 99), "abcd")
+}
+
+#Test
+fn test_string_slice_from() {
+  let s String = "--name=foo"
+  assert_eq(s.slice_from(7), "foo")
+  assert_eq(s.slice_from(0), "--name=foo")
+  assert_eq(s.slice_from(11), "")
+  assert_eq("".slice_from(0), "")
+  assert_eq("ab".slice_from(99), "")
+}
+
+#Test
+fn test_string_slice_utf8() {
+  assert_eq("你好世界".slice(1, 3), "好世")
+  assert_eq("你好世界".slice_from(2), "世界")
+}
+
+; ==================== index_of / last_index_of ====================
+
+#Test
+fn test_string_index_of_basic() {
+  let i usize? = "hello".index_of("ll")
+  assert_eq(i.get(), 2)
+  let miss usize? = "hello".index_of("z")
+  assert_false(miss.has())
+  let head usize? = "abc".index_of("a")
+  assert_eq(head.get(), 0)
+}
+
+#Test
+fn test_string_index_of_empty() {
+  let z usize? = "ab".index_of("")
+  assert_eq(z.get(), 0)
+  let empty usize? = "".index_of("")
+  assert_eq(empty.get(), 0)
+}
+
+#Test
+fn test_string_last_index_of() {
+  let i usize? = "ababa".last_index_of("ab")
+  assert_eq(i.get(), 2)
+  let one usize? = "aaa".last_index_of("a")
+  assert_eq(one.get(), 2)
+  let miss usize? = "hello".last_index_of("z")
+  assert_false(miss.has())
+  let empty usize? = "ab".last_index_of("")
+  assert_eq(empty.get(), 2)
+}
+
+#Test
+fn test_string_index_of_utf8() {
+  let i usize? = "你好世界".index_of("世界")
+  assert_eq(i.get(), 2)
+}
+
+; ==================== strip_prefix / strip_suffix ====================
+
+#Test
+fn test_string_strip_prefix() {
+  let v String? = "--name=foo".strip_prefix("--name=")
+  assert_eq(v.get(), "foo")
+  let miss String? = "foo".strip_prefix("--")
+  assert_false(miss.has())
+  let empty String? = "abc".strip_prefix("")
+  assert_eq(empty.get(), "abc")
+  let all String? = "abc".strip_prefix("abc")
+  assert_eq(all.get(), "")
+}
+
+#Test
+fn test_string_strip_suffix() {
+  let v String? = "file.ut".strip_suffix(".ut")
+  assert_eq(v.get(), "file")
+  let miss String? = "file.ut".strip_suffix(".exe")
+  assert_false(miss.has())
+  let empty String? = "abc".strip_suffix("")
+  assert_eq(empty.get(), "abc")
+}
+
+; ==================== from_codepoint / join ====================
+
+#Test
+fn test_string_from_codepoint() {
+  assert_eq(String::from_codepoint(c'A'), "A")
+  assert_eq(String::from_codepoint(c'中'), "中")
+  assert_eq(String::from_codepoint(45), "-")
+}
+
+#Test
+fn test_string_join() {
+  let parts Array<String> = ["a", "b", "c"]
+  assert_eq(String::join(&parts, ","), "a,b,c")
+  assert_eq(String::join(&parts, ""), "abc")
+  let one Array<String> = ["only"]
+  assert_eq(String::join(&one, ","), "only")
+  let empty Array<String> = []
+  assert_eq(String::join(&empty, ","), "")
+  let utf Array<String> = ["你", "好"]
+  assert_eq(String::join(&utf, "·"), "你·好")
+}
+
+; ==================== cmp / 排序比较 ====================
+
+#Test
+fn test_string_cmp() {
+  assert_eq("abc".cmp("abc"), 0)
+  assert_true("abc".cmp("abd") < 0)
+  assert_true("abd".cmp("abc") > 0)
+  assert_true("ab".cmp("abc") < 0)
+  assert_true("abc".cmp("ab") > 0)
+  assert_true("".cmp("a") < 0)
+}
+
+#Test
+fn test_string_ord_ops() {
+  assert_true("a" < "b")
+  assert_true("a" <= "a")
+  assert_true("b" > "a")
+  assert_true("b" >= "b")
+  assert_false("b" < "a")
+  assert_true("abc" < "abd")
+  assert_true("ab" < "abc")
+}
+
+; ==================== parse_i64 / u32 / u64 / usize / bool ====================
+
+#Test
+fn test_parse_i64_basic() {
+  let p i64? = "9223372036854775807".parse_i64()
+  assert_eq(p.get(), 9223372036854775807i64)
+  let n i64? = "-9223372036854775808".parse_i64()
+  assert_eq(n.get(), -9223372036854775808i64)
+  let small i64? = "-1".parse_i64()
+  assert_eq(small.get(), -1i64)
+}
+
+#Test
+fn test_parse_i64_invalid() {
+  assert_false("9223372036854775808".parse_i64().has())
+  assert_false("-9223372036854775809".parse_i64().has())
+  assert_false("12a".parse_i64().has())
+}
+
+#Test
+fn test_parse_u32_u64_usize() {
+  let u u32? = "4294967295".parse_u32()
+  assert_eq(u.get(), 4294967295u32)
+  assert_false("4294967296".parse_u32().has())
+  assert_false("-1".parse_u32().has())
+  let plus u32? = "+7".parse_u32()
+  assert_eq(plus.get(), 7u32)
+  let big u64? = "18446744073709551615".parse_u64()
+  assert_eq(big.get(), 18446744073709551615u64)
+  assert_false("18446744073709551616".parse_u64().has())
+  let z usize? = "0".parse_usize()
+  assert_eq(z.get(), 0)
+  let n usize? = "8".parse_usize()
+  assert_eq(n.get(), 8)
+}
+
+#Test
+fn test_parse_bool() {
+  let t bool? = "true".parse_bool()
+  assert_eq(t.get(), true)
+  let f bool? = "false".parse_bool()
+  assert_eq(f.get(), false)
+  assert_false("True".parse_bool().has())
+  assert_false("1".parse_bool().has())
+  assert_false("".parse_bool().has())
+}
+
+#Test
+fn test_parse_f64_basic() {
+  let z f64? = "0".parse_f64()
+  assert_eq(z.get(), 0.0f64)
+  let p f64? = "1.5".parse_f64()
+  assert_eq(p.get(), 1.5f64)
+  let n f64? = "-2".parse_f64()
+  assert_eq(n.get(), -2.0f64)
+  let frac f64? = "0.5".parse_f64()
+  assert_eq(frac.get(), 0.5f64)
+  let exp f64? = "1e2".parse_f64()
+  assert_eq(exp.get(), 100.0f64)
+  let negexp f64? = "25e-1".parse_f64()
+  assert_eq(negexp.get(), 2.5f64)
+}
+
+#Test
+fn test_parse_f64_specials_invalid() {
+  assert_false("".parse_f64().has())
+  assert_false(".".parse_f64().has())
+  assert_false("e10".parse_f64().has())
+  assert_false("1e".parse_f64().has())
+  assert_false("1.2.3".parse_f64().has())
+  assert_false(" 1".parse_f64().has())
+  assert_false("inf".parse_f64().has())
+  assert_false("nan".parse_f64().has())
+}
+
+#Test
+fn test_parse_f32() {
+  let v f32? = "2.5".parse_f32()
+  assert_eq(v.get(), 2.5f32)
+  assert_false("x".parse_f32().has())
+}
+
+#Test
+fn test_split_once_rsplit() {
+  let p (String, String)? = "a=b=c".split_once("=")
+  assert_true(p.has())
+  let pair (String, String) = p.get()
+  assert_eq(pair.0, "a")
+  assert_eq(pair.1, "b=c")
+  let r (String, String)? = "a=b=c".rsplit_once("=")
+  let rp (String, String) = r.get()
+  assert_eq(rp.0, "a=b")
+  assert_eq(rp.1, "c")
+  assert_false("abc".split_once("=").has())
+  assert_false("abc".split_once("").has())
+}
+
+#Test
+fn test_from_bytes_roundtrip() {
+  let s String = "hello 你好"
+  let b Array<u8> = s.to_bytes()
+  let back String? = String::from_bytes(&b)
+  assert_eq(back.get(), s)
+  let none Array<u8> = []
+  let empty String? = String::from_bytes(&none)
+  assert_eq(empty.get(), "")
+  let hi String = "hi"
+  let hb Array<u8> = hi.to_bytes()
+  assert_eq(String::from_bytes(&hb).get(), hi)
+  let z String = "z"
+  let zb Array<u8> = z.to_bytes()
+  assert_eq(String::from_bytes(&zb).get(), z)
+}
+
+#Test
+fn test_from_bytes_invalid() {
+  let bad Array<u8> = [255u8]
+  assert_false(String::from_bytes(&bad).has())
+  let trunc Array<u8> = [226u8, 152u8]
+  assert_false(String::from_bytes(&trunc).has())
+}
+
+#Test
+fn test_string_is_ascii() {
+  assert_true("abc".is_ascii())
+  assert_true("".is_ascii())
+  assert_false("你好".is_ascii())
+  assert_true(c'A'.is_ascii_alpha())
+  assert_true(c'0'.is_ascii_digit())
+  assert_true(32u32.is_ascii_ws())
+  assert_false(200u32.is_ascii())
+}

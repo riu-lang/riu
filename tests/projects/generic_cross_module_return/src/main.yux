@@ -1,4 +1,0 @@
-use yux.core.*
-use consumer
-
-fn main() { println(consumer.run(0)) }
