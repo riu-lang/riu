@@ -67,19 +67,8 @@ class Compiler {
     // 泛型结构体单态：登记 / 查询在 generic；LLVM 类型与方法 IR 仍在 Compiler。
     generic::StructTable _structInstances;
 
-    // 泛型函数单态化：key = `name<Args>(params)`（如 "println<i32>(i32)"）
-    struct FnInstance {
-        FnNode* baseFn;            // 泛型函数定义
-        FileNode* ownerFile;       // 定义该函数的文件
-        vector<TypeInfo> typeArgs; // 类型参数实例化参数
-        string mangledName;        // mangle 后的实例名
-        string methodStructName;   // 非空表示方法实例；值为 receiver 的实际 struct 名
-        bool methodIsStatic = false;
-        bool emitted = false; // 是否已生成 IR
-        // 定义该泛型函数的模块名（与 LLVM 符号前缀一致）。多 TU 靠 linkonce_odr 合并。
-        string consumerModule;
-    };
-    map<string, FnInstance> _fnInstances;
+    // 泛型 fn / method 单态：登记 / 查询在 generic；IR 仍 emitFnInstances。
+    generic::FnTable _fnInstances;
 
     using SubstFrame = generic::SubstFrame;
     generic::SubstStack _substStack;

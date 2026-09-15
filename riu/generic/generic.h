@@ -2,7 +2,7 @@
 // MPL-2.0
 
 // 泛型单态化（`riu_generic`）。0 LLVM，不 include SemaPass 实现。
-// 2.3：struct 实例表。发射方法 IR 仍在 Compiler（`emitInstanceMethods`）。
+// 2.4：struct / fn / method 实例表。发射 IR 仍在 Compiler。
 
 #ifndef RIU_LANG_GENERIC_H
 #define RIU_LANG_GENERIC_H
@@ -10,6 +10,7 @@
 #include "types.h"
 
 class FileNode;
+class FnNode;
 class StructDeclNode;
 class StructImplNode;
 
@@ -59,7 +60,47 @@ public:
     [[nodiscard]] auto end() const { return _instances.end(); }
 };
 
-struct FnInstance {};
+struct FnInstance {
+    FnNode* baseFn = nullptr; // 泛型函数 / 方法定义
+    FileNode* ownerFile = nullptr;
+    vector<TypeInfo> typeArgs; // 类型参数实例化参数
+    string mangledName;        // `name<Args>`（不含形参表；表 key 另算）
+    string methodStructName;   // 非空表示方法实例；值为 receiver 的实际 struct 名
+    bool methodIsStatic = false;
+    bool emitted = false; // codegen 是否已发射 IR
+    // 定义该泛型函数的模块名（与 LLVM 符号前缀一致）。多 TU 靠 linkonce_odr 合并。
+    string consumerModule;
+
+    [[nodiscard]] string ownerModule() const;
+    [[nodiscard]] map<string, TypeInfo> substMap() const;
+};
+
+// 从定义 + 实参填一份实例记录（不入表）。`ownerFile` 空则用 `currentFile`。
+[[nodiscard]] FnInstance makeFnInstance(FnNode* baseFn, vector<TypeInfo> typeArgs, FileNode* ownerFile,
+                                        FileNode* currentFile, string mangledName);
+[[nodiscard]] FnInstance makeMethodInstance(FnNode* baseMethod, string structName, vector<TypeInfo> typeArgs,
+                                            FileNode* ownerFile, FileNode* currentFile, string mangledName);
+
+// 泛型 fn / method 单态表：key 含形参 mangle（如 "println<i32>(i32)" / "method:mod:S.foo<T>(...)"）。
+class FnTable {
+    map<string, FnInstance> _instances;
+
+public:
+    [[nodiscard]] FnInstance* find(const string& key);
+    [[nodiscard]] const FnInstance* find(const string& key) const;
+    [[nodiscard]] bool contains(const string& key) const { return _instances.contains(key); }
+
+    FnInstance& operator[](const string& key) { return _instances[key]; }
+
+    void insert(string key, FnInstance inst);
+
+    [[nodiscard]] size_t size() const { return _instances.size(); }
+
+    auto begin() { return _instances.begin(); }
+    auto end() { return _instances.end(); }
+    [[nodiscard]] auto begin() const { return _instances.begin(); }
+    [[nodiscard]] auto end() const { return _instances.end(); }
+};
 
 // map/string 分配可抛；与迁出前 Compiler::SubstFrame 相同。
 struct SubstFrame {              // NOLINT(bugprone-exception-escape)

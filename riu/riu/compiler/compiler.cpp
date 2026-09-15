@@ -930,8 +930,7 @@ string Compiler::ensureFnInstance(FnNode* baseFn, const vector<TypeInfo>& typeAr
     }
     key += ')';
 
-    auto it = _fnInstances.find(key);
-    if (it != _fnInstances.end()) return key;
+    if (_fnInstances.contains(key)) return key;
 
     // E6010 由 SemaPass validateGenericTypeArgsArity 先抛。
     auto& typeParams = baseFn->header()->typeParams();
@@ -939,15 +938,8 @@ string Compiler::ensureFnInstance(FnNode* baseFn, const vector<TypeInfo>& typeAr
         throwSemaGap(static_cast<size_t>(sourceLine));
     }
 
-    // 创建实例记录
-    FnInstance inst;
-    inst.baseFn = baseFn;
-    inst.ownerFile = ownerFile ? ownerFile : _file;
-    inst.typeArgs = typeArgs;
-    inst.mangledName = instName;
-    inst.consumerModule = inst.ownerFile ? inst.ownerFile->moduleName() : (_file ? _file->moduleName() : "");
-
-    _fnInstances[key] = std::move(inst);
+    auto inst = generic::makeFnInstance(baseFn, typeArgs, ownerFile, _file, instName);
+    _fnInstances.insert(key, std::move(inst));
     DEBUG_LOG_VAL("Created generic function instance", key);
     return key;
 }
@@ -986,15 +978,8 @@ string Compiler::ensureMethodInstance(FnNode* baseMethod, const string& structNa
 
     if (_fnInstances.contains(key)) return key;
 
-    FnInstance inst;
-    inst.baseFn = baseMethod;
-    inst.ownerFile = ownerFile ? ownerFile : _file;
-    inst.typeArgs = typeArgs;
-    inst.mangledName = std::move(instName);
-    inst.methodStructName = structName;
-    inst.methodIsStatic = baseMethod->header()->isStatic();
-    inst.consumerModule = inst.ownerFile ? inst.ownerFile->moduleName() : (_file ? _file->moduleName() : "");
-    _fnInstances[key] = std::move(inst);
+    auto inst = generic::makeMethodInstance(baseMethod, structName, typeArgs, ownerFile, _file, std::move(instName));
+    _fnInstances.insert(key, std::move(inst));
     DEBUG_LOG_VAL("Created generic method instance", key);
     return key;
 }
@@ -1019,13 +1004,7 @@ void Compiler::emitFnInstances() {
             progress = true;
 
             auto baseFn = inst.baseFn;
-            auto& typeParams = baseFn->header()->typeParams();
-
-            // 建立类型参数替换映射
-            map<string, TypeInfo> subst;
-            for (size_t i = 0; i < typeParams.size(); ++i) {
-                subst[typeParams[i]] = inst.typeArgs[i];
-            }
+            map<string, TypeInfo> subst = inst.substMap();
 
             string srcFile = _file ? _file->moduleName() : "";
             _substStack.push_back(

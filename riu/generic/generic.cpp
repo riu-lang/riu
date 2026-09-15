@@ -5,6 +5,7 @@
 
 #include "ast/name_lookup.h"
 #include "ast/node/file_node.h"
+#include "ast/node/fn_node.h"
 #include "ast/node/struct_node.h"
 
 string generic::StructInstance::ownerModule() const {
@@ -66,6 +67,55 @@ const generic::StructInstance* generic::StructTable::find(const string& mangledN
 
 void generic::StructTable::insert(StructInstance inst) {
     string key = inst.mangledName;
+    _instances.emplace(std::move(key), std::move(inst));
+}
+
+string generic::FnInstance::ownerModule() const {
+    if (ownerFile) return ownerFile->moduleName();
+    return consumerModule;
+}
+
+map<string, TypeInfo> generic::FnInstance::substMap() const {
+    map<string, TypeInfo> subst;
+    if (!baseFn) return subst;
+    const auto& tparams = baseFn->header()->typeParams();
+    for (size_t i = 0; i < tparams.size() && i < typeArgs.size(); ++i) {
+        subst[tparams[i]] = typeArgs[i];
+    }
+    return subst;
+}
+
+generic::FnInstance generic::makeFnInstance(FnNode* baseFn, vector<TypeInfo> typeArgs, FileNode* ownerFile,
+                                            FileNode* currentFile, string mangledName) {
+    FnInstance inst;
+    inst.baseFn = baseFn;
+    inst.ownerFile = ownerFile ? ownerFile : currentFile;
+    inst.typeArgs = std::move(typeArgs);
+    inst.mangledName = std::move(mangledName);
+    inst.consumerModule =
+        inst.ownerFile ? inst.ownerFile->moduleName() : (currentFile ? currentFile->moduleName() : "");
+    return inst;
+}
+
+generic::FnInstance generic::makeMethodInstance(FnNode* baseMethod, string structName, vector<TypeInfo> typeArgs,
+                                                FileNode* ownerFile, FileNode* currentFile, string mangledName) {
+    auto inst = makeFnInstance(baseMethod, std::move(typeArgs), ownerFile, currentFile, std::move(mangledName));
+    inst.methodStructName = std::move(structName);
+    inst.methodIsStatic = baseMethod->header()->isStatic();
+    return inst;
+}
+
+generic::FnInstance* generic::FnTable::find(const string& key) {
+    auto it = _instances.find(key);
+    return it == _instances.end() ? nullptr : &it->second;
+}
+
+const generic::FnInstance* generic::FnTable::find(const string& key) const {
+    auto it = _instances.find(key);
+    return it == _instances.end() ? nullptr : &it->second;
+}
+
+void generic::FnTable::insert(string key, FnInstance inst) {
     _instances.emplace(std::move(key), std::move(inst));
 }
 
