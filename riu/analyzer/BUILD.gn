@@ -15,6 +15,7 @@ static_library("riu_analyzer") {
     "borrow_checker.cpp",
     "const_mut_checker.cpp",
     "flow_terminate_checker.cpp",
+    "fn_checkers.cpp",
     "spec_impl_checker.cpp",
     "spec_registry.cpp",
     "symbol_suggest.cpp",

@@ -72,9 +72,8 @@ flowchart TB
     builder --> ast[AST 节点<br/>riu/ast/node/*]
 
     ast --> sema[SemaPass<br/>riu/frontend/sema/sema_pass.cpp]
-    analyzer[Analyzer<br/>borrow / const_mut /<br/>flow_terminate] --> sema
-
-    ast --> compiler[Compiler<br/>riu/riu/compiler/compiler*.cpp]
+    sema --> analyzer[Analyzer<br/>borrow / const_mut /<br/>flow_terminate]
+    analyzer --> compiler[Compiler<br/>riu/riu/compiler/compiler*.cpp]
     compiler --> ir[LLVM IR]
     ir --> llc[LLVM 后端]
     llc --> obj[.obj]

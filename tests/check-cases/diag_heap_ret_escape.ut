@@ -1,3 +1,4 @@
+; require-sdk
 ; DRAFT-heap-types §8.3a.4.1：A 档 NRVO 仅放行 `ret <local Heap ID>`；
 ; fresh heap:<T>(...) ctor 形态非 NRVO-eligible，仍报 E4023 escape。
 

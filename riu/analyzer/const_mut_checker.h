@@ -50,7 +50,8 @@
 //   §6.2 数组写 `obj[i] = ...` 形态（StatementSetNode 含字段链）；
 //   字段深链 `$.f.g = ...` 中第二层及以后字段的 #Val/#Frozen 解析（需逐级类型推断）。
 //
-// 在 compileFn / compileMethod 入口处调用一次，位置与 checkBorrows / checkFlowTerminate 同档。
+// SemaPass::run 之后由 driver 对每个 fn 调用一次（见 runFnCheckers），
+// 位置与 checkBorrows / checkFlowTerminate 同档。
 void checkConstMut(FnNode* fn);
 
 #endif // RIU_LANG_CONST_MUT_CHECKER_H

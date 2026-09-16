@@ -82,6 +82,8 @@ void Compiler::compile(FileNode* file) {
     // Sema/Codegen 拆分：visitExpr 写 resolvedType；3.3+ 按子系统迁 throw。
     DEBUG_LOG("Running SemaPass...");
     SemaPass(_file, _riu).run();
+    // borrow / const-mut / #NoReturn：Sema 之后、codegen 之前（riu-check 同一点）。
+    runFnCheckers(_file);
 
     // DRAFT-const-eval Phase 5: 全局常量初始化器可含 struct 字面量,
     // 须先 compileStructDecls 让 LLVM 结构体类型可用.

@@ -20,9 +20,6 @@
 #include <set>
 #include <string_view>
 
-#include "analyzer/borrow_checker.h"
-#include "analyzer/const_mut_checker.h"
-#include "analyzer/flow_terminate_checker.h"
 #include "analyzer/spec_impl_checker.h"
 #include "analyzer/spec_registry.h"
 #include "ast/node/enum_node.h"

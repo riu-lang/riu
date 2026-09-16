@@ -6,7 +6,7 @@
 // 与 riu 主二进制不同, 本工具:
 // - 0 LLVM 依赖, 只链 riu_frontend
 // - 不加载 SDK, 不解析 import 链, 不做 codegen
-// - 仅 parse → ASTBuilder → SemaPass.run() → 打印诊断
+// - 仅 parse → ASTBuilder → SemaPass.run() → runFnCheckers → 打印诊断
 //
 // 设计意图: 日常写 demo / 改代码时快速跑诊断, 避免每次 xmake build 编 LLVM.
 // **报错不与 riu build 等价**: 仅检出 SemaPass 当前能接管的错误码; 漏的部分
@@ -344,6 +344,7 @@ static CheckResult runSemaOnFile(const string& absPath, const string& sdkPath) {
         auto file = riu.loadMainFile(absPath, moduleName);
         riu.validateSpecImpls();
         SemaPass(file, &riu).run();
+        runFnCheckers(file);
     } catch (const RiuError& e) {
         cr.ok = false;
         cr.semaError = e;
@@ -379,6 +380,7 @@ static CheckResult runSemaOnFileWithRiu(const string& absPath, Riu& riu) {
         auto file = riu.loadMainFile(absPath, moduleName);
         riu.validateSpecImpls();
         SemaPass(file, &riu).run();
+        runFnCheckers(file);
     } catch (const RiuError& e) {
         cr.ok = false;
         cr.semaError = e;
@@ -898,6 +900,7 @@ int main(int argc, char* argv[]) {
         auto file = riu.loadMainFile(absPath, moduleName);
         riu.validateSpecImpls();
         SemaPass(file, &riu).run();
+        runFnCheckers(file);
     } catch (const runtime_error& e) {
         if (auto* riuErr = dynamic_cast<const RiuError*>(&e)) {
             DiagnosticEngine::renderRiuError(cerr, absPath, *riuErr);

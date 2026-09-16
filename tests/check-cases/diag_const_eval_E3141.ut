@@ -9,5 +9,4 @@ fn bad(n i32) i32 {
 }
 
 fn main() {
-  println(bad(3).to_string())
 }

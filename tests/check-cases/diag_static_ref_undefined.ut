@@ -1,8 +1,7 @@
 ; require-sdk
-; DRAFT-static-ref: &undefined_global → E4002（borrow_checker: 根不在任何作用域）
+; DRAFT-static-ref: 未定义名由 Sema 先报 E3030（checker 在 Sema 之后，不再走到 E4002）
 
 fn main() {
-  let r i32& = &UNDEFINED_GLOBAL  ; check: E4002
-  println(r)
+  let r i32& = &UNDEFINED_GLOBAL  ; check: E3030
   ret;
 }

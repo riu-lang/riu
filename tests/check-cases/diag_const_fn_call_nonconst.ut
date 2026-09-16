@@ -6,6 +6,4 @@ fn helper(a i32) i32 = a * 2
 fn use_h(a i32) i32 = helper(a)  ; check: E3111
 
 fn main() {
-    println(use_h(3).to_string())
-    ret;
 }

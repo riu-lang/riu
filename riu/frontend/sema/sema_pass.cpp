@@ -24,9 +24,6 @@
 #include <set>
 #include <string_view>
 
-#include "analyzer/borrow_checker.h"
-#include "analyzer/const_mut_checker.h"
-#include "analyzer/flow_terminate_checker.h"
 #include "analyzer/spec_impl_checker.h"
 #include "analyzer/spec_registry.h"
 #include "ast/node/enum_node.h"
@@ -440,16 +437,11 @@ void SemaPass::visitFn(FnNode* fn) {
         }
     }
 
-    // borrow / const-mut / #NoReturn 只在此处跑（codegen 不再双跑）。
     // getType 可能在 visitExpr 之前走到 match 臂（如 let 的声明类型比对），
     // 须先把 payload 绑定类型写进 arm scope。
     for (auto& stmt : fn->body()) {
         fillMatchBindingsInStmt(stmt);
     }
-
-    checkBorrows(fn, _currentStructName);
-    checkConstMut(fn);
-    checkFlowTerminate(fn);
 
     for (auto& stmt : fn->body()) {
         visitStmt(stmt);
