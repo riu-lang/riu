@@ -97,8 +97,8 @@ llvm::Value* Compiler::compileSafeDotMethodCall(ExprCallNode* callNode, ExprDotN
         auto baseDecl = names().lookupStruct(actualType, /*includeBuiltin=*/false, &owner);
         if (!owner) owner = _file;
         if (baseDecl && baseDecl->isGeneric()) {
-            genericEffName = ensureStructInstance(baseDecl, actualType.genericArgs, owner);
-            auto& inst = _structInstances[genericEffName];
+            genericEffName = genericStruct(baseDecl, actualType.genericArgs, owner);
+            auto& inst = _generic.structs()[genericEffName];
             if (inst.baseImpl) {
                 for (auto m : inst.baseImpl->methods()) {
                     if (m->header()->name().getText() != member) continue;
@@ -228,7 +228,7 @@ llvm::Value* Compiler::compileSafeDotMethodCall(ExprCallNode* callNode, ExprDotN
     // 获取或创建 LLVM 函数
     llvm::Function* llvmFn = nullptr;
     if (genericMethodNode) {
-        string ownerMod = _structInstances[genericEffName].ownerModule();
+        string ownerMod = _generic.structs()[genericEffName].ownerModule();
         bool methPriv = !member.empty() && member[0] == '_';
         TypeInfo genRetType;
         if (genericMethodNode->header()->retType()) {
@@ -1984,8 +1984,8 @@ llvm::Value* Compiler::compileStructMethodCall(ExprCallNode* callNode, ExprNode*
         auto baseDecl = names().lookupStruct(actualType, /*includeBuiltin=*/false, &owner);
         if (!owner) owner = _file;
         if (baseDecl && baseDecl->isGeneric()) {
-            string effName = ensureStructInstance(baseDecl, actualType.genericArgs, owner);
-            auto& inst = _structInstances[effName];
+            string effName = genericStruct(baseDecl, actualType.genericArgs, owner);
+            auto& inst = _generic.structs()[effName];
             if (inst.baseImpl) {
                 FnNode* chosen = nullptr;
                 for (auto m : inst.baseImpl->methods()) {
@@ -2128,8 +2128,8 @@ llvm::Value* Compiler::compileStructMethodCall(ExprCallNode* callNode, ExprNode*
         }
         const string fallibleErr = genericMethod->header()->resolvedFallibleErr();
         const string instanceKey =
-            ensureMethodInstance(genericMethod, actualType.name, typeArgs, genericOwner, callNode->getLineNumber());
-        const string& instanceName = _fnInstances[instanceKey].mangledName;
+            internGenericMethod(genericMethod, actualType.name, typeArgs, genericOwner, callNode->getLineNumber());
+        const string& instanceName = _generic.fns()[instanceKey].mangledName;
 
         llvm::Value* basePtr = nullptr;
         if (auto* baseLiteral = dynamic_cast<ExprLiteralNode*>(baseExpr)) {

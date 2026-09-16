@@ -6,7 +6,7 @@
 //
 // 主要职责:
 // 1. 管理编译上下文 (LLVMContext, IRBuilder, Module)
-// 2. 处理泛型单态化 (结构体实例化、函数实例化)
+// 2. 问 generic 要已具体的 Fn/Struct，发 LLVM 类型与 IR
 // 3. 编译全局常量、结构体声明、函数定义
 // 4. 表达式和语句的 IR 生成
 // 5. 析构函数自动生成和调用
@@ -64,14 +64,10 @@ class Compiler {
     int _forInSerial = 0;                        // for-in 临时集合名
 
     // ==================== 泛型单态化 ====================
-    // 泛型结构体单态：登记 / 查询在 generic；LLVM 类型与方法 IR 仍在 Compiler。
-    generic::StructTable _structInstances;
-
-    // 泛型 fn / method 单态：登记 / 查询在 generic；IR 仍 emitFnInstances。
-    generic::FnTable _fnInstances;
-
+    // 实例表在 generic::Registry；Compiler 问已具体实例再发 LLVM 类型 / IR。
+    generic::Registry _generic;
     using SubstFrame = generic::SubstFrame;
-    generic::SubstStack _substStack;
+    generic::SubstStack _substStack; // 发射泛型体 IR 时压帧，套 applySubst
 
     // ==================== 错误报告辅助 ====================
     [[nodiscard]] string formatInstantiationContext() const;                    // 格式化泛型实例化上下文信息
@@ -101,15 +97,16 @@ class Compiler {
     [[nodiscard]] string mangleStaticMethod(const string& module, const string& structName, const string& methodName,
                                             const vector<TypeInfo>& params, const TypeInfo& retType = TypeInfo(),
                                             const string& fallibleErrType = "") const;
-    string ensureStructInstance(StructDeclNode* baseDecl, const vector<sp<TypeInfo>>& args, FileNode* ownerFile,
-                                int sourceLine = 0); // 登记 generic 实例并建 LLVM 类型
-    string ensureFnInstance(FnNode* baseFn, const vector<TypeInfo>& typeArgs, FileNode* ownerFile,
-                            int sourceLine); // 确保函数实例存在
-    string ensureMethodInstance(FnNode* baseMethod, const string& structName, const vector<TypeInfo>& typeArgs,
-                                FileNode* ownerFile,
-                                int sourceLine); // 确保泛型方法实例存在
-    void emitInstanceMethods();                  // 生成所有泛型结构体实例的方法
-    void emitFnInstances();                      // 生成所有泛型函数实例
+    string genericStruct(StructDeclNode* baseDecl, const vector<sp<TypeInfo>>& args, FileNode* ownerFile,
+                         int sourceLine = 0); // 问 generic 登记 struct，缺则发 LLVM layout
+    string internGenericFn(FnNode* baseFn, const vector<TypeInfo>& typeArgs, FileNode* ownerFile,
+                           int sourceLine); // 问 generic 登记 fn 实例
+    string internGenericMethod(FnNode* baseMethod, const string& structName, const vector<TypeInfo>& typeArgs,
+                               FileNode* ownerFile,
+                               int sourceLine);                      // 问 generic 登记 method 实例
+    void emitGenericStructLlvm(const generic::StructInstance& inst); // 按 subst 发 LLVM struct 类型
+    void emitInstanceMethods();                                      // 生成所有泛型结构体实例的方法
+    void emitFnInstances();                                          // 生成所有泛型函数实例
 
     // ==================== 作用域管理（§5.7 块级帧栈）====================
     // 每帧 = 一个 statementBlock / fn 顶层 / loop-init 内需析构的局部变量。

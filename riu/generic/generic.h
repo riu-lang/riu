@@ -2,7 +2,7 @@
 // MPL-2.0
 
 // 泛型单态化（`riu_generic`）。0 LLVM，不 include SemaPass 实现。
-// 2.5：Sema 与 codegen 共用实例表 + subst 栈；发射 IR 仍在 Compiler。
+// 2.6：实例表在 Registry；codegen 问已具体 Fn/Struct 再发 IR。Sema 复查仍自持表（instanceKey）。
 
 #ifndef RIU_LANG_GENERIC_H
 #define RIU_LANG_GENERIC_H
@@ -102,6 +102,33 @@ public:
     auto end() { return _instances.end(); }
     [[nodiscard]] auto begin() const { return _instances.begin(); }
     [[nodiscard]] auto end() const { return _instances.end(); }
+};
+
+// 定义模块全限定实例名（如 `riu.core.map.Map<i32,i32>`）。`args` 须已补 owner。
+[[nodiscard]] string structInstanceName(StructDeclNode* baseDecl, const vector<TypeInfo>& args, FileNode* ownerFile);
+// `name<Args>`（不含形参表）。
+[[nodiscard]] string fnInstanceName(const string& baseName, const vector<TypeInfo>& typeArgs);
+// fn 表 key：`name<Args>(params)`。
+[[nodiscard]] string fnInstanceKey(FnNode* baseFn, const vector<TypeInfo>& typeArgs);
+// method 表 key：`method:mod:Struct.name<Args>(params)`。
+[[nodiscard]] string methodInstanceKey(FnNode* baseMethod, const string& structName, const vector<TypeInfo>& typeArgs,
+                                       FileNode* ownerFile);
+
+// codegen 持有；登记 / 查询。LLVM 类型与函数 IR 仍在 Compiler。
+class Registry {
+    StructTable _structs;
+    FnTable _fns;
+
+public:
+    [[nodiscard]] StructTable& structs() { return _structs; }
+    [[nodiscard]] const StructTable& structs() const { return _structs; }
+    [[nodiscard]] FnTable& fns() { return _fns; }
+    [[nodiscard]] const FnTable& fns() const { return _fns; }
+
+    // 已有则返回 key；否则登记。typeArgs 须已补 owner。arity 由调用方保证。
+    string internFn(FnNode* baseFn, const vector<TypeInfo>& typeArgs, FileNode* ownerFile, FileNode* currentFile);
+    string internMethod(FnNode* baseMethod, const string& structName, const vector<TypeInfo>& typeArgs,
+                        FileNode* ownerFile, FileNode* currentFile);
 };
 
 // map/string 分配可抛；与迁出前 Compiler::SubstFrame 相同。

@@ -57,7 +57,7 @@ AST（数据 + 注解槽）  ←  Generic（替换栈 + struct / fn 实例表）
                           Codegen（LLVM）
 ```
 
-名字查找：`riu/ast/name_lookup.h`（已加载模块图，0 LLVM）。类型计算由 Sema 写槽；codegen 读槽，泛型 subst 帧用 `structuralType()` 回退。`riu_generic` 0 LLVM；`applySubst` / 替换栈 / struct·fn 实例表在 generic。
+名字查找：`riu/ast/name_lookup.h`（已加载模块图，0 LLVM）。类型计算由 Sema 写槽；codegen 读槽，泛型 subst 帧用 `structuralType()` 回退。`riu_generic` 0 LLVM；`applySubst` / 替换栈 / struct·fn 实例表在 generic。codegen 问 Registry 要已具体实例再发 IR。
 
 ---
 

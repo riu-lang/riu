@@ -112,7 +112,7 @@ llvm::Value* Compiler::compileEnumCtorExpr(ExprPathCallNode* node) {
     TypeInfo lhsTy = node->resolvedLhsType();
     if (selfLhs) {
         if (!_currentStructName.empty()) {
-            if (const auto* inst = _structInstances.find(_currentStructName); inst && inst->baseDecl) {
+            if (const auto* inst = _generic.structs().find(_currentStructName); inst && inst->baseDecl) {
                 lookupLhs = inst->baseDecl->name().getText();
             } else if (lookupLhs == "Self") {
                 lookupLhs = _currentStructName;
@@ -255,7 +255,7 @@ llvm::Value* Compiler::compileEnumCtorExpr(ExprPathCallNode* node) {
                 }
             }
             // Phase 6E.4-B: 泛型 struct turbofish 形态 `Type:<T>::name(...)`
-            // 消费 lhsTypeArgs, 触发 ensureStructInstance, 切到实例 mangled 名;
+            // 消费 lhsTypeArgs, 问 generic 登记 struct 并切到实例 mangled 名;
             // 同时压一帧 SubstFrame 让 paramTypes / retType 的 T / Self 替换生效.
             string effLhs = lhsRaw;
             bool pushedFrame = false;
@@ -280,7 +280,7 @@ llvm::Value* Compiler::compileEnumCtorExpr(ExprPathCallNode* node) {
                 for (auto& ta : lhsTArgs) {
                     instArgs.push_back(std::make_shared<TypeInfo>(applySubst(ta->getType())));
                 }
-                effLhs = ensureStructInstance(baseDecl, instArgs, baseOwner, line);
+                effLhs = genericStruct(baseDecl, instArgs, baseOwner, line);
                 map<string, TypeInfo> subst;
                 for (size_t i = 0; i < instArgs.size(); ++i) {
                     subst[baseDecl->typeParams()[i]] = instArgs[i] ? *instArgs[i] : TypeInfo();
@@ -301,7 +301,7 @@ llvm::Value* Compiler::compileEnumCtorExpr(ExprPathCallNode* node) {
                     }
                 }
                 if (effLhs == lhsRaw) {
-                    if (const auto* inst = _structInstances.find(_currentStructName)) {
+                    if (const auto* inst = _generic.structs().find(_currentStructName)) {
                         if (!inst->baseDecl || inst->baseDecl->name().getText() == lhsRaw) {
                             effLhs = _currentStructName;
                         }

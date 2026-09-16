@@ -180,57 +180,20 @@ string Compiler::mangleStaticMethod(const string& module, const string& structNa
 
 // ==================== 泛型结构体实例化 ====================
 
-// 确保泛型结构体实例存在
-// 返回 mangle 后的实例名 (如 "Rc<i32>")
-string Compiler::ensureStructInstance(StructDeclNode* baseDecl, const vector<sp<TypeInfo>>& args, FileNode* ownerFile,
-                                      int sourceLine) {
-    string baseName = baseDecl->name().getText();
-    // 实例 key / LLVM 类型名：定义模块全限定 + `<>`（与 riu 类型写法同形）
-    FileNode* instOwner = ownerFile ? ownerFile : _file;
-    string mangledName;
-    if (instOwner && !instOwner->moduleName().empty()) {
-        mangledName = instOwner->moduleName() + ".";
-    }
-    mangledName += baseName + "<";
-    for (size_t i = 0; i < args.size(); ++i) {
-        if (i > 0) mangledName += ',';
-        mangledName += args[i] ? withMangleOwners(*args[i], instOwner).getMangleName() : string("?");
-    }
-    mangledName += '>';
+void Compiler::emitGenericStructLlvm(const generic::StructInstance& inst) {
+    if (!inst.baseDecl) return;
+    if (_structTypes.contains(inst.mangledName)) return;
 
-    if (_structInstances.contains(mangledName)) return mangledName;
+    string baseName = inst.baseDecl->name().getText();
+    generic::SubstScope scope(_substStack, SubstFrame{.subst = inst.substMap(),
+                                                      .baseStructName = baseName,
+                                                      .effStructName = inst.mangledName,
+                                                      .sourceFile = inst.sourceFile,
+                                                      .sourceLine = inst.sourceLine});
 
-    // 验证类型参数数量
-    if (args.size() != baseDecl->typeParams().size()) {
-        // 调用方未提供位置（getLLVMType 路径常见）时，退回到 struct 声明行，避免 assert(line>0) 触发 abort
-        int errLine = sourceLine > 0 ? sourceLine : static_cast<int>(baseDecl->name().getLine());
-        if (errLine <= 0) errLine = 1;
-        // E6011 由 SemaPass 声明处 / turbofish 先抛；此处防 IR 实例化 arity 不一致。
-        throwSemaGap(errLine);
-    }
-
-    vector<TypeInfo> instArgs;
-    instArgs.reserve(args.size());
-    for (auto& a : args)
-        instArgs.push_back(a ? *a : TypeInfo());
-    // 先建记录、后入表：字段 getLLVMType 可能递归 ensure 其它实例；同名须等 LLVM 类型建完。
-    auto inst = generic::makeStructInstance(baseDecl, std::move(instArgs), ownerFile, _file,
-                                            _riu ? _riu->sdkFile() : nullptr, mangledName, sourceLine);
-
-    // 建立类型参数替换映射
-    map<string, TypeInfo> subst = inst.substMap();
-
-    // 压入替换栈帧
-    _substStack.push_back(SubstFrame{.subst = subst,
-                                     .baseStructName = baseName,
-                                     .effStructName = mangledName,
-                                     .sourceFile = inst.sourceFile,
-                                     .sourceLine = inst.sourceLine});
-
-    // 计算实例化后的字段类型
     vector<llvm::Type*> fieldTypes;
     try {
-        for (auto field : baseDecl->fields()) {
+        for (auto field : inst.baseDecl->fields()) {
             auto fieldType = field->getType();
             auto llvmTy = getLLVMType(fieldType);
             if (!llvmTy) {
@@ -239,18 +202,40 @@ string Compiler::ensureStructInstance(StructDeclNode* baseDecl, const vector<sp<
             fieldTypes.push_back(llvmTy);
         }
     } catch (const RiuError& e) {
-        _substStack.pop_back();
         rethrowWithInstantiationContext(e);
     }
 
-    // 创建 LLVM 结构体类型（mangledName 已是定义模块全限定）
-    auto structType = llvm::StructType::create(_context, fieldTypes, mangledName);
-    _structTypes[mangledName] = structType;
-    DEBUG_LOG_VAL("Created generic struct instance", mangledName);
+    auto structType = llvm::StructType::create(_context, fieldTypes, inst.mangledName);
+    _structTypes[inst.mangledName] = structType;
+    DEBUG_LOG_VAL("Created generic struct instance", inst.mangledName);
+}
 
-    _substStack.pop_back();
+// 问 generic 登记 struct 实例；缺 LLVM 类型再按 subst 发 layout。
+string Compiler::genericStruct(StructDeclNode* baseDecl, const vector<sp<TypeInfo>>& args, FileNode* ownerFile,
+                               int sourceLine) {
+    FileNode* instOwner = ownerFile ? ownerFile : _file;
+    vector<TypeInfo> owned;
+    owned.reserve(args.size());
+    for (auto& a : args)
+        owned.push_back(a ? withMangleOwners(*a, instOwner) : TypeInfo());
 
-    _structInstances.insert(std::move(inst));
+    string mangledName = generic::structInstanceName(baseDecl, owned, instOwner);
+    if (auto* existing = _generic.structs().find(mangledName)) {
+        emitGenericStructLlvm(*existing);
+        return mangledName;
+    }
+
+    if (owned.size() != baseDecl->typeParams().size()) {
+        int errLine = sourceLine > 0 ? sourceLine : static_cast<int>(baseDecl->name().getLine());
+        if (errLine <= 0) errLine = 1;
+        throwSemaGap(errLine);
+    }
+
+    // 先建记录、后入表：字段 getLLVMType 可能递归 intern 其它实例；同名须等 LLVM 类型建完。
+    auto inst = generic::makeStructInstance(baseDecl, std::move(owned), ownerFile, _file,
+                                            _riu ? _riu->sdkFile() : nullptr, mangledName, sourceLine);
+    emitGenericStructLlvm(inst);
+    _generic.structs().insert(std::move(inst));
     return mangledName;
 }
 
@@ -296,10 +281,10 @@ llvm::Value* Compiler::arrayCapFieldPtr(llvm::Value* arrayStructPtr, const strin
 // ==================== 类型映射 ====================
 
 // 从 struct 名还原完整 TypeInfo。
-// `_structInstances` 的 key 是 mangle（`Foo<i32>` / `Array<i32>`）；命中时带上 args
+// `_generic.structs()` 的 key 是 mangle（`Foo<i32>` / `Array<i32>`）；命中时带上 args
 // 走 `TypeInfo(base, args)` 唯一名字分发，避免 `TypeInfo("Array")` 变成 Normal。
 TypeInfo Compiler::typeInfoForNamedStruct(const string& name) const {
-    if (const auto* inst = _structInstances.find(name); inst && inst->baseDecl) {
+    if (const auto* inst = _generic.structs().find(name); inst && inst->baseDecl) {
         return inst->typeInfo();
     }
     TypeInfo t(name);
@@ -489,8 +474,7 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
             if (owner) baseDecl = owner->localStructDecl(type.baseStructName(), /*includeBuiltin=*/false);
         }
         if (baseDecl && baseDecl->isGeneric()) {
-            // 确保实例存在
-            string mangled = ensureStructInstance(baseDecl, type.genericArgs, owner ? owner : _file);
+            string mangled = genericStruct(baseDecl, type.genericArgs, owner ? owner : _file);
             return _structTypes[mangled];
         }
         // 从缓存查找
@@ -567,7 +551,7 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
             // 应对应已建好的实例 LLVM 类型，而不是按未实例化泛型建类型。
             auto instLlvm = [&](const string& key) -> llvm::Type* {
                 if (key.empty()) return nullptr;
-                const auto* inst = _structInstances.find(key);
+                const auto* inst = _generic.structs().find(key);
                 if (!inst || !inst->baseDecl) return nullptr;
                 if (inst->baseDecl->name().getText() != structDecl->name().getText()) return nullptr;
                 auto cit = _structTypes.find(key);

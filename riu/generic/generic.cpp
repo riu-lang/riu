@@ -121,6 +121,85 @@ void generic::FnTable::insert(string key, FnInstance inst) {
     _instances.emplace(std::move(key), std::move(inst));
 }
 
+string generic::structInstanceName(StructDeclNode* baseDecl, const vector<TypeInfo>& args, FileNode* ownerFile) {
+    vector<sp<TypeInfo>> spArgs;
+    spArgs.reserve(args.size());
+    for (const auto& a : args) {
+        spArgs.push_back(std::make_shared<TypeInfo>(a));
+    }
+    TypeInfo t{baseDecl->name().getText(), std::move(spArgs)};
+    if (ownerFile) t.ownerModule = ownerFile->moduleName();
+    return t.getMangleName();
+}
+
+string generic::fnInstanceName(const string& baseName, const vector<TypeInfo>& typeArgs) {
+    string instName = baseName + "<";
+    for (size_t i = 0; i < typeArgs.size(); ++i) {
+        if (i > 0) instName += ',';
+        instName += typeArgs[i].getMangleName();
+    }
+    instName += '>';
+    return instName;
+}
+
+namespace {
+string paramMangleList(FnNode* fn, const vector<TypeInfo>& typeArgs) {
+    map<string, TypeInfo> subst;
+    if (fn && fn->header()) {
+        const auto& tps = fn->header()->typeParams();
+        for (size_t i = 0; i < tps.size() && i < typeArgs.size(); ++i) {
+            subst[tps[i]] = typeArgs[i];
+        }
+    }
+    string key = "(";
+    bool first = true;
+    if (fn && fn->header()) {
+        for (auto* p : fn->header()->params()) {
+            if (!p->type()) continue;
+            if (!first) key += ',';
+            first = false;
+            key += p->type()->getType().substitute(subst).getMangleName();
+        }
+    }
+    key += ')';
+    return key;
+}
+} // namespace
+
+string generic::fnInstanceKey(FnNode* baseFn, const vector<TypeInfo>& typeArgs) {
+    string name = (baseFn && baseFn->header()) ? baseFn->header()->name().getText() : "";
+    return fnInstanceName(name, typeArgs) + paramMangleList(baseFn, typeArgs);
+}
+
+string generic::methodInstanceKey(FnNode* baseMethod, const string& structName, const vector<TypeInfo>& typeArgs,
+                                  FileNode* ownerFile) {
+    string instName =
+        fnInstanceName((baseMethod && baseMethod->header()) ? baseMethod->header()->name().getText() : "", typeArgs);
+    string key = "method:";
+    if (ownerFile) key += ownerFile->moduleName();
+    key += ':' + structName + '.' + instName + paramMangleList(baseMethod, typeArgs);
+    return key;
+}
+
+string generic::Registry::internFn(FnNode* baseFn, const vector<TypeInfo>& typeArgs, FileNode* ownerFile,
+                                   FileNode* currentFile) {
+    string key = fnInstanceKey(baseFn, typeArgs);
+    if (_fns.contains(key)) return key;
+    string instName = fnInstanceName((baseFn && baseFn->header()) ? baseFn->header()->name().getText() : "", typeArgs);
+    _fns.insert(key, makeFnInstance(baseFn, typeArgs, ownerFile, currentFile, std::move(instName)));
+    return key;
+}
+
+string generic::Registry::internMethod(FnNode* baseMethod, const string& structName, const vector<TypeInfo>& typeArgs,
+                                       FileNode* ownerFile, FileNode* currentFile) {
+    string key = methodInstanceKey(baseMethod, structName, typeArgs, ownerFile);
+    if (_fns.contains(key)) return key;
+    string instName =
+        fnInstanceName((baseMethod && baseMethod->header()) ? baseMethod->header()->name().getText() : "", typeArgs);
+    _fns.insert(key, makeMethodInstance(baseMethod, structName, typeArgs, ownerFile, currentFile, std::move(instName)));
+    return key;
+}
+
 string generic::SubstStack::formatInstantiationContext() const {
     if (_frames.empty()) return "";
     string result;

@@ -797,12 +797,12 @@ void Compiler::emitInstanceMethods() {
         progress = false;
         // 收集所有键，避免在迭代时修改 map
         vector<string> keys;
-        keys.reserve(_structInstances.size());
-        for (auto& [k, _] : _structInstances)
+        keys.reserve(_generic.structs().size());
+        for (auto& [k, _] : _generic.structs())
             keys.push_back(k);
 
         for (auto& key : keys) {
-            auto& inst = _structInstances[key];
+            auto& inst = _generic.structs()[key];
             if (inst.methodsEmitted) continue; // 已处理
             inst.methodsEmitted = true;
             progress = true;
@@ -812,11 +812,11 @@ void Compiler::emitInstanceMethods() {
             // 建立类型参数替换映射
             map<string, TypeInfo> subst = inst.substMap();
             string baseName = inst.baseDecl->name().getText();
-            _substStack.push_back(SubstFrame{.subst = subst,
-                                             .baseStructName = baseName,
-                                             .effStructName = inst.mangledName,
-                                             .sourceFile = inst.sourceFile,
-                                             .sourceLine = inst.sourceLine});
+            generic::SubstScope instScope(_substStack, SubstFrame{.subst = subst,
+                                                                  .baseStructName = baseName,
+                                                                  .effStructName = inst.mangledName,
+                                                                  .sourceFile = inst.sourceFile,
+                                                                  .sourceLine = inst.sourceLine});
 
             string structName = inst.mangledName;
             DEBUG_LOG_VAL("  Emitting generic instance methods", structName);
@@ -890,96 +890,33 @@ void Compiler::emitInstanceMethods() {
                 }
             } catch (const RiuError& e) {
                 _file = savedFile;
-                _substStack.pop_back();
                 rethrowWithInstantiationContext(e); // 附加实例化上下文后重新抛出
             }
 
             _file = savedFile;
-            _substStack.pop_back();
         }
     }
 }
 
 // ==================== 泛型函数实例管理 ====================
-// 确保泛型函数实例存在，返回 mangle 后的名称
-// 如果实例不存在，创建一个新的实例记录
-string Compiler::ensureFnInstance(FnNode* baseFn, const vector<TypeInfo>& typeArgs, FileNode* ownerFile,
-                                  int sourceLine) {
-    string baseName = baseFn->header()->name().getText();
-    // LLVM 函数名用 `foo<i32,i64>`（Mangler 再加模块与形参表）
-    string instName = baseName + "<";
-    for (size_t i = 0; i < typeArgs.size(); ++i) {
-        if (i > 0) instName += ',';
-        instName += withMangleOwners(typeArgs[i], ownerFile).getMangleName();
-    }
-    instName += '>';
-
-    // 同名泛型不同重载（print<T>(T) vs print<T>(T&)）用 riu 形参表作实例 key，不用 `_` 分隔
-    const auto& tps = baseFn->header()->typeParams();
-    std::map<std::string, TypeInfo> tmpSubst;
-    for (size_t i = 0; i < tps.size() && i < typeArgs.size(); ++i) {
-        tmpSubst[tps[i]] = typeArgs[i];
-    }
-    string key = instName + "(";
-    bool firstParam = true;
-    for (auto& p : baseFn->header()->params()) {
-        if (!p->type()) continue;
-        if (!firstParam) key += ',';
-        firstParam = false;
-        key += withMangleOwners(p->type()->getType().substitute(tmpSubst), ownerFile).getMangleName();
-    }
-    key += ')';
-
-    if (_fnInstances.contains(key)) return key;
-
-    // E6010 由 SemaPass validateGenericTypeArgsArity 先抛。
-    auto& typeParams = baseFn->header()->typeParams();
-    if (typeArgs.size() != typeParams.size()) {
+string Compiler::internGenericFn(FnNode* baseFn, const vector<TypeInfo>& typeArgs, FileNode* ownerFile,
+                                 int sourceLine) {
+    auto owned = withMangleOwners(typeArgs, ownerFile);
+    if (owned.size() != baseFn->header()->typeParams().size()) {
         throwSemaGap(static_cast<size_t>(sourceLine));
     }
-
-    auto inst = generic::makeFnInstance(baseFn, typeArgs, ownerFile, _file, instName);
-    _fnInstances.insert(key, std::move(inst));
+    string key = _generic.internFn(baseFn, owned, ownerFile, _file);
     DEBUG_LOG_VAL("Created generic function instance", key);
     return key;
 }
 
-string Compiler::ensureMethodInstance(FnNode* baseMethod, const string& structName, const vector<TypeInfo>& typeArgs,
-                                      FileNode* ownerFile, int sourceLine) {
-    const string baseName = baseMethod->header()->name().getText();
-    string instName = baseName + "<";
-    for (size_t i = 0; i < typeArgs.size(); ++i) {
-        if (i > 0) instName += ',';
-        instName += withMangleOwners(typeArgs[i], ownerFile).getMangleName();
-    }
-    instName += '>';
-
-    const auto& typeParams = baseMethod->header()->typeParams();
-    if (typeArgs.size() != typeParams.size()) {
+string Compiler::internGenericMethod(FnNode* baseMethod, const string& structName, const vector<TypeInfo>& typeArgs,
+                                     FileNode* ownerFile, int sourceLine) {
+    auto owned = withMangleOwners(typeArgs, ownerFile);
+    if (owned.size() != baseMethod->header()->typeParams().size()) {
         throwSemaGap(static_cast<size_t>(sourceLine));
     }
-
-    map<string, TypeInfo> subst;
-    for (size_t i = 0; i < typeParams.size(); ++i) {
-        subst[typeParams[i]] = typeArgs[i];
-    }
-
-    string key = "method:";
-    if (ownerFile) key += ownerFile->moduleName();
-    key += ':' + structName + '.' + instName + '(';
-    bool firstParam = true;
-    for (auto& param : baseMethod->header()->params()) {
-        if (!param->type()) continue;
-        if (!firstParam) key += ',';
-        firstParam = false;
-        key += withMangleOwners(param->type()->getType().substitute(subst), ownerFile).getMangleName();
-    }
-    key += ')';
-
-    if (_fnInstances.contains(key)) return key;
-
-    auto inst = generic::makeMethodInstance(baseMethod, structName, typeArgs, ownerFile, _file, std::move(instName));
-    _fnInstances.insert(key, std::move(inst));
+    string key = _generic.internMethod(baseMethod, structName, owned, ownerFile, _file);
     DEBUG_LOG_VAL("Created generic method instance", key);
     return key;
 }
@@ -993,12 +930,12 @@ void Compiler::emitFnInstances() {
         progress = false;
         // 收集所有键，避免在迭代时修改 map
         vector<string> keys;
-        keys.reserve(_fnInstances.size());
-        for (auto& [k, _] : _fnInstances)
+        keys.reserve(_generic.fns().size());
+        for (auto& [k, _] : _generic.fns())
             keys.push_back(k);
 
         for (auto& key : keys) {
-            auto& inst = _fnInstances[key];
+            auto& inst = _generic.fns()[key];
             if (inst.emitted) continue; // 已处理
             inst.emitted = true;
             progress = true;
@@ -1007,7 +944,8 @@ void Compiler::emitFnInstances() {
             map<string, TypeInfo> subst = inst.substMap();
 
             string srcFile = _file ? _file->moduleName() : "";
-            _substStack.push_back(
+            generic::SubstScope instScope(
+                _substStack,
                 SubstFrame{.subst = subst,
                            .baseStructName = inst.methodStructName,
                            .effStructName = inst.methodStructName.empty() ? inst.mangledName : inst.methodStructName,
@@ -1039,7 +977,6 @@ void Compiler::emitFnInstances() {
                     DEBUG_LOG_VAL("  Emitting generic method instance",
                                   inst.methodStructName << "." << inst.mangledName);
                     compileMethod(baseFn, fn, inst.methodStructName, false, inst.methodIsStatic);
-                    _substStack.pop_back();
                     continue;
                 }
 
@@ -1083,11 +1020,8 @@ void Compiler::emitFnInstances() {
                 DEBUG_LOG_VAL("  Emitting generic function instance", inst.mangledName);
                 compileFn(baseFn, fn);
             } catch (const RiuError& e) {
-                _substStack.pop_back();
                 rethrowWithInstantiationContext(e);
             }
-
-            _substStack.pop_back();
         }
     }
 }

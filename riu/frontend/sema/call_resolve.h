@@ -283,7 +283,7 @@ void validateBuiltinIntrinsicTypeShape(const string& fnName, const vector<TypeIn
 [[nodiscard]] bool typeHasLlvmLayout(const TypeInfo& t, FileNode* file, FileNode* sdkFile,
                                      const std::set<std::string>& typeParams);
 
-// 泛型 struct 实例化后字段类型未知 → E3098（镜像 ensureStructInstance）。
+// 泛型 struct 实例化后字段类型未知 → E3098（镜像 genericStruct LLVM layout）。
 void validateGenericStructFieldLayouts(class StructDeclNode* sd, const std::map<std::string, TypeInfo>& subst,
                                        FileNode* file, FileNode* sdkFile, const std::set<std::string>& typeParams);
 

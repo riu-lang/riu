@@ -795,7 +795,7 @@ llvm::Value* Compiler::compileGenericFunctionCall(ExprCallNode* callNode, const 
 
     // §6.4.4.4 / §12.4 边界单态化校验 (Phase 3.3): 对每个 <T : D1 + D2>,
     // 解析每个 D 的限定名并校验 typeArgs[i] 是否满足 D (显式 impl 或
-    // #DraftLike 结构匹配); 不满足报 E1106. 不影响 ensureFnInstance 的
+    // #DraftLike 结构匹配); 不满足报 E1106. 不影响 internGenericFn 的
     // mangle (单态化静态分发, 边界仅做静态检查).
     // E3032 / E1106 (Phase 3.3.3.c): 迁至 sema::validateGenericTypeArgsSpecBound.
     if (_riu) {
@@ -804,7 +804,7 @@ llvm::Value* Compiler::compileGenericFunctionCall(ExprCallNode* callNode, const 
                                                callNode->getColumn());
     }
 
-    string mangledName = ensureFnInstance(genericFn, typeArgs, fnOwner, callNode->getLineNumber());
+    string mangledName = internGenericFn(genericFn, typeArgs, fnOwner, callNode->getLineNumber());
 
     map<string, TypeInfo> subst;
     for (size_t i = 0; i < typeParams.size(); ++i) {
@@ -826,7 +826,7 @@ llvm::Value* Compiler::compileGenericFunctionCall(ExprCallNode* callNode, const 
 
     bool isPrivate = !fnName.empty() && fnName[0] == '_';
     // 泛型实例：定义模块作符号前缀（与 emitFnInstances 一致；多 TU 靠 linkonce_odr 合并）
-    auto& fi = _fnInstances[mangledName];
+    auto& fi = _generic.fns()[mangledName];
     string ownerModForMangle = fi.ownerFile ? fi.ownerFile->moduleName() : fnOwner->moduleName();
     string cName = mangleFunction(ownerModForMangle, fi.mangledName, instParamTypes, isPrivate, instRetType,
                                   genericFn->header()->resolvedFallibleErr());

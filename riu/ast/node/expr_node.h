@@ -564,7 +564,7 @@ class ExprPathCallNode : public ExprNode {
     Token _variantName;
     vector<ExprNode*> _args;
     // Phase 6E.4: turbofish 形态 `Type:<T>::name:<U>(args)` 的 LHS / RHS 类型实参.
-    // 单 Type 名时为空; 用于驱动 Compiler::ensureStructInstance + applySubst.
+    // 单 Type 名时为空; 用于驱动 generic struct intern + applySubst.
     vector<TypeNode*> _lhsTypeArgs;
     vector<TypeNode*> _rhsTypeArgs;
     // 静态 fallible 调用可写 `Type::name(...)!`；enum 构造命中时由 sema 拒绝。

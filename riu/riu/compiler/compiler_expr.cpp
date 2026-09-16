@@ -257,10 +257,10 @@ llvm::Value* Compiler::compileExpr(ExprNode* node) {
         int col = structLitNode->resolveColumn();
         // DRAFT-const-eval Phase 5: TypeName{...} 形态从节点 structName() 取;
         // Self{...}：泛型实例方法里 AST 记的是模板名（`Map`），LLVM 类型在
-        // `_structInstances` 里键为 mangled（`Map<i32,i32>`）。优先用当前单态名。
+        // `_generic.structs()` 里键为 mangled（`Map<i32,i32>`）。优先用当前单态名。
         string structName = structLitNode->structName();
         if (structLitNode->isSelfForm() && !_currentStructName.empty()) {
-            const auto* inst = _structInstances.find(_currentStructName);
+            const auto* inst = _generic.structs().find(_currentStructName);
             if (inst && inst->baseDecl && (structName.empty() || inst->baseDecl->name().getText() == structName)) {
                 structName = _currentStructName;
             }
@@ -274,7 +274,7 @@ llvm::Value* Compiler::compileExpr(ExprNode* node) {
         }
         // Phase 6E.4-C: 泛型 struct #Static fn 体内 `Self {...}` —
         // _currentStructName 是实例全限定名, getStructDecl 查不到; 走
-        // _structInstances 拿 baseDecl, llvmStructType 仍按 mangled 名解析.
+        // _generic.structs() 拿 baseDecl, llvmStructType 仍按 mangled 名解析.
         TypeInfo litTy = typeInfoForNamedStruct(structName);
         StructDeclNode* decl = nullptr;
         if (!structLitNode->isSelfForm()) {
@@ -296,7 +296,7 @@ llvm::Value* Compiler::compileExpr(ExprNode* node) {
             decl = _riu->sdkFile()->getStructDecl(structName);
         }
         if (!decl) {
-            if (auto* inst = _structInstances.find(structName)) {
+            if (auto* inst = _generic.structs().find(structName)) {
                 decl = inst->baseDecl;
             }
         }
