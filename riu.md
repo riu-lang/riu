@@ -106,7 +106,7 @@ flowchart LR
     end
 
     subgraph CG [riu_codegen]
-        C[Compiler + LLVM IR<br/>compiler*.cpp]
+        C[Compiler driver + LLVM IR<br/>compiler.h + 窄头]
     end
 
     riubin[riu<br/>build / run / jit] --> L & B & PM & C
@@ -227,7 +227,7 @@ flowchart LR
 
 详见 [RULES.md](RULES.md) 目录。一句话版：
 
-- `riu/`：编译器实现（`riu/` 零 LLVM；`riu/riu/compiler/` 全 LLVM；`riu/analyzer/` 语义检查；`riu/lsp/` LSP；`riu/frontend/tools/` 工具）
+- `riu/`：编译器实现（`riu/` 零 LLVM；`riu/riu/compiler/` 全 LLVM，`compiler.h` 是 driver，子系统在 `compiler_*.h`；`riu/analyzer/` 语义检查；`riu/lsp/` LSP；`riu/frontend/tools/` 工具）
 - `sdk/riu/`：自举 runtime（独立 riu 项目 → `riu.lib`）
 - `riu/ast/gen/`：ANTLR 生成代码（不要手改）
 - `docs/`：中文教程 + `docs/spec/` 规范草案
