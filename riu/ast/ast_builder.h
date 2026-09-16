@@ -33,6 +33,10 @@ class ASTBuilder : public riu::riuParserBaseVisitor {
                 // 列号转 1-based（ANTLR 的 charPositionInLine 为 0-based）
                 node->setLocation(static_cast<int>(start->getLine()),
                                   static_cast<int>(start->getCharPositionInLine()) + 1);
+                if (auto stop = ctx->getStop()) {
+                    node->setTokenRange(static_cast<int>(start->getTokenIndex()),
+                                        static_cast<int>(stop->getTokenIndex()));
+                }
             }
         }
         return node;

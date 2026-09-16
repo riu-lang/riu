@@ -126,6 +126,10 @@ protected:
     Node* _parent;
     int _line = 0;
     int _col = 0; // 1-based 列号；0 表示未知（合成节点 / 旧路径）
+    // 对应 parse 规则的 default-channel token 下标；-1 表示未知（合成节点）。
+    // formatter 用它做 raw 回退，不依赖 ParserRuleContext 指针。
+    int _tokStart = -1;
+    int _tokStop = -1;
 
 public:
     explicit Node(Node* parent) : _parent(parent) {}
@@ -167,6 +171,13 @@ public:
     [[nodiscard]] virtual int resolveColumn() const;
 
     [[nodiscard]] virtual SourceLocation resolveLocation() const;
+
+    void setTokenRange(int start, int stop) {
+        _tokStart = start;
+        _tokStop = stop;
+    }
+    [[nodiscard]] int tokenStart() const { return _tokStart; }
+    [[nodiscard]] int tokenStop() const { return _tokStop; }
 };
 
 // 把出错节点所属文件路径写入 RiuError（已有路径则不动）。

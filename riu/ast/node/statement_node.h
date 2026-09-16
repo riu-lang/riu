@@ -47,6 +47,7 @@ class StatementDeclareNode : public StatementNode {
 protected:
     bool _isMut;
     bool _isConst;
+    bool _isFrozen = false;
     Token _name;
     TypeNode* _type;
 
@@ -56,6 +57,8 @@ public:
 
     [[nodiscard]] bool isMut() const { return _isMut; }
     [[nodiscard]] bool isConst() const { return _isConst; }
+    void setFrozen(bool v) { _isFrozen = v; }
+    [[nodiscard]] bool isFrozen() const { return _isFrozen; }
     [[nodiscard]] Token name() const;
     [[nodiscard]] TypeNode* varType() const;
     void accept(AstVisitor& v) override;
@@ -65,6 +68,7 @@ class StatementDeclareAssignNode : public StatementExprNode {
 protected:
     bool _isMut;
     bool _isConst;
+    bool _isFrozen = false;
     Token _name;
     TypeNode* _type;
 
@@ -75,6 +79,8 @@ public:
 
     [[nodiscard]] bool isMut() const { return _isMut; }
     [[nodiscard]] bool isConst() const { return _isConst; }
+    void setFrozen(bool v) { _isFrozen = v; }
+    [[nodiscard]] bool isFrozen() const { return _isFrozen; }
     [[nodiscard]] Token name() const;
     [[nodiscard]] TypeNode* varType() const;
     void accept(AstVisitor& v) override;
@@ -86,6 +92,7 @@ class StatementDeclareAssignTupleNode : public StatementExprNode {
 protected:
     bool _isMut;
     bool _isConst;
+    bool _isFrozen = false;
     vector<Token> _names;
     TypeNode* _type; // 可选，整体元组类型（含 typeWithRef）
 
@@ -96,6 +103,8 @@ public:
 
     [[nodiscard]] bool isMut() const { return _isMut; }
     [[nodiscard]] bool isConst() const { return _isConst; }
+    void setFrozen(bool v) { _isFrozen = v; }
+    [[nodiscard]] bool isFrozen() const { return _isFrozen; }
     [[nodiscard]] const vector<Token>& names() const { return _names; }
     [[nodiscard]] TypeNode* varType() const { return _type; }
     void accept(AstVisitor& v) override;

@@ -79,6 +79,7 @@ std::any ASTBuilder::visitExprCall(riu::riuParser::ExprCallContext* ctx) {
     if (auto* tl = ctx->trailing) {
         auto lambda = makeTrailingLambda(tl);
         if (lambda) call->addArg(static_cast<ExprNode*>(lambda));
+        call->setTrailingLambda(true);
     }
     // Phase 10e：后缀 `!` 错误传播标记（DRAFT-错误.md [#4.B]）
     if (ctx->errPropagate) call->setErrPropagate(true);
@@ -112,6 +113,7 @@ std::any ASTBuilder::visitExprCallTrailingOnly(riu::riuParser::ExprCallTrailingO
     }
     auto lambda = makeTrailingLambda(ctx->trailing);
     if (lambda) call->addArg(static_cast<ExprNode*>(lambda));
+    call->setTrailingLambda(true);
     // Phase 10e：后缀 `!` 错误传播标记（DRAFT-错误.md [#4.B]）
     if (ctx->errPropagate) call->setErrPropagate(true);
     return static_cast<ExprNode*>(call);
@@ -736,6 +738,7 @@ std::any ASTBuilder::visitExprEnumCtor(riu::riuParser::ExprEnumCtorContext* ctx)
     if (ctx->errPropagate != nullptr) {
         node->setErrPropagate(true);
     }
+    if (ctx->ParStart() != nullptr) node->setHasParens(true);
 
     for (auto* aCtx : ctx->args) {
         node->addArg(any_cast_p<ExprNode>(visit(aCtx)));

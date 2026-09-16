@@ -147,7 +147,7 @@ flowchart TB
 - `riu/ast/` 禁止 `#include "sema/..."` / `"analyzer/..."` / `"tools/..."`（frontend 路径）。
 - `riu/frontend/sema/` 禁止 `#include "llvm/..."`，禁止访问 `IRBuilder` / `_module`。
 - 让 sema 接管某错误码 → **默认即由 SemaPass 重抛**。若必须暂留 Compiler（假阳性），加入 `kDeferredCodes`，禁止静默吞。
-- 新增 AST / 表达式类 → `AstVisitor` 加 `visitX = 0`，`SemaPass` / `Compiler` override；漏 override 编不过，不再静默 skip。
+- 新增 AST / 表达式类 → `AstVisitor` 加 `visitX = 0`，`SemaPass` / `Compiler` / formatter override；漏 override 编不过，不再静默 skip。
 - sema 接管后 Compiler 端原 inline throw / validate 调用直接删除（v0.16 收尾）。
 
 ---
@@ -196,7 +196,7 @@ classDiagram
     StatementNode "1" o-- "*" ExprNode
 ```
 
-定义在 `riu/ast/node/*.h`。表达式 / 语句走 `AstVisitor` 双分派（`accept` + `visitX = 0`）；`SemaPass` / `Compiler` 经 override 分派。新增节点务必同步 `accept`、两个 visitor 与 mangler/builder 路径。
+定义在 `riu/ast/node/*.h`。表达式 / 语句走 `AstVisitor` 双分派（`accept` + `visitX = 0`）；`SemaPass` / `Compiler` / formatter 经 override 分派。新增节点务必同步 `accept`、visitor 与 mangler/builder 路径。
 
 ---
 

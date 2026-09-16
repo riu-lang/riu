@@ -108,6 +108,8 @@ protected:
     // 由 ast_builder 从 g4 `errPropagate=SymbolExcl?` 槽位读入。Phase 10e 仅做语义校验
     // （E7001 / E7004 / E7006），实际错误通道路由 codegen 推 10f / 10g。
     bool _errPropagate = false;
+    // 源码是尾随 lambda 糖（`f(args){ ... }` / `f { ... }`），不是括号里的 lambda 实参。
+    bool _trailingLambda = false;
 
 public:
     ExprCallNode(Node* parent, ExprNode* callee) : ExprNode(parent), _calleeExpr(callee) {}
@@ -119,6 +121,8 @@ public:
 
     void setErrPropagate(bool v) { _errPropagate = v; }
     [[nodiscard]] bool errPropagate() const { return _errPropagate; }
+    void setTrailingLambda(bool v) { _trailingLambda = v; }
+    [[nodiscard]] bool hasTrailingLambda() const { return _trailingLambda; }
 
     [[nodiscard]] ExprNode* getCalleeExpr() const;
     [[nodiscard]] const std::vector<ExprNode*>& getArgs() const;
@@ -590,6 +594,8 @@ class ExprPathCallNode : public ExprNode {
     vector<TypeNode*> _rhsTypeArgs;
     // 静态 fallible 调用可写 `Type::name(...)!`；enum 构造命中时由 sema 拒绝。
     bool _errPropagate = false;
+    // 源码写了 `()`（含零参 `E::V()`）；无括号的 `E::V` 为 false。
+    bool _hasParens = false;
 
 public:
     ExprPathCallNode(Node* parent, Token enumName, Token variantName)
@@ -599,6 +605,8 @@ public:
     void setLhsTypeArgs(vector<TypeNode*> a) { _lhsTypeArgs = std::move(a); }
     void setRhsTypeArgs(vector<TypeNode*> a) { _rhsTypeArgs = std::move(a); }
     void setErrPropagate(bool v) { _errPropagate = v; }
+    void setHasParens(bool v) { _hasParens = v; }
+    [[nodiscard]] bool hasParens() const { return _hasParens; }
     void setLhsPath(TypePath p) {
         _lhsPath = std::move(p);
         if (!_lhsPath.empty()) _enumName = _lhsPath.last();

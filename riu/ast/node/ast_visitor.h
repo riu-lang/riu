@@ -5,7 +5,8 @@
 #define RIU_LANG_AST_VISITOR_H
 
 // AST 双分派：每个表达式 / 语句节点一个 visitX = 0。
-// 新节点 = 基类加纯虚 + 节点 accept；漏 override → 编不过（4.2 Sema / 4.3 codegen）。
+// 新节点 = 基类加纯虚 + 节点 accept；漏 override → 编不过
+// （4.2 Sema / 4.3 codegen / 4.4 formatter）。
 // 本头只前向声明节点，不断环。
 
 class ExprCallNode;

@@ -28,11 +28,22 @@
 
 #include "tools/format/printer.h"
 
+#include <any>
 #include <cstddef>
+#include <exception>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "antlr4-runtime.h"
+#include "ast/ast_builder.h"
+#include "ast/node/ast_visitor.h"
+#include "ast/node/expr_node.h"
+#include "ast/node/literal_node.h"
+#include "ast/node/statement_node.h"
+#include "ast/node/type_node.h"
+#include "ast/riu.h"
+#include "misc/Interval.h"
 #include "riu/riuLexer.h"
 #include "riu/riuParser.h"
 
@@ -40,6 +51,7 @@
 #include "tools/format/render.h"
 #include "tools/format/trivia.h"
 #include "tools/formatter.h"
+#include "types.h"
 
 namespace riu::format {
 
@@ -66,15 +78,61 @@ std::string trimRightLineEnds(std::string s) {
 
 // ==================== Printer ====================
 
-class Printer {
+// 4.4：表达式 / 语句经 AstVisitor::accept 分派；顶层 item / 类型节点仍走 parse tree
+// （类型在 builder 里会解糖成 Nullable / Ref，parse tree 才能保住 `T?` / `T&` 写法）。
+class Printer : public AstVisitor {
 public:
-    Printer(antlr4::CommonTokenStream& tokens, const TriviaMap& trivia) : tokens_(tokens), trivia_(trivia) {}
+    Printer(antlr4::CommonTokenStream& tokens, const TriviaMap& trivia, ASTBuilder& builder)
+        : tokens_(tokens), trivia_(trivia), builder_(builder) {}
 
     Doc programDoc(riuParser::ProgramContext* ctx);
+
+    void visitCall(ExprCallNode&) override;
+    void visitLiteral(ExprLiteralNode&) override;
+    void visitAddSub(ExprAddSubNode&) override;
+    void visitMulDivMod(ExprMulDivModNode&) override;
+    void visitBinOp(ExprBinOpNode&) override;
+    void visitParen(ExprParenNode&) override;
+    void visitDot(ExprDotNode&) override;
+    void visitCompare(ExprCompareNode&) override;
+    void visitIfElse(ExprIfElseNode&) override;
+    void visitOneLineIfElse(ExprOneLineIfElseNode&) override;
+    void visitGet(ExprGetNode&) override;
+    void visitArray(ExprArrayNode&) override;
+    void visitArrayInit(ExprArrayInitNode&) override;
+    void visitGetRef(ExprGetRefNode&) override;
+    void visitUnary(ExprUnaryNode&) override;
+    void visitLambda(LambdaExprNode&) override;
+    void visitTuple(ExprTupleNode&) override;
+    void visitPathCall(ExprPathCallNode&) override;
+    void visitStructLit(ExprStructLitNode&) override;
+    void visitMatch(ExprMatchNode&) override;
+    void visitTryCatch(ExprTryCatchNode&) override;
+    void visitDynCtor(ExprDynCtorNode&) override;
+    void visitMoveAssign(ExprMoveAssignNode&) override;
+    void visitNullElse(ExprNullElseNode&) override;
+
+    void visitBlock(StatementBlockNode&) override;
+    void visitExprStmt(StatementExprNode&) override;
+    void visitRet(StatementRetNode&) override;
+    void visitRetVoid(StatementRetVoidNode&) override;
+    void visitDeclare(StatementDeclareNode&) override;
+    void visitDeclareAssign(StatementDeclareAssignNode&) override;
+    void visitDeclareAssignTuple(StatementDeclareAssignTupleNode&) override;
+    void visitAssign(StatementAssignNode&) override;
+    void visitLoop(StatementLoopNode&) override;
+    void visitBreak(StatementBreakNode&) override;
+    void visitContinue(StatementContinueNode&) override;
+    void visitForIn(StatementForInNode&) override;
+    void visitStaticFieldSet(StatementStaticFieldSetNode&) override;
+    void visitSet(StatementSetNode&) override;
 
 private:
     antlr4::CommonTokenStream& tokens_;
     const TriviaMap& trivia_;
+    ASTBuilder& builder_;
+    Doc _doc;
+    int _stmtIndent = 0;
 
     // 顶层 item 的渲染单元：要么是结构化 Doc (走 render 出现刷格式)，
     // 要么是纯原文块 (按行直出，避免再次 break/flat 决策影响)
@@ -107,8 +165,6 @@ private:
 
     // 表达式
     Doc exprDoc(riuParser::ExprContext* ctx);
-    Doc lambdaParamsDoc(riuParser::LambdaParamsContext* ctx);
-    Doc lambdaParamDoc(riuParser::LambdaParamContext* ctx);
 
     // 语句 / 块
     // indentLevel: 当前语句所处的"逻辑缩进层" (顶层 fn body 内是 1，
@@ -125,6 +181,18 @@ private:
 
     // 取顶层 item 起始 default token 的 index，用于查 trivia
     static std::size_t startTokenIndex(antlr4::ParserRuleContext* ctx) { return ctx->start->getTokenIndex(); }
+
+    Doc formatExpr(ExprNode* n);
+    Doc formatStmt(StatementNode* n);
+    Doc rawNode(const Node& n);
+    Doc typeDocAst(TypeNode* t);
+    Doc typeListDoc(const std::vector<TypeNode*>& types);
+    Doc turbofishDoc(const std::vector<TypeNode*>& types);
+    Doc letAnnosDoc(bool isMut, bool isConst, bool isFrozen);
+    Doc lambdaParamsFromSlots(const std::vector<LambdaParamSlot>& slots);
+    Doc binExpr(ExprNode* left, const char* op, ExprNode* right);
+    Doc astBlockDoc(StatementBlockNode* block, int indentLevel);
+    Doc statementDocParse(riuParser::StatementContext* ctx, int indentLevel);
 };
 
 Doc Printer::importsDoc(riuParser::ImportsContext* ctx) {
@@ -322,222 +390,569 @@ Doc Printer::fnParamDoc(riuParser::FnParamContext* ctx) {
 
 // ==================== 表达式 ====================
 
-Doc Printer::lambdaParamDoc(riuParser::LambdaParamContext* ctx) {
-    if (auto* n = dynamic_cast<riuParser::LambdaParamStdContext*>(ctx)) {
-        std::vector<Doc> parts;
-        parts.push_back(text(n->name->getText()));
-        if (n->type() != nullptr) {
-            parts.push_back(text(" "));
-            parts.push_back(typeDoc(n->type()));
-        }
-        return concat(std::move(parts));
-    }
-    if (auto* n = dynamic_cast<riuParser::LambdaParamGroupContext*>(ctx)) {
-        std::vector<Doc> parts;
-        for (std::size_t i = 0; i < n->names.size(); ++i) {
-            if (i > 0) parts.push_back(text(", "));
-            parts.push_back(text(n->names[i]->getText()));
-        }
-        if (n->type() != nullptr) {
-            parts.push_back(text(" "));
-            parts.push_back(typeDoc(n->type()));
-        }
-        return concat(std::move(parts));
+// 表达式：parse ctx → ASTBuilder.visit → accept 分派
+Doc Printer::exprDoc(riuParser::ExprContext* ctx) {
+    if (!ctx) return text("");
+    try {
+        auto* n = any_cast_p<ExprNode>(builder_.visit(ctx));
+        if (n) return formatExpr(n);
+    } catch (const std::exception&) { // NOLINT(bugprone-empty-catch) — builder 未绑定名抛 E3030，回退 raw
     }
     return text(rawSpan(tokens_, ctx));
 }
 
-Doc Printer::lambdaParamsDoc(riuParser::LambdaParamsContext* ctx) {
+Doc Printer::formatExpr(ExprNode* n) {
+    if (!n) return text("");
+    struct Restore {
+        Doc& slot;
+        Doc prev;
+        ~Restore() { slot = std::move(prev); }
+    } restore{.slot = _doc, .prev = _doc};
+    _doc = text("");
+    n->accept(*this);
+    return _doc;
+}
+
+Doc Printer::formatStmt(StatementNode* n) {
+    if (!n) return text("");
+    struct Restore {
+        Doc& slot;
+        Doc prev;
+        ~Restore() { slot = std::move(prev); }
+    } restore{.slot = _doc, .prev = _doc};
+    _doc = text("");
+    n->accept(*this);
+    return _doc;
+}
+
+Doc Printer::rawNode(const Node& n) {
+    if (n.tokenStart() >= 0 && n.tokenStop() >= n.tokenStart()) {
+        return text(tokens_.getText(
+            antlr4::misc::Interval(static_cast<std::size_t>(n.tokenStart()), static_cast<std::size_t>(n.tokenStop()))));
+    }
+    return text("");
+}
+
+Doc Printer::binExpr(ExprNode* left, const char* op, ExprNode* right) {
+    return concat({formatExpr(left), text(" "), text(op), text(" "), formatExpr(right)});
+}
+
+Doc Printer::typeListDoc(const std::vector<TypeNode*>& types) {
     std::vector<Doc> parts;
-    auto params = ctx->lambdaParam();
-    for (std::size_t i = 0; i < params.size(); ++i) {
+    for (std::size_t i = 0; i < types.size(); ++i) {
         if (i > 0) parts.push_back(text(", "));
-        parts.push_back(lambdaParamDoc(params[i]));
+        parts.push_back(typeDocAst(types[i]));
     }
     return concat(std::move(parts));
 }
 
-// 表达式分发：简单内联走 Doc，块形态走 raw 回退（Phase 4b/5 再细化）
-Doc Printer::exprDoc(riuParser::ExprContext* ctx) {
-    // ----- 字面 / 原子 -----
-    if (auto* n = dynamic_cast<riuParser::ExprLiteralContext*>(ctx)) {
-        // literal 整体保持原文（数字格式 / 字符串模板内表达式不在本期重排）
-        return text(rawSpan(tokens_, n->literal()));
-    }
-    if (dynamic_cast<riuParser::ExprThisContext*>(ctx)) {
-        return text("$");
-    }
-    if (auto* n = dynamic_cast<riuParser::ExprParenContext*>(ctx)) {
-        return concat({text("("), exprDoc(n->expr()), text(")")});
-    }
-    // ----- 一元 -----
-    if (auto* n = dynamic_cast<riuParser::ExprUnaryContext*>(ctx)) {
-        return concat({text(n->op->getText()), exprDoc(n->right)});
-    }
-    // ----- 二元（统一通过 op 文本 / 子规则原文）-----
-    auto binDoc = [&](riuParser::ExprContext* l, const std::string& opText, riuParser::ExprContext* r) -> Doc {
-        return concat({exprDoc(l), text(" "), text(opText), text(" "), exprDoc(r)});
-    };
-    if (auto* n = dynamic_cast<riuParser::ExprAddSubContext*>(ctx)) {
-        return binDoc(n->left, n->op->getText(), n->right);
-    }
-    if (auto* n = dynamic_cast<riuParser::ExprMulDivModContext*>(ctx)) {
-        return binDoc(n->left, n->op->getText(), n->right);
-    }
-    if (auto* n = dynamic_cast<riuParser::ExprCompareContext*>(ctx)) {
-        return binDoc(n->left, rawSpan(tokens_, n->opCompare()), n->right);
-    }
-    if (auto* n = dynamic_cast<riuParser::ExprEqContext*>(ctx)) {
-        return binDoc(n->left, rawSpan(tokens_, n->opEq()), n->right);
-    }
-    if (auto* n = dynamic_cast<riuParser::ExprBoolContext*>(ctx)) {
-        return binDoc(n->left, rawSpan(tokens_, n->opBool()), n->right);
-    }
-    if (auto* n = dynamic_cast<riuParser::ExprNullElseContext*>(ctx)) {
-        auto exprs = n->expr();
-        return concat({exprDoc(exprs[0]), text(" ?? "), exprDoc(exprs[1])});
-    }
-    // ----- 成员 / 索引 / 调用 -----
-    if (auto* n = dynamic_cast<riuParser::ExprDotContext*>(ctx)) {
-        // a.b / a?.b （链式由递归自然展开）
-        std::vector<Doc> parts;
-        parts.push_back(exprDoc(n->left));
-        parts.push_back(text(n->SymbolQuest() != nullptr ? "?." : "."));
-        // member 是 ID+；语法上每个 exprDot 节点只产生一个 ID（链式靠左递归）
-        const auto& ids = n->member;
-        for (std::size_t i = 0; i < ids.size(); ++i) {
-            if (i > 0) parts.push_back(text("."));
-            parts.push_back(text(ids[i]->getText()));
+Doc Printer::turbofishDoc(const std::vector<TypeNode*>& types) {
+    return concat({text(":<"), typeListDoc(types), text(">")});
+}
+
+Doc Printer::letAnnosDoc(bool isMut, bool isConst, bool isFrozen) {
+    std::vector<Doc> parts;
+    if (isFrozen) parts.push_back(text("#Frozen "));
+    if (isConst) parts.push_back(text("#Cval "));
+    if (isMut) parts.push_back(text("#Mut "));
+    parts.push_back(text("let "));
+    return concat(std::move(parts));
+}
+
+Doc Printer::typeDocAst(TypeNode* t) {
+    if (!t) return text("");
+    if (auto* g = dynamic_cast<TypeGenericNode*>(t)) {
+        if (g->path().isBare() && g->typeArgs().size() == 1) {
+            const std::string n = g->path().lastName();
+            if (n == "Ref") return concat({typeDocAst(g->typeArgs()[0]), text("&")});
+            if (n == "Nullable") return concat({typeDocAst(g->typeArgs()[0]), text("?")});
         }
-        return concat(std::move(parts));
+        return concat({text(g->path().dotted()), text("<"), typeListDoc(g->typeArgs()), text(">")});
     }
-    if (auto* n = dynamic_cast<riuParser::ExprTupleMemberContext*>(ctx)) {
-        return concat({exprDoc(n->left), text(n->member->getText())});
+    if (auto* n = dynamic_cast<TypeNormalNode*>(t)) return text(n->path().dotted());
+    if (auto* n = dynamic_cast<TypeSelfNode*>(t)) return text(n->selfToken().getText());
+    if (auto* n = dynamic_cast<TypeFallibleNode*>(t)) {
+        return concat({typeDocAst(n->baseType()), text(" ! "), typeDocAst(n->errType())});
     }
-    if (auto* n = dynamic_cast<riuParser::ExprGetContext*>(ctx)) {
-        // 语法：expr GetStart args+=expr (...) GetEnd —— 接收者是无标签 expr，
-        // 即 expr(0)（args 不包含它）
+    if (auto* n = dynamic_cast<TypeArrayNode*>(t)) {
+        return concat({text("["), typeDocAst(n->elementType()), text(" * "), text(n->count().getText()), text("]")});
+    }
+    if (auto* n = dynamic_cast<TypeTupleNode*>(t)) {
+        if (n->elementTypes().empty()) return text("()");
+        return concat({text("("), typeListDoc(n->elementTypes()), text(")")});
+    }
+    if (auto* fn = dynamic_cast<TypeFnNode*>(t)) {
         std::vector<Doc> parts;
-        parts.push_back(exprDoc(n->expr(0)));
-        parts.push_back(text("["));
-        for (std::size_t i = 0; i < n->args.size(); ++i) {
+        parts.push_back(text("Function<"));
+        auto params = fn->paramTypes();
+        for (std::size_t i = 0; i < params.size(); ++i) {
             if (i > 0) parts.push_back(text(", "));
-            parts.push_back(exprDoc(n->args[i]));
+            parts.push_back(typeDocAst(params[i]));
         }
-        parts.push_back(text("]"));
+        if (!params.empty()) parts.push_back(text(", "));
+        if (fn->retType())
+            parts.push_back(typeDocAst(fn->retType()));
+        else
+            parts.push_back(text("()"));
+        parts.push_back(text(">"));
+        if (fn->nullable()) parts.push_back(text("?"));
         return concat(std::move(parts));
     }
-    if (auto* n = dynamic_cast<riuParser::ExprGetRefContext*>(ctx)) {
-        // &obj.subs.subs...
-        std::vector<Doc> parts;
-        parts.push_back(text("&"));
-        parts.push_back(text(n->obj->getText()));
-        for (auto* sub : n->subs) {
-            parts.push_back(text("."));
-            parts.push_back(text(sub->getText()));
+    return rawNode(*t);
+}
+
+Doc Printer::lambdaParamsFromSlots(const std::vector<LambdaParamSlot>& slots) {
+    std::vector<Doc> parts;
+    for (std::size_t i = 0; i < slots.size();) {
+        if (i > 0) parts.push_back(text(", "));
+        TypeNode* ty = slots[i].type;
+        std::size_t j = i + 1;
+        if (ty) {
+            while (j < slots.size() && slots[j].type == ty)
+                ++j;
         }
-        return concat(std::move(parts));
-    }
-    if (auto* n = dynamic_cast<riuParser::ExprCallContext*>(ctx)) {
-        if (n->trailing != nullptr) {
-            // 含尾随 lambda：暂走 raw（Phase 4b 再结构化）
-            return text(rawSpan(tokens_, n));
-        }
-        std::vector<Doc> parts;
-        parts.push_back(exprDoc(n->left));
-        if (n->genericDefWithRef() != nullptr) {
-            parts.push_back(text(":"));
-            parts.push_back(genericDefWithRefDoc(n->genericDefWithRef()));
-        }
-        parts.push_back(text("("));
-        for (std::size_t i = 0; i < n->args.size(); ++i) {
-            if (i > 0) parts.push_back(text(", "));
-            parts.push_back(exprDoc(n->args[i]));
-        }
-        parts.push_back(text(")"));
-        if (n->errPropagate != nullptr) parts.push_back(text("!"));
-        return concat(std::move(parts));
-    }
-    if (auto* n = dynamic_cast<riuParser::ExprCallTrailingOnlyContext*>(ctx)) {
-        // e { ... }；尾随 lambda 是块形，整体 raw
-        return text(rawSpan(tokens_, n));
-    }
-    // ----- 集合 / 元组 / 枚举构造 -----
-    if (auto* n = dynamic_cast<riuParser::ExprArrayContext*>(ctx)) {
-        std::vector<Doc> parts;
-        parts.push_back(text("["));
-        for (std::size_t i = 0; i < n->velues.size(); ++i) {
-            if (i > 0) parts.push_back(text(", "));
-            parts.push_back(exprDoc(n->velues[i]));
-        }
-        parts.push_back(text("]"));
-        return concat(std::move(parts));
-    }
-    if (auto* n = dynamic_cast<riuParser::ExprTupleContext*>(ctx)) {
-        std::vector<Doc> parts;
-        parts.push_back(text("("));
-        for (std::size_t i = 0; i < n->values.size(); ++i) {
-            if (i > 0) parts.push_back(text(", "));
-            parts.push_back(exprDoc(n->values[i]));
-        }
-        parts.push_back(text(")"));
-        return concat(std::move(parts));
-    }
-    if (auto* n = dynamic_cast<riuParser::ExprArrayInitContext*>(ctx)) {
-        // [literal ... type?]
-        std::vector<Doc> parts;
-        parts.push_back(text("["));
-        parts.push_back(text(rawSpan(tokens_, n->value)));
-        parts.push_back(text(" ..."));
-        if (n->type() != nullptr) {
+        if (j - i > 1) {
+            for (std::size_t k = i; k < j; ++k) {
+                if (k > i) parts.push_back(text(", "));
+                parts.push_back(text(slots[k].name.getText()));
+            }
             parts.push_back(text(" "));
-            parts.push_back(typeDoc(n->type()));
-        }
-        parts.push_back(text("]"));
-        return concat(std::move(parts));
-    }
-    if (auto* n = dynamic_cast<riuParser::ExprEnumCtorContext*>(ctx)) {
-        std::vector<Doc> parts;
-        if (n->selfLhs != nullptr) {
-            parts.push_back(text(n->selfLhs->getText()));
+            parts.push_back(typeDocAst(ty));
         } else {
-            parts.push_back(typePathDoc(n->enumName));
+            parts.push_back(text(slots[i].name.getText()));
+            if (ty) {
+                parts.push_back(text(" "));
+                parts.push_back(typeDocAst(ty));
+            }
         }
-        parts.push_back(text("::"));
-        parts.push_back(text(n->variant->getText()));
-        if (n->ParStart() != nullptr) {
+        i = j;
+    }
+    return concat(std::move(parts));
+}
+
+void Printer::visitLiteral(ExprLiteralNode& node) {
+    _doc = rawNode(node);
+}
+void Printer::visitParen(ExprParenNode& node) {
+    _doc = concat({text("("), formatExpr(node.expr()), text(")")});
+}
+void Printer::visitUnary(ExprUnaryNode& node) {
+    const char* op = "-";
+    switch (node.op()) {
+    case ExprUnaryNode::Op::Neg:
+        op = "-";
+        break;
+    case ExprUnaryNode::Op::Not:
+        op = "!";
+        break;
+    case ExprUnaryNode::Op::Rev:
+        op = "~";
+        break;
+    }
+    _doc = concat({text(op), formatExpr(node.right())});
+}
+void Printer::visitAddSub(ExprAddSubNode& node) {
+    _doc = binExpr(node.left(), node.op() == ExprAddSubNode::Op::Add ? "+" : "-", node.right());
+}
+void Printer::visitMulDivMod(ExprMulDivModNode& node) {
+    const char* op = "*";
+    switch (node.op()) {
+    case ExprMulDivModNode::Op::Mul:
+        op = "*";
+        break;
+    case ExprMulDivModNode::Op::Div:
+        op = "/";
+        break;
+    case ExprMulDivModNode::Op::Mod:
+        op = "%";
+        break;
+    }
+    _doc = binExpr(node.left(), op, node.right());
+}
+void Printer::visitBinOp(ExprBinOpNode& node) {
+    const char* op = "&";
+    switch (node.op()) {
+    case ExprBinOpNode::Op::And:
+        op = "&";
+        break;
+    case ExprBinOpNode::Op::Or:
+        op = "|";
+        break;
+    case ExprBinOpNode::Op::Xor:
+        op = "^";
+        break;
+    case ExprBinOpNode::Op::Shl:
+        op = "<<";
+        break;
+    case ExprBinOpNode::Op::Shr:
+        op = ">>";
+        break;
+    }
+    _doc = binExpr(node.left(), op, node.right());
+}
+void Printer::visitCompare(ExprCompareNode& node) {
+    const char* op = "==";
+    switch (node.op()) {
+    case ExprCompareNode::Op::Eq:
+        op = "==";
+        break;
+    case ExprCompareNode::Op::Ne:
+        op = "!=";
+        break;
+    case ExprCompareNode::Op::Lt:
+        op = "<";
+        break;
+    case ExprCompareNode::Op::Le:
+        op = "<=";
+        break;
+    case ExprCompareNode::Op::Gt:
+        op = ">";
+        break;
+    case ExprCompareNode::Op::Ge:
+        op = ">=";
+        break;
+    case ExprCompareNode::Op::AndAnd:
+        op = "&&";
+        break;
+    case ExprCompareNode::Op::OrOr:
+        op = "||";
+        break;
+    }
+    _doc = binExpr(node.left(), op, node.right());
+}
+void Printer::visitNullElse(ExprNullElseNode& node) {
+    _doc = binExpr(node.left(), "??", node.right());
+}
+void Printer::visitMoveAssign(ExprMoveAssignNode& node) {
+    _doc = binExpr(node.left(), "<-", node.right());
+}
+void Printer::visitDot(ExprDotNode& node) {
+    std::vector<Doc> parts;
+    parts.push_back(formatExpr(node.baseExpr()));
+    const std::string m = node.member();
+    if (!m.empty() && m[0] == '.') {
+        parts.push_back(text(m));
+    } else {
+        parts.push_back(text(node.isSafe() ? "?." : "."));
+        parts.push_back(text(m));
+    }
+    _doc = concat(std::move(parts));
+}
+void Printer::visitGet(ExprGetNode& node) {
+    std::vector<Doc> parts;
+    parts.push_back(formatExpr(node.arrayExpr()));
+    parts.push_back(text("["));
+    const auto& idx = node.indices();
+    for (std::size_t i = 0; i < idx.size(); ++i) {
+        if (i > 0) parts.push_back(text(", "));
+        parts.push_back(formatExpr(idx[i]));
+    }
+    parts.push_back(text("]"));
+    _doc = concat(std::move(parts));
+}
+void Printer::visitGetRef(ExprGetRefNode& node) {
+    std::vector<Doc> parts;
+    parts.push_back(text("&"));
+    parts.push_back(text(node.obj().getText()));
+    for (const auto& sub : node.subs()) {
+        parts.push_back(text("."));
+        parts.push_back(text(sub.getText()));
+    }
+    _doc = concat(std::move(parts));
+}
+void Printer::visitCall(ExprCallNode& node) {
+    if (node.hasTrailingLambda()) {
+        _doc = rawNode(node);
+        return;
+    }
+    std::vector<Doc> parts;
+    parts.push_back(formatExpr(node.getCalleeExpr()));
+    if (!node.getTypeArgs().empty()) parts.push_back(turbofishDoc(node.getTypeArgs()));
+    parts.push_back(text("("));
+    const auto& args = node.getArgs();
+    for (std::size_t i = 0; i < args.size(); ++i) {
+        if (i > 0) parts.push_back(text(", "));
+        parts.push_back(formatExpr(args[i]));
+    }
+    parts.push_back(text(")"));
+    if (node.errPropagate()) parts.push_back(text("!"));
+    _doc = concat(std::move(parts));
+}
+void Printer::visitArray(ExprArrayNode& node) {
+    std::vector<Doc> parts;
+    parts.push_back(text("["));
+    const auto& els = node.elements();
+    for (std::size_t i = 0; i < els.size(); ++i) {
+        if (i > 0) parts.push_back(text(", "));
+        parts.push_back(formatExpr(els[i]));
+    }
+    parts.push_back(text("]"));
+    _doc = concat(std::move(parts));
+}
+void Printer::visitTuple(ExprTupleNode& node) {
+    std::vector<Doc> parts;
+    parts.push_back(text("("));
+    const auto& els = node.elements();
+    for (std::size_t i = 0; i < els.size(); ++i) {
+        if (i > 0) parts.push_back(text(", "));
+        parts.push_back(formatExpr(els[i]));
+    }
+    parts.push_back(text(")"));
+    _doc = concat(std::move(parts));
+}
+void Printer::visitArrayInit(ExprArrayInitNode& node) {
+    std::vector<Doc> parts;
+    parts.push_back(text("["));
+    parts.push_back(rawNode(*node.value()));
+    parts.push_back(text(" ..."));
+    if (node.explicitType()) {
+        parts.push_back(text(" "));
+        parts.push_back(typeDocAst(node.explicitType()));
+    }
+    parts.push_back(text("]"));
+    _doc = concat(std::move(parts));
+}
+void Printer::visitPathCall(ExprPathCallNode& node) {
+    std::vector<Doc> parts;
+    parts.push_back(text(node.lhsPath().dotted()));
+    if (!node.lhsTypeArgs().empty()) parts.push_back(turbofishDoc(node.lhsTypeArgs()));
+    parts.push_back(text("::"));
+    parts.push_back(text(node.variantName().getText()));
+    if (!node.rhsTypeArgs().empty()) parts.push_back(turbofishDoc(node.rhsTypeArgs()));
+    if (node.hasParens() || !node.args().empty()) {
+        parts.push_back(text("("));
+        const auto& args = node.args();
+        for (std::size_t i = 0; i < args.size(); ++i) {
+            if (i > 0) parts.push_back(text(", "));
+            parts.push_back(formatExpr(args[i]));
+        }
+        parts.push_back(text(")"));
+    }
+    if (node.errPropagate()) parts.push_back(text("!"));
+    _doc = concat(std::move(parts));
+}
+void Printer::visitLambda(LambdaExprNode& node) {
+    if (node.form() == LambdaExprNode::Form::Block) {
+        _doc = rawNode(node);
+        return;
+    }
+    std::vector<Doc> parts;
+    parts.push_back(text("("));
+    parts.push_back(lambdaParamsFromSlots(node.params()));
+    parts.push_back(text(")"));
+    if (node.retType()) {
+        parts.push_back(text(" "));
+        parts.push_back(typeDocAst(node.retType()));
+    }
+    parts.push_back(text(" => "));
+    parts.push_back(formatExpr(node.bodyExpr()));
+    _doc = concat(std::move(parts));
+}
+void Printer::visitDynCtor(ExprDynCtorNode& node) {
+    std::vector<TypeNode*> args{node.specType()};
+    _doc = concat({text("Dyn"), turbofishDoc(args), text("("), formatExpr(node.arg()), text(")")});
+}
+void Printer::visitIfElse(ExprIfElseNode& node) {
+    _doc = rawNode(node);
+}
+void Printer::visitOneLineIfElse(ExprOneLineIfElseNode& node) {
+    _doc = rawNode(node);
+}
+void Printer::visitMatch(ExprMatchNode& node) {
+    _doc = rawNode(node);
+}
+void Printer::visitTryCatch(ExprTryCatchNode& node) {
+    _doc = rawNode(node);
+}
+void Printer::visitStructLit(ExprStructLitNode& node) {
+    _doc = rawNode(node);
+}
+
+void Printer::visitBlock(StatementBlockNode& node) {
+    _doc = astBlockDoc(&node, _stmtIndent);
+}
+void Printer::visitExprStmt(StatementExprNode& node) {
+    std::vector<Doc> parts;
+    parts.push_back(formatExpr(node.expr()));
+    if (node.hasSemicolon()) parts.push_back(text(";"));
+    _doc = concat(std::move(parts));
+}
+void Printer::visitRet(StatementRetNode& node) {
+    _doc = concat({text("ret "), formatExpr(node.expr())});
+}
+void Printer::visitRetVoid(StatementRetVoidNode&) {
+    _doc = text("ret;");
+}
+void Printer::visitDeclare(StatementDeclareNode& node) {
+    std::vector<Doc> parts;
+    parts.push_back(letAnnosDoc(node.isMut(), node.isConst(), node.isFrozen()));
+    parts.push_back(text(node.name().getText()));
+    if (node.varType()) {
+        parts.push_back(text(" "));
+        parts.push_back(typeDocAst(node.varType()));
+    }
+    _doc = concat(std::move(parts));
+}
+void Printer::visitDeclareAssign(StatementDeclareAssignNode& node) {
+    std::vector<Doc> parts;
+    parts.push_back(letAnnosDoc(node.isMut(), node.isConst(), node.isFrozen()));
+    parts.push_back(text(node.name().getText()));
+    if (node.varType()) {
+        parts.push_back(text(" "));
+        parts.push_back(typeDocAst(node.varType()));
+    }
+    parts.push_back(text(" = "));
+    parts.push_back(formatExpr(node.expr()));
+    _doc = concat(std::move(parts));
+}
+void Printer::visitDeclareAssignTuple(StatementDeclareAssignTupleNode& node) {
+    std::vector<Doc> parts;
+    parts.push_back(letAnnosDoc(node.isMut(), node.isConst(), node.isFrozen()));
+    parts.push_back(text("("));
+    const auto& names = node.names();
+    for (std::size_t i = 0; i < names.size(); ++i) {
+        if (i > 0) parts.push_back(text(", "));
+        parts.push_back(text(names[i].getText()));
+    }
+    parts.push_back(text(")"));
+    if (node.varType()) {
+        parts.push_back(text(" "));
+        parts.push_back(typeDocAst(node.varType()));
+    }
+    parts.push_back(text(" = "));
+    parts.push_back(formatExpr(node.expr()));
+    _doc = concat(std::move(parts));
+}
+void Printer::visitAssign(StatementAssignNode& node) {
+    std::vector<Doc> parts;
+    parts.push_back(text(node.obj().getText()));
+    for (const auto& sub : node.subs()) {
+        parts.push_back(text("."));
+        parts.push_back(text(sub.getText()));
+    }
+    const char* op = "=";
+    switch (node.op()) {
+    case AssignOp::Eq:
+        op = "=";
+        break;
+    case AssignOp::AddEq:
+        op = "+=";
+        break;
+    case AssignOp::SubEq:
+        op = "-=";
+        break;
+    case AssignOp::MulEq:
+        op = "*=";
+        break;
+    case AssignOp::DivEq:
+        op = "/=";
+        break;
+    case AssignOp::ModEq:
+        op = "%=";
+        break;
+    }
+    parts.push_back(text(" "));
+    parts.push_back(text(op));
+    parts.push_back(text(" "));
+    parts.push_back(formatExpr(node.expr()));
+    _doc = concat(std::move(parts));
+}
+void Printer::visitSet(StatementSetNode& node) {
+    std::vector<Doc> parts;
+    parts.push_back(formatExpr(node.arrayExpr()));
+    parts.push_back(text("["));
+    const auto& idx = node.indices();
+    for (std::size_t i = 0; i < idx.size(); ++i) {
+        if (i > 0) parts.push_back(text(", "));
+        parts.push_back(formatExpr(idx[i]));
+    }
+    parts.push_back(text("] = "));
+    parts.push_back(formatExpr(node.valueExpr()));
+    _doc = concat(std::move(parts));
+}
+void Printer::visitLoop(StatementLoopNode& node) {
+    std::vector<Doc> parts;
+    if (!node.label().getText().empty()) {
+        parts.push_back(text(node.label().getText()));
+        parts.push_back(text(": "));
+    }
+    parts.push_back(text("loop "));
+    if (node.hasInit()) {
+        const auto& names = node.initNames();
+        if (names.size() == 1) {
+            parts.push_back(text(names[0].getText()));
+        } else {
             parts.push_back(text("("));
-            for (std::size_t i = 0; i < n->args.size(); ++i) {
+            for (std::size_t i = 0; i < names.size(); ++i) {
                 if (i > 0) parts.push_back(text(", "));
-                parts.push_back(exprDoc(n->args[i]));
+                parts.push_back(text(names[i].getText()));
             }
             parts.push_back(text(")"));
         }
-        if (n->errPropagate != nullptr) parts.push_back(text("!"));
-        return concat(std::move(parts));
-    }
-    // ----- lambda（表达式体走 Doc；语句体走 raw）-----
-    if (auto* n = dynamic_cast<riuParser::ExprLambdaParenContext*>(ctx)) {
-        if (n->statementBlock() != nullptr) {
-            return text(rawSpan(tokens_, ctx));
-        }
-        std::vector<Doc> parts;
-        parts.push_back(text("("));
-        if (n->lambdaParams() != nullptr) {
-            parts.push_back(lambdaParamsDoc(n->lambdaParams()));
-        }
-        parts.push_back(text(")"));
-        if (n->retType != nullptr) {
+        if (node.initType()) {
             parts.push_back(text(" "));
-            parts.push_back(typeDoc(n->retType));
+            parts.push_back(typeDocAst(node.initType()));
         }
-        parts.push_back(text(" => "));
-        parts.push_back(exprDoc(n->body->expr()));
-        return concat(std::move(parts));
+        parts.push_back(text(" = "));
+        parts.push_back(formatExpr(node.initExpr()));
+        parts.push_back(text(" "));
     }
-    // ----- 其余块形 / 控制流：raw -----
-    // ExprTryCatch / ExprMatch / ExprIfElse / ExprOneLineIfElse
-    return text(rawSpan(tokens_, ctx));
+    parts.push_back(astBlockDoc(node.block(), _stmtIndent));
+    _doc = concat(std::move(parts));
+}
+void Printer::visitForIn(StatementForInNode& node) {
+    std::vector<Doc> parts;
+    if (!node.label().getText().empty()) {
+        parts.push_back(text(node.label().getText()));
+        parts.push_back(text(": "));
+    }
+    parts.push_back(text("for "));
+    parts.push_back(text(node.item().getText()));
+    parts.push_back(text(" in "));
+    parts.push_back(formatExpr(node.expr()));
+    parts.push_back(text(" "));
+    parts.push_back(astBlockDoc(node.block(), _stmtIndent));
+    _doc = concat(std::move(parts));
+}
+void Printer::visitBreak(StatementBreakNode& node) {
+    if (!node.label().getText().empty()) {
+        _doc = concat({text("break@"), text(node.label().getText()), text(";")});
+        return;
+    }
+    _doc = text("break;");
+}
+void Printer::visitContinue(StatementContinueNode& node) {
+    if (!node.label().getText().empty()) {
+        _doc = concat({text("continue@"), text(node.label().getText()), text(";")});
+        return;
+    }
+    _doc = text("continue;");
+}
+void Printer::visitStaticFieldSet(StatementStaticFieldSetNode& node) {
+    _doc = concat({text(node.typePath().dotted()), text("::"), text(node.fieldName().getText()), text(" = "),
+                   formatExpr(node.valueExpr())});
+}
+
+Doc Printer::astBlockDoc(StatementBlockNode* block, int indentLevel) {
+    if (!block) return text("{}");
+    std::vector<Doc> inner;
+    for (auto* s : block->statements()) {
+        inner.push_back(hardline());
+        int prev = _stmtIndent;
+        _stmtIndent = indentLevel + 1;
+        inner.push_back(formatStmt(s));
+        _stmtIndent = prev;
+    }
+    if (block->hasResult() && block->resultExpr()) {
+        inner.push_back(hardline());
+        inner.push_back(formatExpr(block->resultExpr()));
+    }
+    std::vector<Doc> parts;
+    parts.push_back(text("{"));
+    if (!inner.empty()) parts.push_back(indent(2, concat(std::move(inner))));
+    parts.push_back(hardline());
+    parts.push_back(text("}"));
+    return concat(std::move(parts));
 }
 
 // ==================== fn / extern ====================
@@ -619,23 +1034,6 @@ std::string Printer::rawSpanWithoutTrailingLineEnd(antlr4::ParserRuleContext* ct
     return tokens_.getText(antlr4::misc::Interval(startIdx, stopIdx));
 }
 
-// 判定一个 expr 是否为"块形 / 多行"形态：含块的 lambda、try-catch、match、
-// if-else 各形态，以及含尾随 lambda 的 call。这些不在 Phase 4a 结构化覆盖里。
-static bool isBlockExpr(riuParser::ExprContext* e) {
-    if (auto* lam = dynamic_cast<riuParser::ExprLambdaParenContext*>(e)) {
-        return lam->statementBlock() != nullptr;
-    }
-    if (dynamic_cast<riuParser::ExprTryCatchContext*>(e)) return true;
-    if (dynamic_cast<riuParser::ExprMatchContext*>(e)) return true;
-    if (dynamic_cast<riuParser::ExprIfElseContext*>(e)) return true;
-    if (dynamic_cast<riuParser::ExprOneLineIfElseContext*>(e)) return true;
-    if (auto* c = dynamic_cast<riuParser::ExprCallContext*>(e)) {
-        return c->trailing != nullptr;
-    }
-    if (dynamic_cast<riuParser::ExprCallTrailingOnlyContext*>(e)) return true;
-    return false;
-}
-
 Doc Printer::statementDoc(riuParser::StatementContext* ctx, int indentLevel) {
     // 多行语句（典型：含块形 expr）一律走 raw 回退；目标列 = indentLevel*2
     std::size_t startLine = ctx->start->getLine();
@@ -646,6 +1044,21 @@ Doc Printer::statementDoc(riuParser::StatementContext* ctx, int indentLevel) {
         return text(reindentMultilineRaw(raw, srcCol, static_cast<std::size_t>(indentLevel) * 2));
     }
 
+    try {
+        auto* n = any_cast_p<StatementNode>(builder_.visit(ctx));
+        if (n) {
+            int prev = _stmtIndent;
+            _stmtIndent = indentLevel;
+            Doc d = formatStmt(n);
+            _stmtIndent = prev;
+            return d;
+        }
+    } catch (const std::exception&) { // NOLINT(bugprone-empty-catch) — builder 未绑定名抛 E3030，回退 parse tree
+    }
+    return statementDocParse(ctx, indentLevel);
+}
+
+Doc Printer::statementDocParse(riuParser::StatementContext* ctx, int indentLevel) {
     if (auto* n = dynamic_cast<riuParser::StatementLetContext*>(ctx)) {
         // letAnno* let name (Type)? (= expr)?
         std::vector<Doc> parts;
@@ -1023,7 +1436,9 @@ std::string formatAst(const std::string& source, const FormatConfig& config) {
     auto* tree = parser.program();
     TriviaMap trivia = buildTrivia(tokens);
 
-    Printer printer(tokens, trivia);
+    Riu riu;
+    ASTBuilder builder(riu);
+    Printer printer(tokens, trivia, builder);
     Doc d = printer.programDoc(tree);
 
     RenderOptions ropt;

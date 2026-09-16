@@ -60,8 +60,9 @@ std::any ASTBuilder::visitStatementLet(riu::riuParser::StatementLetContext* ctx)
         if (scope) {
             scope->registerSymbol(name->getText(), {SymbolKind::Variable, name->getText(), varType, true});
         }
-        return static_cast<StatementNode*>(
-            createWithLine<StatementDeclareNode>(ctx, scope, isMut, isConst, name, type));
+        auto* decl = createWithLine<StatementDeclareNode>(ctx, scope, isMut, isConst, name, type);
+        decl->setFrozen(flags.isFrozen);
+        return static_cast<StatementNode*>(decl);
     }
 
     auto expr = any_cast_p<ExprNode>(visit(ctx->expr()));
@@ -80,8 +81,9 @@ std::any ASTBuilder::visitStatementLet(riu::riuParser::StatementLetContext* ctx)
         scope->registerSymbol(name->getText(), sym);
     }
 
-    return static_cast<StatementNode*>(
-        createWithLine<StatementDeclareAssignNode>(ctx, scope, isMut, isConst, name, type, expr));
+    auto* assign = createWithLine<StatementDeclareAssignNode>(ctx, scope, isMut, isConst, name, type, expr);
+    assign->setFrozen(flags.isFrozen);
+    return static_cast<StatementNode*>(assign);
 }
 
 // DRAFT-let-unify §3：let 元组解构（默认 → 不可重赋 / #Mut → isMut=true / #Cval → isConst=true / #Frozen → isFrozen）。
@@ -142,8 +144,9 @@ std::any ASTBuilder::visitStatementLetTuple(riu::riuParser::StatementLetTupleCon
     }
 
     DEBUG_LOG_VAL("  Statement: LetTuple", names.size() << " names, expr type=" << wholeType.name);
-    return static_cast<StatementNode*>(
-        createWithLine<StatementDeclareAssignTupleNode>(ctx, scope, isMut, isConst, names, type, expr));
+    auto* tup = createWithLine<StatementDeclareAssignTupleNode>(ctx, scope, isMut, isConst, names, type, expr);
+    tup->setFrozen(flags.isFrozen);
+    return static_cast<StatementNode*>(tup);
 }
 
 std::any ASTBuilder::visitStatementAssign(riu::riuParser::StatementAssignContext* ctx) {

@@ -15,7 +15,7 @@
 - 声明：`Rc<T>` 同型或内层 T 包装 → E3014；`Weak<T>` 仅 Rc<T> / Weak<T> → E3016；`Array<T>` 非 Array 表达式且非字面量 → E3064。须在 visitExpr 带靶向类型之后查（if/match 块末尾先走 E3009）。Heap 非 `heap:<T>(...)` 由 borrow checker E4024 先报。模板形参等实例化后再查。
 - 元组解构（`let (a, b) = expr` / `loop (a, b) = expr`）：标注优先否则 RHS，经 subst + `resolveAlias` 后非元组 → E3101；元素数 ≠ 名字数 → E3102。模板形参 T 跳过；`Array<T>` 等永远不是元组，模板期也报。
 - match：各臂结果类型一致 → E3014（流终止臂跳过）。scrut 经 subst + 别名 / Rc<E> / Heap<E> / E& 剥到 enum；临时 Rc/Heap 直接 match → E2022；非 enum（含用户 struct、实例化后的 T）→ E2022（模板形参跳过）。实例化为 enum 后走臂校验（E2019 / E2020 / E2023 等）。payload 绑定类型由 SemaPass 在 visit 臂体前填 `SymbolInfo.type`（builder 只注册空槽）。if / match / try 块末尾值带靶向类型（嵌套数组 E3009）。if / elif / else 与一行 `if c { a } else { b }`：subst 后分支类型须一致 → E3005（模板形参跳过；与 T 无关的不匹配模板期也报）。比较：subst + peelAutoDeref 后 Weak ==/!= → E3078，Ptr 排序 → E3073（模板形参跳过；`Weak<T>` 参数等与 T 无关的形态模板期也报）。`&&` / `||`：subst 后两侧类型须一致，内置跨类型 → E3001 comparison（模板形参跳过；与 T 无关的不匹配模板期也报）。
-- 新 AST / 表达式：节点须 `accept(AstVisitor&)`（`AstVisitor` 加对应 `visitX = 0`）；`SemaPass` / `Compiler` 必须 override 对应 `visitX`，否则编不过。
+- 新 AST / 表达式：节点须 `accept(AstVisitor&)`（`AstVisitor` 加对应 `visitX = 0`）；`SemaPass` / `Compiler` / formatter `Printer` 必须 override 对应 `visitX`，否则编不过。
 - 缺口：
   - 两边都不查（与未调用泛型 fn 一致）：源码从未写出 `S<Concrete>` 且无调用时，泛型 struct 方法体内依赖 T 的类型错；未调用泛型 fn 体内嵌套推断 E6012/E6013。
   - E2028 为历史码；捕获通路未启的 Compiler 副本改 `throwSemaGap`。
