@@ -2,12 +2,14 @@
 // MPL-2.0
 
 // 泛型单态化（`riu_generic`）。0 LLVM，不 include SemaPass 实现。
-// 2.4：struct / fn / method 实例表。发射 IR 仍在 Compiler。
+// 2.5：Sema 与 codegen 共用实例表 + subst 栈；发射 IR 仍在 Compiler。
 
 #ifndef RIU_LANG_GENERIC_H
 #define RIU_LANG_GENERIC_H
 
 #include "types.h"
+
+#include <deque>
 
 class FileNode;
 class FnNode;
@@ -112,15 +114,18 @@ struct SubstFrame {              // NOLINT(bugprone-exception-escape)
 };
 
 class SubstStack {
-    vector<SubstFrame> _frames;
+    // deque：压栈不使已有帧失效。Sema 会把 currentInstSubst() 指针传入同步 helper。
+    deque<SubstFrame> _frames;
 
 public:
     void push_back(SubstFrame frame) { _frames.push_back(std::move(frame)); }
     void pop_back() { _frames.pop_back(); }
     [[nodiscard]] bool empty() const { return _frames.empty(); }
+    [[nodiscard]] SubstFrame& back() { return _frames.back(); }
+    [[nodiscard]] const SubstFrame& back() const { return _frames.back(); }
 
-    using const_iterator = vector<SubstFrame>::const_iterator;
-    using const_reverse_iterator = vector<SubstFrame>::const_reverse_iterator;
+    using const_iterator = deque<SubstFrame>::const_iterator;
+    using const_reverse_iterator = deque<SubstFrame>::const_reverse_iterator;
     [[nodiscard]] const_iterator begin() const { return _frames.begin(); }
     [[nodiscard]] const_iterator end() const { return _frames.end(); }
     [[nodiscard]] const_reverse_iterator rbegin() const { return _frames.rbegin(); }
@@ -128,6 +133,25 @@ public:
 
     [[nodiscard]] string formatInstantiationContext() const;
 };
+
+// 压入 / 弹出替换帧。Sema 复查模板体与 codegen 发射共用。
+class SubstScope {
+    SubstStack* _stack = nullptr;
+
+public:
+    SubstScope(SubstStack& stack, SubstFrame frame);
+    ~SubstScope();
+    SubstScope(const SubstScope&) = delete;
+    SubstScope& operator=(const SubstScope&) = delete;
+    SubstScope(SubstScope&& o) noexcept : _stack(o._stack) { o._stack = nullptr; }
+    SubstScope& operator=(SubstScope&&) = delete;
+};
+
+// 实例身份：节点指针 + subst 内容。Sema 登记 / 去重用；codegen 仍用 mangle 名。
+[[nodiscard]] string instanceKey(const void* p, const map<string, TypeInfo>& subst);
+
+// 按形参顺序从 subst 取实参；缺的位置填空 TypeInfo。
+[[nodiscard]] vector<TypeInfo> argsFromSubst(const vector<string>& typeParams, const map<string, TypeInfo>& subst);
 
 // `Self` / 泛型原名 → 用 `effType` 替换。`effName` 空则原样返回。
 [[nodiscard]] bool bindsStructSelf(const TypeInfo& t, const string& baseName, const string& effName);

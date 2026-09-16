@@ -257,7 +257,8 @@ void SemaPass::tryValidateFieldChain(const TypeInfo& start, const vector<string>
             throw RiuError(line, col, ErrorCode::E3040, cur.name, mem);
         }
         TypeInfo fieldTy = decl->fields()[static_cast<size_t>(fi)]->getType();
-        map<string, TypeInfo> fieldSubst = _instSubst;
+        map<string, TypeInfo> fieldSubst;
+        if (const auto* s = currentInstSubst()) fieldSubst = *s;
         if (decl->isGeneric() && fieldSubst.empty()) {
             fillSubstFromGenericArgs(decl->typeParams(), cur.genericArgs, fieldSubst);
         }

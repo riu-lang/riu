@@ -8,6 +8,8 @@
 #include "ast/node/fn_node.h"
 #include "ast/node/struct_node.h"
 
+#include <format>
+
 string generic::StructInstance::ownerModule() const {
     if (ownerFile) return ownerFile->moduleName();
     return consumerModule;
@@ -174,4 +176,35 @@ TypeInfo generic::applySubst(const TypeInfo& t, const SubstStack& stack, const s
 TypeInfo generic::applySubstMap(const TypeInfo& t, const map<string, TypeInfo>* subst) {
     if (!subst || subst->empty()) return t;
     return t.substitute(*subst);
+}
+
+generic::SubstScope::SubstScope(SubstStack& stack, SubstFrame frame) : _stack(&stack) {
+    _stack->push_back(std::move(frame));
+}
+
+generic::SubstScope::~SubstScope() {
+    if (_stack) _stack->pop_back();
+}
+
+string generic::instanceKey(const void* p, const map<string, TypeInfo>& subst) {
+    string k = std::format("{}", p);
+    k += '{';
+    for (auto& [name, ty] : subst) {
+        k += name;
+        k += '=';
+        k += ty.getMangleName();
+        k += ',';
+    }
+    k += '}';
+    return k;
+}
+
+vector<TypeInfo> generic::argsFromSubst(const vector<string>& typeParams, const map<string, TypeInfo>& subst) {
+    vector<TypeInfo> args;
+    args.reserve(typeParams.size());
+    for (auto& tp : typeParams) {
+        auto it = subst.find(tp);
+        args.push_back(it != subst.end() ? it->second : TypeInfo());
+    }
+    return args;
 }

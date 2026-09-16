@@ -478,7 +478,11 @@ bool SemaPass::isCurrentTypeParam(const TypeInfo& t) const {
 }
 
 TypeInfo SemaPass::applyInstSubst(const TypeInfo& t) const {
-    return generic::applySubstMap(t, _instSubst.empty() ? nullptr : &_instSubst);
+    return generic::applySubstMap(t, currentInstSubst());
+}
+
+const map<string, TypeInfo>* SemaPass::currentInstSubst() const {
+    return _substStack.empty() ? nullptr : &_substStack.back().subst;
 }
 
 bool SemaPass::typeStillTemplate(const TypeInfo& t) const {
@@ -559,8 +563,24 @@ void SemaPass::checkGenericImplInst(StructImplNode* impl, const map<string, Type
     for (auto& [_, t] : subst) {
         if (isCurrentTypeParam(t)) return;
     }
-    string key = genericInstKey(impl, subst);
-    if (!_checkedGenericInst.insert(key).second) return;
+    string key = generic::instanceKey(impl, subst);
+    if (_structInstances.contains(key)) return;
+
+    auto* sd = _names.lookupStruct(impl->structName());
+    generic::StructInstance inst;
+    if (sd) {
+        inst = generic::makeStructInstance(sd, generic::argsFromSubst(sd->typeParams(), subst), impl->enclosingFile(),
+                                           _file, _sdkFile, key, 0);
+        inst.baseImpl = impl;
+    } else {
+        inst.baseImpl = impl;
+        inst.ownerFile = impl->enclosingFile() ? impl->enclosingFile() : _file;
+        inst.args = generic::argsFromSubst(impl->typeParams(), subst);
+        inst.mangledName = key;
+        inst.consumerModule = inst.ownerFile ? inst.ownerFile->moduleName() : "";
+    }
+    _structInstances.insert(std::move(inst));
+
     for (auto& m : impl->methods()) {
         if (!m || !m->header() || m->header()->hasAnno("Builtin")) continue;
         checkGenericBodyInst(m, subst, impl->structName());
@@ -570,13 +590,22 @@ void SemaPass::checkGenericImplInst(StructImplNode* impl, const map<string, Type
 
 void SemaPass::checkGenericBodyInst(FnNode* fn, const map<string, TypeInfo>& subst, const string& structName) {
     if (!fn || subst.empty()) return;
-    string key = genericInstKey(fn, subst);
-    if (!_checkedGenericInst.insert(key).second) return;
+    string key = generic::instanceKey(fn, subst);
+    if (_fnInstances.contains(key)) return;
+
+    vector<TypeInfo> typeArgs;
+    if (fn->header()) typeArgs = generic::argsFromSubst(fn->header()->typeParams(), subst);
+    generic::FnInstance inst;
+    if (structName.empty()) {
+        inst = generic::makeFnInstance(fn, std::move(typeArgs), fn->enclosingFile(), _file, key);
+    } else {
+        inst = generic::makeMethodInstance(fn, structName, std::move(typeArgs), fn->enclosingFile(), _file, key);
+    }
+    _fnInstances.insert(std::move(key), std::move(inst));
 
     auto savedFn = _currentFn;
     auto savedStruct = _currentStructName;
     auto savedParams = _currentTypeParams;
-    auto savedSubst = _instSubst;
     auto savedMoved = _movedVars;
 
     _currentFn = fn;
@@ -594,7 +623,11 @@ void SemaPass::checkGenericBodyInst(FnNode* fn, const map<string, TypeInfo>& sub
             }
         }
     }
-    _instSubst = subst;
+    generic::SubstScope instScope(_substStack, generic::SubstFrame{.subst = subst,
+                                                                   .baseStructName = structName,
+                                                                   .effStructName = structName,
+                                                                   .sourceFile = _file ? _file->moduleName() : "",
+                                                                   .sourceLine = 0});
     _currentTypeParams.clear();
     for (auto& [k, _] : subst)
         _currentTypeParams.insert(k);
@@ -610,7 +643,6 @@ void SemaPass::checkGenericBodyInst(FnNode* fn, const map<string, TypeInfo>& sub
         visitStmt(stmt);
 
     _movedVars = std::move(savedMoved);
-    _instSubst = std::move(savedSubst);
     _currentTypeParams = std::move(savedParams);
     _currentStructName = std::move(savedStruct);
     _currentFn = savedFn;

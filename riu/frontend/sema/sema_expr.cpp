@@ -749,7 +749,7 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
                                     for (auto& t : typeArgs)
                                         t = applyInstSubst(t);
                                 } catch (const RiuError&) {
-                                    if (_currentTypeParams.empty() || !_instSubst.empty()) throw;
+                                    if (_currentTypeParams.empty() || !_substStack.empty()) throw;
                                     typeArgsOk = false;
                                 } catch (...) {
                                     typeArgsOk = false;
@@ -923,7 +923,7 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
                             } catch (const RiuError&) {
                                 // 调用点 / 实例化后：E6012 arity、E6013 无法反推。
                                 // 未实例化模板体内仍吞（Compiler 同样不编未调用泛型体）.
-                                if (_currentTypeParams.empty() || !_instSubst.empty()) throw;
+                                if (_currentTypeParams.empty() || !_substStack.empty()) throw;
                                 typeArgsOk = false;
                             } catch (...) {
                                 typeArgsOk = false;
@@ -943,7 +943,7 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
                                                        instParams)) {
                                 for (size_t i = 0; i < n->getArgs().size() && i < instParams.size(); ++i) {
                                     checkCallArgAgainst(n->getArgs()[i], instParams[i], line, col, _file, _sdkFile,
-                                                        _currentTypeParams, &_instSubst);
+                                                        _currentTypeParams, currentInstSubst());
                                 }
                             }
                             checkGenericFnInst(genericFn, typeArgs);
@@ -1258,7 +1258,7 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
                 if (dotCallee->isSafe()) baseType = peelSafeDotInner(baseType);
                 // Phase C：实例化后 TypeParam 已换成具体类型，查方法是否存在。
                 // 模板期 raw 仍是 T → 跳过。`<T : D>` 边界方法按边界认。
-                if (!isCurrentTypeParam(baseType) && !_instSubst.empty() && isCurrentTypeParam(rawBase) &&
+                if (!isCurrentTypeParam(baseType) && !_substStack.empty() && isCurrentTypeParam(rawBase) &&
                     !baseType.isDyn() && !baseType.isPtr() && !baseType.name.empty()) {
                     string member = dotCallee->member();
                     auto rt = instantiatedMethodRet(_currentFn, _file, _sdkFile, rawBase, baseType, member);
@@ -1308,7 +1308,7 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
                                         for (size_t i = 0; i < n->getArgs().size() && i < instParams.size(); ++i) {
                                             checkCallArgAgainst(n->getArgs()[i], instParams[i], n->getLineNumber(),
                                                                 n->getColumn(), _file, _sdkFile, _currentTypeParams,
-                                                                &_instSubst);
+                                                                currentInstSubst());
                                         }
                                     }
                                 }
@@ -1706,7 +1706,7 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
                            .structName = _currentStructName,
                            .fallibleErr = {},
                            .typeParams = &_currentTypeParams,
-                           .subst = &_instSubst};
+                           .subst = currentInstSubst()};
         if (n->fallibleErrTypeNode()) {
             lamRetCtx.fallibleErr = n->fallibleErrTypeNode()->getType().name;
         } else if (bodyRetStorage.isFallible()) {
@@ -2047,12 +2047,13 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
                     if (!fillSubstFromTypeNodes(structDecl->typeParams(), lhsTArgs, staticSubst)) {
                         // `Self::name` 无 turbofish：实例化复查绑当前单态（§7.10.2.3 / §7.10.3.1）。
                         bool boundSelf = false;
-                        if (selfForm && lhsTArgs.empty() && !_instSubst.empty()) {
+                        if (selfForm && lhsTArgs.empty() && !_substStack.empty()) {
                             boundSelf = true;
                             staticSubst.clear();
+                            const auto* instSubst = currentInstSubst();
                             for (auto& tp : structDecl->typeParams()) {
-                                auto it = _instSubst.find(tp);
-                                if (it == _instSubst.end()) {
+                                auto it = instSubst->find(tp);
+                                if (it == instSubst->end()) {
                                     boundSelf = false;
                                     break;
                                 }
@@ -2105,7 +2106,8 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
                         auto substArgType = [&](const TypeInfo& t) {
                             return !staticSubst.empty() ? t.substitute(staticSubst) : applyInstSubst(t);
                         };
-                        const map<string, TypeInfo>* cmpSubst = !staticSubst.empty() ? &staticSubst : &_instSubst;
+                        const map<string, TypeInfo>* cmpSubst =
+                            !staticSubst.empty() ? &staticSubst : currentInstSubst();
                         // arity 校验
                         if (n->args().size() != paramTypes.size()) {
                             string expected = renderTypes(paramTypes);
@@ -2208,7 +2210,7 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
                 visitExpr(arm->body(), expected);
         }
         finishCtrlResolved(n, [&] { return sema::typeOfMatch(n); });
-        checkMatchArmTypes(n->arms(), _currentTypeParams, &_instSubst);
+        checkMatchArmTypes(n->arms(), _currentTypeParams, currentInstSubst());
         tryValidateMatchScrut(n);
         return;
     }

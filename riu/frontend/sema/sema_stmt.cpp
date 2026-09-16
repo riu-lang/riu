@@ -104,7 +104,7 @@ void SemaPass::visitStmt(StatementNode* stmt) {
             if (loop->initNames().size() > 1) {
                 checkTupleDestructure(loop->initExpr(), loop->initType(), loop->initNames().size(),
                                       loop->getLineNumber(), loop->getColumn(), _file, _sdkFile, _currentTypeParams,
-                                      &_instSubst);
+                                      currentInstSubst());
             }
         }
         visitBlock(loop->block());
@@ -154,7 +154,7 @@ void SemaPass::visitStmt(StatementNode* stmt) {
         rejectEscapingRefCaptureLambda(set->valueExpr());
         if (elemExpected) {
             checkAssignRhs(set->valueExpr(), *elemExpected, set->getLineNumber(), set->getColumn(), _file, _sdkFile,
-                           _currentTypeParams, &_instSubst);
+                           _currentTypeParams, currentInstSubst());
         }
         // v0.16 闭包捕获: lambda body 内对捕获变量赋值 → E2030。
         // StatementSetNode 覆盖简单变量 `a = 20` / 复合赋值 `a += 1` / 索引赋值 `a[i] = x`。
@@ -476,7 +476,8 @@ void SemaPass::visitStmt(StatementNode* stmt) {
                             ok = false;
                             break;
                         }
-                        map<string, TypeInfo> fieldSubst = _instSubst;
+                        map<string, TypeInfo> fieldSubst;
+                        if (const auto* s = currentInstSubst()) fieldSubst = *s;
                         if (decl->isGeneric()) {
                             if (fieldSubst.empty() &&
                                 !fillSubstFromGenericArgs(decl->typeParams(), cur.genericArgs, fieldSubst)) {
@@ -514,7 +515,7 @@ void SemaPass::visitStmt(StatementNode* stmt) {
         if (as->expr()) rejectEscapingRefCaptureLambda(as->expr());
         if (haveStorage) {
             checkAssignRhs(as->expr(), assignStorage, as->getLineNumber(), as->getColumn(), _file, _sdkFile,
-                           _currentTypeParams, &_instSubst);
+                           _currentTypeParams, currentInstSubst());
         }
         return;
     }
@@ -534,7 +535,7 @@ void SemaPass::visitStmt(StatementNode* stmt) {
             }
             visitExpr(tup->expr(), tp);
             checkTupleDestructure(tup->expr(), tup->varType(), tup->names().size(), tup->getLineNumber(),
-                                  tup->getColumn(), _file, _sdkFile, _currentTypeParams, &_instSubst);
+                                  tup->getColumn(), _file, _sdkFile, _currentTypeParams, currentInstSubst());
         }
         return;
     }
@@ -552,7 +553,7 @@ void SemaPass::visitStmt(StatementNode* stmt) {
                         .structName = _currentStructName,
                         .fallibleErr = {},
                         .typeParams = &_currentTypeParams,
-                        .subst = &_instSubst};
+                        .subst = currentInstSubst()};
         if (_currentLambda) {
             lambdaHasExpected = lambdaExpectedRetType(_currentLambda, retExpected);
             if (lambdaHasExpected) {
@@ -833,7 +834,7 @@ void SemaPass::visitStmt(StatementNode* stmt) {
             auto handleTy = applyInstSubst(da->varType()->getType());
             if (handleTy.isRc() || handleTy.isWeak() || handleTy.isArrayGeneric()) {
                 checkDeclareHandleRhs(da->expr(), handleTy, da->getLineNumber(), da->getColumn(), _file, _sdkFile,
-                                      _currentTypeParams, &_instSubst);
+                                      _currentTypeParams, currentInstSubst());
             }
         }
         // v0.16 闭包捕获: lambda 字面量直接作 var/val 初始化值且含 T& 捕获 → E4022
@@ -893,7 +894,7 @@ void SemaPass::visitStmt(StatementNode* stmt) {
         visitExpr(sf->valueExpr(), fp);
         if (fp) {
             checkAssignRhs(sf->valueExpr(), *fp, sf->getLineNumber(), sf->getColumn(), _file, _sdkFile,
-                           _currentTypeParams, &_instSubst);
+                           _currentTypeParams, currentInstSubst());
         }
         return;
     }

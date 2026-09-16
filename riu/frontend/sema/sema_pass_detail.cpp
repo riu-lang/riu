@@ -653,19 +653,6 @@ void checkTupleDestructure(ExprNode* expr, TypeNode* annotated, size_t nameCount
     }
 }
 
-string genericInstKey(const void* p, const std::map<std::string, TypeInfo>& subst) {
-    string k = std::format("{}", p);
-    k += '{';
-    for (auto& [name, ty] : subst) {
-        k += name;
-        k += '=';
-        k += ty.getMangleName();
-        k += ',';
-    }
-    k += '}';
-    return k;
-}
-
 // Phase C：ret 表达式 E3014。Fallible 成功/错误双通道、T& 形态、Nullable wrap、
 // 别名 resolveAlias、灵活整数推断。spec 体里未解析的 Self 仍跳过。
 void checkRetExpr(ExprNode* expr, const TypeInfo& declRet, bool hasDeclRet, int line, const RetCheck& ctx) {

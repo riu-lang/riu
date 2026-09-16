@@ -5,6 +5,7 @@
 #define RIU_LANG_SEMA_PASS_H
 
 #include "ast/node/file_node.h"
+#include "generic/generic.h"
 #include "sema/name_resolver.h"
 
 #include <map>
@@ -72,10 +73,11 @@ private:
     // 类型参数当不透明 TypeParam：依赖 T 具体化的 getType 诊断吞掉；
     // 形态检查（#NoCopy / 未定义符号 / arity）仍报。
     std::set<std::string> _currentTypeParams;
-    // Phase C：泛型体实例化替换（T → 具体类型）。非空 = 正在复查某次实例。
-    // 模板期仍把 T 当不透明；ret / 赋值在 substitute 后再比。
-    std::map<std::string, TypeInfo> _instSubst;
-    std::set<std::string> _checkedGenericInst;
+    // 2.5：登记 / 去重走 generic 实例表；当前替换在 subst 栈顶（不再另持一份 map）。
+    generic::StructTable _structInstances;
+    generic::FnTable _fnInstances;
+    generic::SubstStack _substStack;
+    [[nodiscard]] const std::map<std::string, TypeInfo>* currentInstSubst() const;
 
     // v0.16 闭包捕获: 当前正在遍历的 lambda 节点 (非空 = 在 lambda body 内).
     // 与 Compiler 的 `_currentLambdaForCapture` 功能对等但 0 LLVM 依赖.
