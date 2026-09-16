@@ -196,7 +196,7 @@ classDiagram
     StatementNode "1" o-- "*" ExprNode
 ```
 
-定义在 `riu/ast/node/*.h`；新增节点务必同步 `SemaPass::visitExpr` 与 mangler/builder 路径。
+定义在 `riu/ast/node/*.h`。表达式 / 语句走 `AstVisitor` 双分派（`accept` + `visitX = 0`）；Sema / codegen 尚未改 override。新增节点务必同步 `accept`、`SemaPass::visitExpr` 与 mangler/builder 路径。
 
 ---
 

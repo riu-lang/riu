@@ -12,6 +12,7 @@
 class StatementNode : public Node {
 public:
     explicit StatementNode(Node* parent) : Node(parent) {}
+    virtual void accept(AstVisitor& v) = 0;
 };
 
 class StatementExprNode : public StatementNode {
@@ -25,16 +26,19 @@ public:
 
     [[nodiscard]] ExprNode* expr() const;
     [[nodiscard]] bool hasSemicolon() const;
+    void accept(AstVisitor& v) override;
 };
 
 class StatementRetNode : public StatementExprNode {
 public:
     explicit StatementRetNode(Node* parent, ExprNode* expr) : StatementExprNode(parent, expr) {}
+    void accept(AstVisitor& v) override;
 };
 
 class StatementRetVoidNode : public StatementNode {
 public:
     explicit StatementRetVoidNode(Node* parent) : StatementNode(parent) {}
+    void accept(AstVisitor& v) override;
 };
 
 // DRAFT-let-unify §3：`let x` 默认浅不可变（isMut=false, isConst=false）；
@@ -54,6 +58,7 @@ public:
     [[nodiscard]] bool isConst() const { return _isConst; }
     [[nodiscard]] Token name() const;
     [[nodiscard]] TypeNode* varType() const;
+    void accept(AstVisitor& v) override;
 };
 
 class StatementDeclareAssignNode : public StatementExprNode {
@@ -72,6 +77,7 @@ public:
     [[nodiscard]] bool isConst() const { return _isConst; }
     [[nodiscard]] Token name() const;
     [[nodiscard]] TypeNode* varType() const;
+    void accept(AstVisitor& v) override;
 };
 
 // 元组解构赋值声明：let (a, b, ...) = expr（默认浅不可变；`#Mut let (...)` → isMut=true）
@@ -92,6 +98,7 @@ public:
     [[nodiscard]] bool isConst() const { return _isConst; }
     [[nodiscard]] const vector<Token>& names() const { return _names; }
     [[nodiscard]] TypeNode* varType() const { return _type; }
+    void accept(AstVisitor& v) override;
 };
 
 enum class AssignOp : u8 { Eq, AddEq, SubEq, MulEq, DivEq, ModEq };
@@ -110,6 +117,7 @@ public:
     [[nodiscard]] Token obj() const { return _obj; }
     [[nodiscard]] const vector<Token>& subs() const { return _subs; }
     [[nodiscard]] AssignOp op() const { return _op; }
+    void accept(AstVisitor& v) override;
 };
 
 class StatementBlockNode;
@@ -133,6 +141,7 @@ public:
     [[nodiscard]] TypeNode* initType() const { return _initType; }
     [[nodiscard]] ExprNode* initExpr() const { return _initExpr; }
     [[nodiscard]] bool hasInit() const { return !_initNames.empty(); }
+    void accept(AstVisitor& v) override;
 };
 
 class StatementBreakNode : public StatementNode {
@@ -142,6 +151,7 @@ protected:
 public:
     explicit StatementBreakNode(Node* parent, Token label = {}) : StatementNode(parent), _label(std::move(label)) {}
     [[nodiscard]] const Token& label() const { return _label; }
+    void accept(AstVisitor& v) override;
 };
 
 class StatementContinueNode : public StatementNode {
@@ -151,6 +161,7 @@ protected:
 public:
     explicit StatementContinueNode(Node* parent, Token label = {}) : StatementNode(parent), _label(std::move(label)) {}
     [[nodiscard]] const Token& label() const { return _label; }
+    void accept(AstVisitor& v) override;
 };
 
 // `for item in expr { }`：item 为元素 T&；expr 须为 Array<T> / [T*N]（可 peelRef）
@@ -168,6 +179,7 @@ public:
     [[nodiscard]] const Token& label() const { return _label; }
     [[nodiscard]] const Token& item() const { return _item; }
     [[nodiscard]] ExprNode* expr() const { return _expr; }
+    void accept(AstVisitor& v) override;
 };
 
 // DRAFT-static-vars Phase 5：静态字段写语句（Type::FIELD = expr）
@@ -190,6 +202,7 @@ public:
     [[nodiscard]] const TypePath& typePath() const { return _typePath; }
     [[nodiscard]] Token fieldName() const { return _fieldName; }
     [[nodiscard]] ExprNode* valueExpr() const { return _valueExpr; }
+    void accept(AstVisitor& v) override;
 };
 
 class StatementSetNode : public StatementNode {
@@ -204,6 +217,7 @@ public:
     [[nodiscard]] ExprNode* arrayExpr() const;
     [[nodiscard]] const vector<ExprNode*>& indices() const;
     [[nodiscard]] ExprNode* valueExpr() const;
+    void accept(AstVisitor& v) override;
 };
 
 #endif // RIU_LANG_STATEMENT_NODE_H

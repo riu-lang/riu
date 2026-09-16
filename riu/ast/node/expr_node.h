@@ -11,6 +11,7 @@
 
 #include "literal_node.h"
 
+class AstVisitor;
 class StatementNode;
 class TypeNode;
 class StructDeclNode;
@@ -53,6 +54,8 @@ public:
     [[nodiscard]] const ResolvedSymbol& resolvedSymbol() const {
         return *_resolvedSymbol; // NOLINT(bugprone-unchecked-optional-access)
     }
+
+    virtual void accept(AstVisitor& v) = 0;
 };
 
 // 如果表达式是无后缀的整数字面量且其类型可以推断，则返回 true。
@@ -122,6 +125,7 @@ public:
 
     [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] TypeInfo structuralType() const override;
+    void accept(AstVisitor& v) override;
 };
 
 class ExprLiteralNode : public ExprNode {
@@ -136,6 +140,7 @@ public:
     [[nodiscard]] LiteralNode* literal() const;
     [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] TypeInfo structuralType() const override;
+    void accept(AstVisitor& v) override;
 };
 
 class ExprAddSubNode : public ExprNode {
@@ -158,6 +163,7 @@ public:
     [[nodiscard]] TypeInfo structuralType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
     [[nodiscard]] int resolveColumn() const override;
+    void accept(AstVisitor& v) override;
 };
 
 class ExprMulDivModNode : public ExprNode {
@@ -180,6 +186,7 @@ public:
     [[nodiscard]] TypeInfo structuralType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
     [[nodiscard]] int resolveColumn() const override;
+    void accept(AstVisitor& v) override;
 };
 
 class ExprBinOpNode : public ExprNode {
@@ -202,6 +209,7 @@ public:
     [[nodiscard]] TypeInfo structuralType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
     [[nodiscard]] int resolveColumn() const override;
+    void accept(AstVisitor& v) override;
 };
 
 class ExprParenNode : public ExprNode {
@@ -213,6 +221,7 @@ public:
     [[nodiscard]] ExprNode* expr() const;
     [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] TypeInfo structuralType() const override;
+    void accept(AstVisitor& v) override;
 };
 
 class ExprDotNode : public ExprNode {
@@ -246,6 +255,7 @@ public:
     [[nodiscard]] bool hasSpecQualifier() const { return !_specQualifier.empty(); }
     [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] TypeInfo structuralType() const override;
+    void accept(AstVisitor& v) override;
     // 点成员是否为结构体字段（非方法）。方法点 getType 也返回 TypeKind::Fn，
     // 但那只是调用结果编码；真正的 Fn 字段才走 fat-ptr 调用。
     [[nodiscard]] bool isFieldAccess() const;
@@ -283,6 +293,7 @@ public:
     [[nodiscard]] TypeInfo structuralType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
     [[nodiscard]] int resolveColumn() const override;
+    void accept(AstVisitor& v) override;
 };
 
 class StatementBlockNode : public ScopeNode {
@@ -296,6 +307,7 @@ public:
     [[nodiscard]] const vector<StatementNode*>& statements() const;
     [[nodiscard]] ExprNode* resultExpr() const;
     [[nodiscard]] bool hasResult() const;
+    void accept(AstVisitor& v);
 };
 
 class ExprElIfNode : public Node {
@@ -330,6 +342,7 @@ public:
     [[nodiscard]] TypeInfo structuralType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
     [[nodiscard]] int resolveColumn() const override;
+    void accept(AstVisitor& v) override;
 };
 
 class ExprOneLineIfElseNode : public ExprNode {
@@ -348,6 +361,7 @@ public:
     [[nodiscard]] TypeInfo structuralType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
     [[nodiscard]] int resolveColumn() const override;
+    void accept(AstVisitor& v) override;
 };
 
 class ExprGetNode : public ExprNode {
@@ -364,6 +378,7 @@ public:
     [[nodiscard]] TypeInfo structuralType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
     [[nodiscard]] int resolveColumn() const override;
+    void accept(AstVisitor& v) override;
 };
 
 class ExprArrayNode : public ExprNode {
@@ -377,6 +392,7 @@ public:
     [[nodiscard]] TypeInfo structuralType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
     [[nodiscard]] int resolveColumn() const override;
+    void accept(AstVisitor& v) override;
 };
 
 class ExprArrayInitNode : public ExprNode {
@@ -391,6 +407,7 @@ public:
     [[nodiscard]] TypeNode* explicitType() const;
     [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] TypeInfo structuralType() const override;
+    void accept(AstVisitor& v) override;
 };
 
 class ExprGetRefNode : public ExprNode {
@@ -407,6 +424,7 @@ public:
     [[nodiscard]] TypeInfo structuralType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
     [[nodiscard]] int resolveColumn() const override;
+    void accept(AstVisitor& v) override;
 };
 
 class ExprUnaryNode : public ExprNode {
@@ -426,6 +444,7 @@ public:
     [[nodiscard]] TypeInfo structuralType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
     [[nodiscard]] int resolveColumn() const override;
+    void accept(AstVisitor& v) override;
 };
 
 // Lambda 形参：name + 可选类型（缺省时 type=nullptr，由调用 / 赋值点的期望
@@ -536,6 +555,7 @@ public:
     // 返回 Fn TypeInfo；缺失槽位用 empty TypeInfo 占位，等 Phase 2b 上下文反推回填
     [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] TypeInfo structuralType() const override;
+    void accept(AstVisitor& v) override;
 };
 
 // 元组构造表达式 (e1, e2, ...)
@@ -551,6 +571,7 @@ public:
     [[nodiscard]] TypeInfo structuralType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
     [[nodiscard]] int resolveColumn() const override;
+    void accept(AstVisitor& v) override;
 };
 
 // 路径调用表达式 `LHS::RHS(...)` —— 承载两条 sema 分流:
@@ -597,6 +618,7 @@ public:
     [[nodiscard]] TypeInfo resolvedLhsType() const;
     [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] TypeInfo structuralType() const override;
+    void accept(AstVisitor& v) override;
 };
 
 // 字段初始化项：.name = value（仅出现在 ExprStructLitNode 内）
@@ -642,6 +664,7 @@ public:
     [[nodiscard]] ExprNode* positional() const { return _positional; }
     [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] TypeInfo structuralType() const override;
+    void accept(AstVisitor& v) override;
 };
 
 // match arm 模式 v1 子集：
@@ -714,6 +737,7 @@ public:
     [[nodiscard]] const vector<MatchArmNode*>& arms() const { return _arms; }
     [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] TypeInfo structuralType() const override;
+    void accept(AstVisitor& v) override;
 };
 
 // catch arm: `catch <绑定名> <错误 enum 类型> { body }`
@@ -751,6 +775,7 @@ public:
     [[nodiscard]] const vector<CatchArmNode*>& catches() const { return _catches; }
     [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] TypeInfo structuralType() const override;
+    void accept(AstVisitor& v) override;
 };
 
 // Dyn<D>(x) / Dyn<D&>(x) 构造表达式（DRAFT-dyn-draft / 拟 §12.9）
@@ -775,6 +800,7 @@ public:
     [[nodiscard]] bool isBorrow() const { return _isBorrow; }
     [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] TypeInfo structuralType() const override;
+    void accept(AstVisitor& v) override;
 };
 
 // Heap:<T>(arg) 堆作用域句柄构造（DRAFT-heap-types §8.3a）
@@ -792,6 +818,7 @@ public:
     [[nodiscard]] TypeInfo structuralType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
     [[nodiscard]] int resolveColumn() const override;
+    void accept(AstVisitor& v) override;
 };
 
 // a ?? b：a 为 Nullable<T> 时，有值取 a.get()，否则取 b
@@ -808,6 +835,7 @@ public:
     [[nodiscard]] TypeInfo structuralType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
     [[nodiscard]] int resolveColumn() const override;
+    void accept(AstVisitor& v) override;
 };
 
 // §4.9.1.4 / §4.9.3.5：调用点是 `#NoReturn` 时该表达式流终止，不参与 if / match / try 类型合并。

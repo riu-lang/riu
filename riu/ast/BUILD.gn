@@ -31,6 +31,7 @@ static_library("riu_ast") {
     "riu.cpp",
     "syntax_error_listener.cpp",
     "type_path.cpp",
+    "node/ast_visitor.cpp",
     "node/expr_node.cpp",
     "node/file_node.cpp",
     "node/fn_node.cpp",
