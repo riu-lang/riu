@@ -1,0 +1,7 @@
+; 全局 #Frozen 不在 v1（用 #Cval 替代）→ E3116
+
+#Frozen
+let G i32 = 1  ; check: E3116
+
+fn main() {
+}

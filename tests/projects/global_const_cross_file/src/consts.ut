@@ -1,0 +1,19 @@
+; 跨文件公开 #Cval / #Inline #Cval
+
+#Cval
+let MAX i32 = 1024
+
+#Cval
+let OFFSET i32 = MAX + 16
+
+#Inline
+#Cval
+let FLAG i32 = 7
+
+#Cval
+let NEG i32 = -3
+
+#Cval
+let _SECRET i32 = 99
+
+fn scale(n i32) i32 = n * 2

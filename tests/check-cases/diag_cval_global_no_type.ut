@@ -1,0 +1,7 @@
+; 全局 #Cval 缺类型 → E3113
+
+#Cval
+let G = 1  ; check: E3113
+
+fn main() {
+}

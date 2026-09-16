@@ -1,80 +1,335 @@
 ; 全局常量（#Cval / #Inline #Cval）行为测试
 ;
 ; 覆盖：
-;   - #Cval 全局常量：i32 / f64 / _ 前缀（内部常量）
-;   - #Inline #Cval 内联常量：i32 / 负数 / bool / _ 前缀
-;   - 常量在表达式计算中使用（不经过 load 指令）
-;   - 跨文件常量（PI / E）见 math_int.test.ut
+;   - 各整数 / 浮点 / bool 字面量与边界
+;   - 常量表达式：算术、位方法、比较、逻辑、括号、#Cval 引用、#Const fn
+;   - struct 字面量初值与字段读
+;   - #Inline #Cval 同文件替换、表达式、if / 实参
+;   - 非内联 #Cval 取址
+;   - 局部 #Cval 引用全局
+;   - 跨文件读公开 #Cval / #Inline（tests/projects/global_const_cross_file）
+;   - 跨文件读 `_` 私有应 E3030（tests/projects/global_const_private）
 ;
-; 已知缺口：#Cval 常量目前仅文件作用域，跨文件不可见限制见 math.test.ut 头注；
-; struct 内 #Cval 字段未覆盖。
+; 已知缺口：他文件的 #Cval 不能当本文件 #Cval RHS（const-eval 环境只有本文件，E3140）。
+
+; ==================== 字面量：整数宽度 ====================
 
 #Cval
-let TEST_MAX_SIZE i32 = 1024
+let GC_I8 i8 = 127
 #Cval
-let TEST_PI f64 = 3.14159
+let GC_I8_MIN i8 = -128
 #Cval
-let _TEST_INTERNAL_CONST i32 = 42
+let GC_I16 i16 = 32767
+#Cval
+let GC_I16_MIN i16 = -32768
+#Cval
+let GC_I32 i32 = 1024
+#Cval
+let GC_I32_NEG i32 = -7
+#Cval
+let GC_I64 i64 = 60000000000
+#Cval
+let GC_U8 u8 = 255
+#Cval
+let GC_U16 u16 = 65535
+#Cval
+let GC_U32 u32 = 4294967295
+#Cval
+let GC_U64 u64 = 116444736000000000
+#Cval
+let GC_ISIZE isize = 42
+#Cval
+let GC_USIZE usize = 99
+#Cval
+let GC_HEX u32 = 0xF0
+#Cval
+let GC_HEX_U8 u8 = 0xA5
 
-; #Inline #Cval —— 内联常量，不产生 GlobalVariable，使用处直接替换（类似 C #define）
+; ==================== 字面量：浮点 / bool / 私有 ====================
+
+#Cval
+let GC_F64 f64 = 3.14159
+#Cval
+let GC_F32 f32 = 1.5
+#Cval
+let GC_F64_NEG f64 = -2.5
+#Cval
+let GC_TRUE bool = true
+#Cval
+let GC_FALSE bool = false
+#Cval
+let _GC_PRIV i32 = 42
+
+; ==================== 常量表达式：算术 / 引用 / 位 / 比较 / 逻辑 ====================
+
+#Cval
+let GC_A i32 = 10
+#Cval
+let GC_B i32 = GC_A + 5
+#Cval
+let GC_C i32 = (GC_A * 2) - GC_B
+#Cval
+let GC_DIV i32 = 20 / 4
+#Cval
+let GC_MOD i32 = 17 % 5
+#Cval
+let GC_PAREN i32 = (1 + 2) * 3
+#Cval
+let GC_PREC i32 = 1 + 2 * 3
+#Cval
+let GC_AND u8 = 0xF0u8.and(0x3Cu8)
+#Cval
+let GC_OR u8 = 0x0Fu8.or(0xF0u8)
+#Cval
+let GC_XOR u8 = 0xFFu8.xor(0x0Fu8)
+#Cval
+let GC_SHL u8 = 1u8.shl(3)
+#Cval
+let GC_SHR u8 = 16u8.shr(2)
+#Cval
+let GC_INV u8 = 0x0Fu8.inv()
+#Cval
+let GC_LT bool = 1 < 2
+#Cval
+let GC_LE bool = 2 <= 2
+#Cval
+let GC_GT bool = 3 > 1
+#Cval
+let GC_EQ bool = 4 == 4
+#Cval
+let GC_NE bool = 4 != 5
+#Cval
+let GC_AND_BOOL bool = true && false
+#Cval
+let GC_OR_BOOL bool = false || true
+#Cval
+let GC_NOT bool = !false
+#Cval
+let GC_F64_SUM f64 = 1.25 + 2.25
+
+; ==================== #Const fn ====================
+
+#Const
+fn gc_add(a i32, b i32) i32 = a + b
+
+#Const
+fn gc_dbl(x i32) i32 = x + x
+
+#Cval
+let GC_SUM i32 = gc_add(3, 4)
+#Cval
+let GC_DBL i32 = gc_dbl(GC_A)
+#Cval
+let GC_NEST i32 = gc_add(GC_SUM, gc_dbl(2))
+
+; ==================== struct 字面量 ====================
+
+struct GcPoint {
+  x i32
+  y i32
+}
+
+struct GcRect {
+  tl GcPoint
+  br GcPoint
+}
+
+#Cval
+let GC_ORIGIN GcPoint = GcPoint {
+  .x = 0
+  .y = 0
+}
+
+#Cval
+let GC_PT GcPoint = GcPoint {
+  .x = 3 + 4
+  .y = GC_A * 2
+}
+
+#Cval
+let GC_RECT GcRect = GcRect {
+  .tl = GcPoint {
+    .x = 1
+    .y = 2
+  }
+  .br = GcPoint {
+    .x = 10
+    .y = 20
+  }
+}
+
+; ==================== #Inline #Cval ====================
+
 #Inline
 #Cval
-let INLINE_INT i32 = 42
+let GC_INL_I32 i32 = 42
 #Inline
 #Cval
-let INLINE_NEG i32 = -100
+let GC_INL_NEG i32 = -100
 #Inline
 #Cval
-let INLINE_BOOL bool = true
+let GC_INL_BOOL bool = true
 #Inline
 #Cval
-let _INLINE_PRIVATE i64 = 999
-
-; 验证：全局常量 i32 类型的值是否正确
-#Test
-fn test_global_const_i32() {
-  assert_eq(TEST_MAX_SIZE, 1024)
+let GC_INL_U64 u64 = 999
+#Inline
+#Cval
+let GC_INL_F64 f64 = 2.5
+#Inline
+#Cval
+let GC_INL_EXPR i32 = 10 + 20 * 2
+#Inline
+#Cval
+let _GC_INL_PRIV i64 = 888
+#Inline
+#Cval
+let GC_INL_PT GcPoint = GcPoint {
+  .x = 9
+  .y = 8
 }
 
-; 验证：全局常量 f64 类型的值是否正确
+; ==================== 字面量 / 宽度 ====================
+
 #Test
-fn test_global_const_f64() {
-  assert_eq(TEST_PI, 3.14159)
+fn test_global_const_int_widths() {
+  assert_eq(GC_I8, 127i8)
+  assert_eq(GC_I8_MIN, -128i8)
+  assert_eq(GC_I16, 32767i16)
+  assert_eq(GC_I16_MIN, -32768i16)
+  assert_eq(GC_I32, 1024)
+  assert_eq(GC_I32_NEG, -7)
+  assert_eq(GC_I64, 60000000000i64)
+  assert_eq(GC_U8, 255u8)
+  assert_eq(GC_U16, 65535u16)
+  assert_eq(GC_U32, 4294967295u32)
+  assert_eq(GC_U64, 116444736000000000u64)
+  assert_eq(GC_ISIZE, 42isize)
+  assert_eq(GC_USIZE, 99usize)
+  assert_eq(GC_HEX, 240u32)
+  assert_eq(GC_HEX_U8, 165u8)
 }
 
-; 验证：全局常量内部值是否正确
 #Test
-fn test_global_const_internal() {
-  assert_eq(_TEST_INTERNAL_CONST, 42)
+fn test_global_const_float_bool_priv() {
+  assert_eq(GC_F64, 3.14159)
+  assert_eq(GC_F32, 1.5f32)
+  assert_eq(GC_F64_NEG, -2.5)
+  assert_true(GC_TRUE)
+  assert_false(GC_FALSE)
+  assert_eq(_GC_PRIV, 42)
 }
 
-; 验证：内联整数常量的值是否正确
+; ==================== 表达式 ====================
+
 #Test
-fn test_inline_cval_int() {
-  assert_eq(INLINE_INT, 42)
+fn test_global_const_arith() {
+  assert_eq(GC_A, 10)
+  assert_eq(GC_B, 15)
+  assert_eq(GC_C, 5)
+  assert_eq(GC_DIV, 5)
+  assert_eq(GC_MOD, 2)
+  assert_eq(GC_PAREN, 9)
+  assert_eq(GC_PREC, 7)
+  assert_eq(GC_F64_SUM, 3.5)
 }
 
-; 验证：内联常量的负值计算
 #Test
-fn test_inline_cval_neg() {
-  assert_eq(INLINE_NEG, -100)
+fn test_global_const_bits() {
+  assert_eq(GC_AND, 0x30u8)
+  assert_eq(GC_OR, 0xFFu8)
+  assert_eq(GC_XOR, 0xF0u8)
+  assert_eq(GC_SHL, 8u8)
+  assert_eq(GC_SHR, 4u8)
+  assert_eq(GC_INV, 0xF0u8)
 }
 
-; 验证：内联布尔常量的真假值
 #Test
-fn test_inline_cval_bool() {
-  assert_true(INLINE_BOOL)
+fn test_global_const_cmp_logic() {
+  assert_true(GC_LT)
+  assert_true(GC_LE)
+  assert_true(GC_GT)
+  assert_true(GC_EQ)
+  assert_true(GC_NE)
+  assert_false(GC_AND_BOOL)
+  assert_true(GC_OR_BOOL)
+  assert_true(GC_NOT)
 }
 
-; 验证：内联常量的私有访问
 #Test
-fn test_inline_cval_private() {
-  assert_eq(_INLINE_PRIVATE, 999)
+fn test_global_const_fn() {
+  assert_eq(GC_SUM, 7)
+  assert_eq(GC_DBL, 20)
+  assert_eq(GC_NEST, 11)
 }
 
-; 验证内联常量可用于表达式计算（不经过 load 指令）
+#Test
+fn test_global_const_struct() {
+  assert_eq(GC_ORIGIN.x, 0)
+  assert_eq(GC_ORIGIN.y, 0)
+  assert_eq(GC_PT.x, 7)
+  assert_eq(GC_PT.y, 20)
+  assert_eq(GC_RECT.tl.x, 1)
+  assert_eq(GC_RECT.tl.y, 2)
+  assert_eq(GC_RECT.br.x, 10)
+  assert_eq(GC_RECT.br.y, 20)
+}
+
+; ==================== #Inline ====================
+
+#Test
+fn test_inline_cval_values() {
+  assert_eq(GC_INL_I32, 42)
+  assert_eq(GC_INL_NEG, -100)
+  assert_true(GC_INL_BOOL)
+  assert_eq(GC_INL_U64, 999u64)
+  assert_eq(GC_INL_F64, 2.5)
+  assert_eq(GC_INL_EXPR, 50)
+  assert_eq(_GC_INL_PRIV, 888i64)
+  assert_eq(GC_INL_PT.x, 9)
+  assert_eq(GC_INL_PT.y, 8)
+}
+
 #Test
 fn test_inline_cval_in_expr() {
-  let result i32 = INLINE_INT + 8
+  let result i32 = GC_INL_I32 + 8
   assert_eq(result, 50)
+  assert_eq(GC_INL_I32 * 2 - 4, 80)
+}
+
+; ==================== 使用形态 ====================
+
+fn gc_id(n i32) i32 = n
+
+#Test
+fn test_global_const_as_arg_and_if() {
+  assert_eq(gc_id(GC_I32), 1024)
+  assert_eq(gc_id(GC_INL_I32), 42)
+  if GC_TRUE {
+    assert_eq(GC_A, 10)
+  } else {
+    fail("GC_TRUE")
+  }
+  let v i32 = if GC_LT { 1 } else { 0 }
+  assert_eq(v, 1)
+}
+
+#Test
+fn test_global_const_with_local() {
+  let n i32 = GC_A + 1
+  assert_eq(n, 11)
+  #Cval let k i32 = GC_A + 2
+  assert_eq(k, 12)
+  #Cval let m i32 = GC_INL_I32 * 2
+  assert_eq(m, 84)
+}
+
+#Test
+fn test_global_const_addr() {
+  let r i32& = &GC_I32
+  assert_eq(r, 1024)
+}
+
+#Test
+fn test_global_const_ret() {
+  assert_eq(GC_B, 15)
 }

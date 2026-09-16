@@ -1,0 +1,8 @@
+; 写入全局 #Cval → E3093（不可重赋）
+
+#Cval
+let G i32 = 1
+
+fn main() {
+  G = 2  ; check: E3093
+}

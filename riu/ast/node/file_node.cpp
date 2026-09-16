@@ -694,6 +694,9 @@ SymbolInfo* FileNode::lookupSymbol(const string& name) {
     for (auto* imp : _wildcardImports) {
         auto jt = imp->_symbols.find(name);
         if (jt != imp->_symbols.end() && isOwnModuleName(imp, jt->second.moduleName)) {
+            // 他模块 `_` 前缀全局变量 / `#Cval` 不可见（§10.3.2）。
+            // 函数仍查：SDK `__riu_*` 与 call_resolve 的 E6006 都走这条。
+            if (jt->second.isPrivate && jt->second.kind == SymbolKind::Variable) continue;
             return &jt->second;
         }
     }

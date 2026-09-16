@@ -1,0 +1,6 @@
+use riu.core.*
+use consts.*
+
+fn main() {
+  println(_SECRET)
+}

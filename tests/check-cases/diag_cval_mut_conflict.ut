@@ -1,0 +1,8 @@
+; 全局 #Cval 与 #Mut 互斥 → E3115
+
+#Cval
+#Mut  ; check: E3115
+let G i32 = 1
+
+fn main() {
+}

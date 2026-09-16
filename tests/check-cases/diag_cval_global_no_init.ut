@@ -1,0 +1,7 @@
+; 全局 #Cval 缺 init → E3114
+
+#Cval
+let G i32  ; check: E3114
+
+fn main() {
+}

@@ -1,0 +1,9 @@
+; 全局 #Cval 引用运行期全局 val → E3140
+
+let V i32 = 7
+
+#Cval
+let G i32 = V + 1  ; check: E3140
+
+fn main() {
+}

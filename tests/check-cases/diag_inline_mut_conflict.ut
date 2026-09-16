@@ -1,0 +1,8 @@
+; 全局 #Inline 与 #Mut 互斥 → E3115
+
+#Inline
+#Mut  ; check: E3115
+let G i32 = 1
+
+fn main() {
+}

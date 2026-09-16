@@ -1,0 +1,12 @@
+use riu.core.*
+use consts.*
+
+fn main() {
+  println(MAX)
+  println(OFFSET)
+  println(FLAG + 1)
+  println(NEG)
+  println(scale(MAX))
+  let r i32& = &MAX
+  println(r)
+}
