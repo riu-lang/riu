@@ -6,7 +6,7 @@
 // 与 riu 主二进制不同, 本工具:
 // - 0 LLVM 依赖, 只链 riu_frontend
 // - 不加载 SDK, 不解析 import 链, 不做 codegen
-// - 仅 parse → ASTBuilder → SemaPass.run() → runFnCheckers → 打印诊断
+// - 仅 parse → ASTBuilder → PassManager（Sema → fn checkers）→ 打印诊断
 //
 // 设计意图: 日常写 demo / 改代码时快速跑诊断, 避免每次 xmake build 编 LLVM.
 // **报错不与 riu build 等价**: 仅检出 SemaPass 当前能接管的错误码; 漏的部分
@@ -36,7 +36,7 @@
 
 #include "ast/parse_program.h"
 #include "ast/riu.h"
-#include "sema/sema_pass.h"
+#include "pass/pass.h"
 #include "tools/diagnostic.h"
 #include "tools/sdk_loader.h"
 #include "tools/syntax_error_listener.h"
@@ -282,12 +282,12 @@ static CollectTestFilesResult collectTestFiles(const vector<string>& paths) {
 }
 
 // ============================================================================
-// 单文件 sema 执行 —— parse → AST → SemaPass, 收集抛出的错误
+// 单文件 sema 执行 —— parse → AST → PassManager（分析表）, 收集抛出的错误
 // ============================================================================
 
 struct CheckResult {
     bool ok = true;               // false = 有错误 (semaError 或 otherError)
-    optional<RiuError> semaError; // SemaPass 抛出的 RiuError
+    optional<RiuError> semaError; // 分析 Pass 抛出的 RiuError
     string otherError;            // 非 RiuError 的错误信息 (parse / AST 阶段失败)
 };
 
@@ -329,7 +329,7 @@ static CheckResult runSemaOnFile(const string& absPath, const string& sdkPath) {
         return cr;
     }
 
-    // 2. AST 构建 + SemaPass
+    // 2. AST 构建 + 分析表（Sema → fn checkers）
     string moduleName = filesystem::path(absPath).stem().string();
 
     Riu riu;
@@ -343,8 +343,7 @@ static CheckResult runSemaOnFile(const string& absPath, const string& sdkPath) {
 
         auto file = riu.loadMainFile(absPath, moduleName);
         riu.validateSpecImpls();
-        SemaPass(file, &riu).run();
-        runFnCheckers(file);
+        runAnalysisPasses(file, &riu);
     } catch (const RiuError& e) {
         cr.ok = false;
         cr.semaError = e;
@@ -379,8 +378,7 @@ static CheckResult runSemaOnFileWithRiu(const string& absPath, Riu& riu) {
     try {
         auto file = riu.loadMainFile(absPath, moduleName);
         riu.validateSpecImpls();
-        SemaPass(file, &riu).run();
-        runFnCheckers(file);
+        runAnalysisPasses(file, &riu);
     } catch (const RiuError& e) {
         cr.ok = false;
         cr.semaError = e;
@@ -876,7 +874,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // 2. AST + SemaPass. 单文件模式, 不加载 SDK / 不解析 import 链.
+    // 2. AST + 分析表. 单文件模式, 不加载 SDK / 不解析 import 链.
     //    使用文件名 stem 作为 module name. 与 riu 主二进制行为不一致, 阶段 0
     //    可接受 —— 后续阶段补 SDK / 模块依赖时再对齐.
     string moduleName = filesystem::path(absPath).stem().string();
@@ -899,8 +897,7 @@ int main(int argc, char* argv[]) {
         // 若 import 失败 (找不到 SDK / 模块), 这里抛 RiuError, 直接报.
         auto file = riu.loadMainFile(absPath, moduleName);
         riu.validateSpecImpls();
-        SemaPass(file, &riu).run();
-        runFnCheckers(file);
+        runAnalysisPasses(file, &riu);
     } catch (const runtime_error& e) {
         if (auto* riuErr = dynamic_cast<const RiuError*>(&e)) {
             DiagnosticEngine::renderRiuError(cerr, absPath, *riuErr);

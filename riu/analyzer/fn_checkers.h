@@ -6,7 +6,7 @@
 
 class FileNode;
 
-// SemaPass::run 之后、codegen 之前由 driver 调用（Compiler::compile / riu-check 同一点）。
+// SemaPass::run 之后、codegen 之前由 PassManager 调用（addAnalysisPasses）。
 // 遍历本文件自由函数、struct 方法与析构，跑 borrow / const-mut / #NoReturn。
 // 跳过 #Builtin。仍是 riu_analyzer，不是新库。
 void runFnCheckers(FileNode* file);

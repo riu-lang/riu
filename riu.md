@@ -71,9 +71,10 @@ flowchart TB
     tree --> builder[ast::AstBuilder<br/>riu/ast/ast_builder.cpp]
     builder --> ast[AST 节点<br/>riu/ast/node/*]
 
-    ast --> sema[SemaPass<br/>riu/frontend/sema/sema_pass.cpp]
-    sema --> analyzer[Analyzer<br/>borrow / const_mut /<br/>flow_terminate]
-    analyzer --> compiler[Compiler<br/>riu/riu/compiler/compiler*.cpp]
+    ast --> pm[PassManager<br/>addAnalysisPasses + codegen]
+    pm --> sema[SemaPass]
+    sema --> analyzer[fn checkers<br/>borrow / const_mut / #NoReturn]
+    analyzer --> compiler[Compiler::emitIr]
     compiler --> ir[LLVM IR]
     ir --> llc[LLVM 后端]
     llc --> obj[.obj]
@@ -81,12 +82,13 @@ flowchart TB
     sdk[(sdk/riu 自举 runtime<br/>riu.lib)] --> lld
     lld --> exe[可执行 / .lib / .dll]
 
+    style pm fill:#e0f3e0
     style sema fill:#e0f3e0
     style analyzer fill:#e0f3e0
     style compiler fill:#fde2e2
 ```
 
-注意 `SemaPass` 与 `Compiler` 的 throw 关系——见 [§4](#4-sema--codegen-双段分离)。
+注意 `SemaPass` 与 `Compiler` 的 throw 关系——见 [§4](#4-sema--codegen-双段分离)。parse / AST build **不**进 `PassManager`；新分析 = 新 `.cpp` + `addAnalysisPasses` 一行 `addPass`。
 
 ---
 
@@ -97,6 +99,7 @@ flowchart LR
     subgraph FE [riu_frontend]
         L[Lexer + Parser]
         B[AstBuilder]
+        PM[PassManager]
         A[Analyzer]
         S[SemaPass]
         D[diagnostic / format /<br/>build_cache / sdk_loader]
@@ -106,10 +109,10 @@ flowchart LR
         C[Compiler + LLVM IR<br/>compiler*.cpp]
     end
 
-    riubin[riu<br/>build / run / jit] --> L & B & A & S & C
+    riubin[riu<br/>build / run / jit] --> L & B & PM & C
     lspbin[riu-lsp<br/>completion / diag /<br/>semantic_tokens] --> L & B & A & S & D
     astbin[riu-ast<br/>tools/ast_main.cpp] --> L
-    checkbin[riu-check<br/>tools/check_main.cpp] --> L & B & A & S
+    checkbin[riu-check<br/>tools/check_main.cpp] --> L & B & PM
 
     style CG fill:#fde2e2
     style FE fill:#e0f3e0

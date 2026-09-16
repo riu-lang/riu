@@ -50,7 +50,7 @@
 //   §6.2 数组写 `obj[i] = ...` 形态（StatementSetNode 含字段链）；
 //   字段深链 `$.f.g = ...` 中第二层及以后字段的 #Val/#Frozen 解析（需逐级类型推断）。
 //
-// SemaPass::run 之后由 driver 对每个 fn 调用一次（见 runFnCheckers），
+// SemaPass::run 之后由 PassManager 对每个 fn 调用一次（见 addAnalysisPasses），
 // 位置与 checkBorrows / checkFlowTerminate 同档。
 void checkConstMut(FnNode* fn);
 

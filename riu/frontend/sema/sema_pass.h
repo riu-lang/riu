@@ -296,7 +296,4 @@ public:
     void checkCLayoutFields(const TypeInfo& structTy, StructDeclNode* sd, int line, std::set<string>& visiting);
 };
 
-// SemaPass::run 之后、codegen 之前由 driver 调用。实现在 riu_analyzer（fn_checkers.cpp）。
-void runFnCheckers(FileNode* file);
-
 #endif // RIU_LANG_SEMA_PASS_H

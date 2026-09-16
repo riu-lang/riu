@@ -8,7 +8,7 @@
 
 // 借用寿命检查（spec §8.6.5 / §8.6.5.8）：块作用域栈，O(1) 局部规则；
 // 借用期内根对象不可重赋（§8.6.5.5）。
-// SemaPass::run 之后由 driver 对每个 fn 调用一次（见 runFnCheckers）。
+// SemaPass::run 之后、codegen 之前由 PassManager 调用（见 addAnalysisPasses）。
 // selfStructName 非空表示方法（注册 `$` 作为有效根对象名）。
 void checkBorrows(FnNode* fn, const std::string& selfStructName = "");
 

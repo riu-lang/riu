@@ -21,8 +21,8 @@
 #include "ast/node/type_node.h"
 #include "compiler_runtime.h"
 #include "generic/generic.h"
+#include "pass/pass.h"
 #include "sema/const_eval.h"
-#include "sema/sema_pass.h"
 #include "types.h"
 #include <algorithm>
 #include <array>
@@ -57,16 +57,19 @@ Compiler::Compiler(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm:
     _typeMap.insert({"usize", llvm::Type::getIntNTy(_context, ptrSizeBits)});
 }
 
+// codegen Pass：Compiler::compile 挂到 PassManager 表尾。
+class Compiler::CodegenPass final : public Pass {
+    Compiler& _c;
+    FileNode* _file;
+
+public:
+    CodegenPass(Compiler& c, FileNode* file) : _c(c), _file(file) {}
+    [[nodiscard]] const char* name() const override { return "codegen"; }
+    void run(FileNode*, Riu*) override { _c.emitIr(_file); }
+};
+
 // ==================== 编译主入口 ====================
-// 编译一个源文件，按顺序执行:
-// 1. 编译全局常量
-// 2. 编译结构体声明
-// 3. 编译结构体实现 (方法)
-// 4. 如果是 SDK，生成运行时辅助函数
-// 5. 编译普通函数
-// 6. 生成泛型实例的方法
-// 7. 生成泛型函数实例
-// 8. 如果不是 SDK 且有 main 函数，生成启动代码
+// parse/build 不进表。表：Sema → fn checkers → codegen。
 void Compiler::compile(FileNode* file) {
     DEBUG_LOG("=== Starting compilation ===");
     DEBUG_LOG_VAL("  isSdk", _isSdk);
@@ -77,14 +80,13 @@ void Compiler::compile(FileNode* file) {
         _riu->validateSpecImpls();
     }
 
-    // 透明类型别名的校验 + 符号表归一化由 SemaPass::run 一次完成
+    PassManager pm;
+    addAnalysisPasses(pm);
+    pm.addPass(std::make_unique<CodegenPass>(*this, file));
+    pm.run(_file, _riu);
+}
 
-    // Sema/Codegen 拆分：visitExpr 写 resolvedType；3.3+ 按子系统迁 throw。
-    DEBUG_LOG("Running SemaPass...");
-    SemaPass(_file, _riu).run();
-    // borrow / const-mut / #NoReturn：Sema 之后、codegen 之前（riu-check 同一点）。
-    runFnCheckers(_file);
-
+void Compiler::emitIr(FileNode* file) {
     // DRAFT-const-eval Phase 5: 全局常量初始化器可含 struct 字面量,
     // 须先 compileStructDecls 让 LLVM 结构体类型可用.
     DEBUG_LOG("Compiling struct declarations...");

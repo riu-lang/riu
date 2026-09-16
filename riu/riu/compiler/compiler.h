@@ -554,6 +554,10 @@ private:
     llvm::Value* compileTestAssertFalse(ExprCallNode* callNode, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes);
     llvm::Value* compileTestFail(ExprCallNode* callNode, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes);
 
+    // codegen Pass：分析表跑完后发 LLVM IR（原 Compiler::compile 后半）。
+    class CodegenPass;
+    void emitIr(FileNode* file);
+
     // 4.3：AstVisitor。表达式写 _compileExprResult；语句转发 compile*Statement。
 public:
     void visitCall(ExprCallNode&) override;
