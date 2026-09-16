@@ -2012,43 +2012,51 @@ void Compiler::compileStaticFieldSetStatement(StatementStaticFieldSetNode* node)
 // ==================== 语句分发 ====================
 
 // 编译语句的主入口
-// 根据语句类型分发到对应的编译函数
+// 4.3：accept 分派；漏 override 编不过。
 void Compiler::compileStatement(StatementNode* node) {
     // Phase 8d.1: 入口 push 临时帧；分发完成后 pop+release 未消费的 fresh RC 句柄
     pushTempFrame();
-
-    if (auto retNode = dynamic_cast<StatementRetNode*>(node)) {
-        compileRetStatement(retNode);
-    } else if (auto retVoidNode = dynamic_cast<StatementRetVoidNode*>(node)) {
-        compileRetVoidStatement(retVoidNode);
-    } else if (auto declareNode = dynamic_cast<StatementDeclareNode*>(node)) {
-        compileDeclareStatement(declareNode);
-    } else if (auto declareAssignTupleNode = dynamic_cast<StatementDeclareAssignTupleNode*>(node)) {
-        compileDeclareAssignTupleStatement(declareAssignTupleNode);
-    } else if (auto declareAssignNode = dynamic_cast<StatementDeclareAssignNode*>(node)) {
-        compileDeclareAssignStatement(declareAssignNode);
-    } else if (auto assignNode = dynamic_cast<StatementAssignNode*>(node)) {
-        compileAssignStatement(assignNode);
-    } else if (auto exprNode = dynamic_cast<StatementExprNode*>(node)) {
-        // 表达式语句: 编译表达式并丢弃结果
-        DEBUG_LOG("  Statement: Expression");
-        compileExpr(exprNode->expr());
-    } else if (auto loopNode = dynamic_cast<StatementLoopNode*>(node)) {
-        compileLoopStatement(loopNode);
-    } else if (auto forInNode = dynamic_cast<StatementForInNode*>(node)) {
-        compileForInStatement(forInNode);
-    } else if (auto breakNode = dynamic_cast<StatementBreakNode*>(node)) {
-        compileBreakStatement(breakNode);
-    } else if (auto continueNode = dynamic_cast<StatementContinueNode*>(node)) {
-        compileContinueStatement(continueNode);
-    } else if (auto setNode = dynamic_cast<StatementSetNode*>(node)) {
-        compileArraySetStatement(setNode);
-    } else if (auto staticFieldSetNode = dynamic_cast<StatementStaticFieldSetNode*>(node)) {
-        compileStaticFieldSetStatement(staticFieldSetNode);
-    } else {
-        popAndReleaseTempFrame();
-        throwSemaGap(node->getLineNumber(), node->getColumn());
-    }
-
+    node->accept(*this);
     popAndReleaseTempFrame();
+}
+
+void Compiler::visitExprStmt(StatementExprNode& node) {
+    DEBUG_LOG("  Statement: Expression");
+    compileExpr(node.expr());
+}
+void Compiler::visitRet(StatementRetNode& node) {
+    compileRetStatement(&node);
+}
+void Compiler::visitRetVoid(StatementRetVoidNode& node) {
+    compileRetVoidStatement(&node);
+}
+void Compiler::visitDeclare(StatementDeclareNode& node) {
+    compileDeclareStatement(&node);
+}
+void Compiler::visitDeclareAssign(StatementDeclareAssignNode& node) {
+    compileDeclareAssignStatement(&node);
+}
+void Compiler::visitDeclareAssignTuple(StatementDeclareAssignTupleNode& node) {
+    compileDeclareAssignTupleStatement(&node);
+}
+void Compiler::visitAssign(StatementAssignNode& node) {
+    compileAssignStatement(&node);
+}
+void Compiler::visitLoop(StatementLoopNode& node) {
+    compileLoopStatement(&node);
+}
+void Compiler::visitBreak(StatementBreakNode& node) {
+    compileBreakStatement(&node);
+}
+void Compiler::visitContinue(StatementContinueNode& node) {
+    compileContinueStatement(&node);
+}
+void Compiler::visitForIn(StatementForInNode& node) {
+    compileForInStatement(&node);
+}
+void Compiler::visitStaticFieldSet(StatementStaticFieldSetNode& node) {
+    compileStaticFieldSetStatement(&node);
+}
+void Compiler::visitSet(StatementSetNode& node) {
+    compileArraySetStatement(&node);
 }

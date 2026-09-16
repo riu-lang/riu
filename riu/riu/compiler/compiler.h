@@ -18,6 +18,7 @@
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 
+#include "ast/node/ast_visitor.h"
 #include "ast/node/expr_node.h"
 #include "ast/node/file_node.h"
 #include "ast/node/fn_node.h"
@@ -45,7 +46,8 @@ struct CastInfo {
     TypeInfo dstType;   // 目标类型
 };
 
-class Compiler {
+// 4.3：AstVisitor。compileExpr / compileStatement 经 accept 分派；漏 override 编不过。
+class Compiler : public AstVisitor {
     // ==================== LLVM 核心组件 ====================
     llvm::LLVMContext& _context; // LLVM 上下文，管理类型和常量
     llvm::IRBuilder<>& _builder; // IR 构建器，用于生成指令
@@ -156,6 +158,8 @@ class Compiler {
     // captures 指针：emit lambda body 时缓存"当前 lambda 函数的第 0 形参（captures Ptr）"，
     // compileLiteralExpr 命中捕获时用作 GEP base
     llvm::Value* _currentLambdaCapturesArg = nullptr;
+    // 4.3：compileExpr 经 accept 写回；嵌套 compileExpr 用栈帧保存恢复。
+    llvm::Value* _compileExprResult = nullptr;
 
     // ==================== 控制流 ====================
     // labeled break：每条记录 = (label 文本, 退出 BB, 进入 loop 前的帧深度)；空 label = 无标签 loop
@@ -253,7 +257,8 @@ private:
                                           string ownerModuleHint = {}); // ownerModuleHint：有 owner 时不再短名找错模块
 
     // ==================== 表达式编译 ====================
-    llvm::Value* compileExpr(ExprNode* node); // 编译表达式 (主入口)
+    llvm::Value* compileExpr(ExprNode* node);                   // 编译表达式 (主入口，accept 分派)
+    llvm::Value* compileStructLitExpr(ExprStructLitNode* node); // Self / TypeName { ... } 字面量
     // Phase 2.4 / 1.7：codegen 读类型的统一入口。
     // 无 subst 时优先读 Sema 槽，否则 getType()。泛型 subst 帧用 structuralType()
     // 再 applySubst，避免复用模板 AST 时槽停留在上一实例。
@@ -549,7 +554,48 @@ private:
     llvm::Value* compileTestAssertFalse(ExprCallNode* callNode, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes);
     llvm::Value* compileTestFail(ExprCallNode* callNode, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes);
 
+    // 4.3：AstVisitor。表达式写 _compileExprResult；语句转发 compile*Statement。
 public:
+    void visitCall(ExprCallNode&) override;
+    void visitLiteral(ExprLiteralNode&) override;
+    void visitAddSub(ExprAddSubNode&) override;
+    void visitMulDivMod(ExprMulDivModNode&) override;
+    void visitBinOp(ExprBinOpNode&) override;
+    void visitParen(ExprParenNode&) override;
+    void visitDot(ExprDotNode&) override;
+    void visitCompare(ExprCompareNode&) override;
+    void visitIfElse(ExprIfElseNode&) override;
+    void visitOneLineIfElse(ExprOneLineIfElseNode&) override;
+    void visitGet(ExprGetNode&) override;
+    void visitArray(ExprArrayNode&) override;
+    void visitArrayInit(ExprArrayInitNode&) override;
+    void visitGetRef(ExprGetRefNode&) override;
+    void visitUnary(ExprUnaryNode&) override;
+    void visitLambda(LambdaExprNode&) override;
+    void visitTuple(ExprTupleNode&) override;
+    void visitPathCall(ExprPathCallNode&) override;
+    void visitStructLit(ExprStructLitNode&) override;
+    void visitMatch(ExprMatchNode&) override;
+    void visitTryCatch(ExprTryCatchNode&) override;
+    void visitDynCtor(ExprDynCtorNode&) override;
+    void visitMoveAssign(ExprMoveAssignNode&) override;
+    void visitNullElse(ExprNullElseNode&) override;
+
+    void visitBlock(StatementBlockNode&) override;
+    void visitExprStmt(StatementExprNode&) override;
+    void visitRet(StatementRetNode&) override;
+    void visitRetVoid(StatementRetVoidNode&) override;
+    void visitDeclare(StatementDeclareNode&) override;
+    void visitDeclareAssign(StatementDeclareAssignNode&) override;
+    void visitDeclareAssignTuple(StatementDeclareAssignTupleNode&) override;
+    void visitAssign(StatementAssignNode&) override;
+    void visitLoop(StatementLoopNode&) override;
+    void visitBreak(StatementBreakNode&) override;
+    void visitContinue(StatementContinueNode&) override;
+    void visitForIn(StatementForInNode&) override;
+    void visitStaticFieldSet(StatementStaticFieldSetNode&) override;
+    void visitSet(StatementSetNode&) override;
+
     // ==================== 构造函数 ====================
     // @param context   LLVM 上下文
     // @param builder   IR 构建器

@@ -3,17 +3,8 @@
 
 // 表达式编译实现
 //
-// 本文件包含所有表达式类型的编译逻辑:
-// - 字面量表达式 (整数、浮点数、布尔值、字符串)
-// - 算术表达式 (加减乘除取模)
-// - 位运算表达式 (与或异或左移右移)
-// - 比较表达式 (相等、不等、大小比较)
-// - 括号表达式
-// - 函数调用表达式
-// - 成员访问表达式
-// - if-else 表达式
-// - 数组表达式
-// - 一元表达式 (取负、取反、取引用)
+// compileExpr 经 AstVisitor::accept 分派到 visitX（4.3）。
+// 本文件含 compileExpr 入口、visit* 与部分表达式 IR（字面量分发、struct lit、语句块、move-assign）。
 
 #include "analyzer/spec_impl_checker.h"
 #include "analyzer/spec_registry.h"
@@ -35,12 +26,7 @@
 // ==================== 辅助函数 ====================
 
 // Phase 2.4 Sema/Codegen 拆分：codegen 读类型的统一入口。详见 compiler.h 注释。
-// 已切换的调用点（先窄后宽）：
-//   - compileExpr 入口 dispatch 后的 recordTemp / typeNeedsDestructor 三处用例
-//     （call / array literal / enum ctor 分支）。这三个分支的 compile<Foo>Expr
-//     已按 2.2 在入口写过 resolvedType，回到主 switch 时一定可读。
-// 其余 compile<Foo>Expr 内部对 node->getType() 的现地复读保持原样，留待 Phase 3
-// 按子系统迁移到 SemaPass 时统一切换。
+// visitCall / visitArray / visitPathCall 在 accept 返回前 recordTemp，读 resolvedOrInferredType。
 TypeInfo Compiler::resolvedOrInferredType(ExprNode* node) const {
     // 泛型 AST 会被多个具体实例复用，节点上的 resolvedType 只保存最近一次
     // SemaPass 复查结果。subst 帧里始终用 structuralType() 再替换，不读槽。
@@ -195,264 +181,284 @@ llvm::Value* Compiler::createCast(llvm::Value* val, const TypeInfo& rawSrc, cons
 }
 // NOLINTEND(bugprone-branch-clone)
 
-// NOLINTBEGIN(bugprone-branch-clone)
 llvm::Value* Compiler::compileExpr(ExprNode* node) {
     auto type = node->getType();
     DEBUG_LOG_VAL("  compileExpr", "type=" << (type.empty() ? "void" : type.name));
     // Phase B：dispatch 后的 recordTemp 等读 resolvedOrInferredType；此处 type 仅 DEBUG_LOG。
     // 不能在入口对所有节点 assert resolvedType==getType：SemaPass 先写槽再跑
     // resolveFnOverload，灵活整数会被回填，槽与二次 getType 会暂时不一致。
+    // 4.3：accept 分派；漏 override 编不过。嵌套 compileExpr 保存恢复结果槽。
+    struct Restore {
+        llvm::Value*& slot;
+        llvm::Value* prev;
+        ~Restore() { slot = prev; }
+    } restore{.slot = _compileExprResult, .prev = _compileExprResult};
+    _compileExprResult = nullptr;
+    node->accept(*this);
+    return _compileExprResult;
+}
 
-    if (auto literalNode = dynamic_cast<ExprLiteralNode*>(node)) {
-        return compileLiteralExpr(literalNode);
-    } else if (auto addSubNode = dynamic_cast<ExprAddSubNode*>(node)) {
-        return compileAddSubExpr(addSubNode);
-    } else if (auto mulDivModNode = dynamic_cast<ExprMulDivModNode*>(node)) {
-        return compileMulDivModExpr(mulDivModNode);
-    } else if (auto binOpNode = dynamic_cast<ExprBinOpNode*>(node)) {
-        return compileBinOpExpr(binOpNode);
-    } else if (auto parenNode = dynamic_cast<ExprParenNode*>(node)) {
-        return compileParenExpr(parenNode);
-    } else if (auto callNode = dynamic_cast<ExprCallNode*>(node)) {
-        // Phase 8d.1: 调用结果若为 fresh RC 句柄（Rc/Array/Weak），登记到当前语句临时帧
-        auto val = compileCallExpr(callNode);
-        if (val) {
-            recordTemp(val, resolvedOrInferredType(node));
-        }
-        return val;
-    } else if (auto dotNode = dynamic_cast<ExprDotNode*>(node)) {
-        return compileDotExpr(dotNode);
-    } else if (auto compareNode = dynamic_cast<ExprCompareNode*>(node)) {
-        return compileCompareExpr(compareNode);
-    } else if (auto ifElseNode = dynamic_cast<ExprIfElseNode*>(node)) {
-        return compileIfElseExpr(ifElseNode);
-    } else if (auto oneLineIfElseNode = dynamic_cast<ExprOneLineIfElseNode*>(node)) {
-        return compileOneLineIfElseExpr(oneLineIfElseNode);
-    } else if (auto getNode = dynamic_cast<ExprGetNode*>(node)) {
-        return compileArrayGetExpr(getNode);
-    } else if (auto arrayNode = dynamic_cast<ExprArrayNode*>(node)) {
-        // Phase 8d.1: 数组字面量 _array_alloc 给 strong=1，登记为 fresh 临时
-        auto val = compileArrayLiteralExpr(arrayNode);
-        if (val) {
-            // Phase 2.4: 同上，优先读 resolvedType
-            recordTemp(val, resolvedOrInferredType(node));
-        }
-        return val;
-    } else if (auto tupleNode = dynamic_cast<ExprTupleNode*>(node)) {
-        return compileTupleExpr(tupleNode);
-    } else if (auto dynCtorNode = dynamic_cast<ExprDynCtorNode*>(node)) {
-        // Dyn<D>(x) 构造表达式（DRAFT-dyn-draft / 拟 §12.9）
-        // Phase 1c：仅 emit 占位 fat ptr { vtable=null, data=src.handle }；
-        // 真 vtable 与 dtor 路由留 Phase 3，对象安全 / E1133 类型检查留 Phase 2。
-        return compileDynCtorExpr(dynCtorNode);
-    } else if (auto structLitNode = dynamic_cast<ExprStructLitNode*>(node)) {
-        // Phase 3b 构造模型重构: `Self { .field = value ... }` codegen.
-        // 仅在 #Static fn 体内合法 (sema Phase 2d 已校验). 流程:
-        //   alloca Self -> 按 fieldIndex 依次 GEP + store -> Load 返回值.
-        // Phase 4a (BUGS #4): 句柄字段 (Rc / Array / Weak / fn-fat-ptr /
-        //   含 RC 字段的非平凡 struct) 在 store 前对非 fresh 源 retain,
-        //   与 `$.field = value` assign 路径行为对齐. fresh 源 (call/ctor/array-lit
-        //   等) 已自带 +1 所有权, 直接 move-in 不再 retain.
-        int line = structLitNode->resolveLineNumber();
-        int col = structLitNode->resolveColumn();
-        // DRAFT-const-eval Phase 5: TypeName{...} 形态从节点 structName() 取;
-        // Self{...}：泛型实例方法里 AST 记的是模板名（`Map`），LLVM 类型在
-        // `_generic.structs()` 里键为 mangled（`Map<i32,i32>`）。优先用当前单态名。
-        string structName = structLitNode->structName();
-        if (structLitNode->isSelfForm() && !_currentStructName.empty()) {
-            const auto* inst = _generic.structs().find(_currentStructName);
-            if (inst && inst->baseDecl && (structName.empty() || inst->baseDecl->name().getText() == structName)) {
-                structName = _currentStructName;
-            }
-        }
-        if (structName.empty()) {
+void Compiler::visitLiteral(ExprLiteralNode& node) {
+    _compileExprResult = compileLiteralExpr(&node);
+}
+void Compiler::visitAddSub(ExprAddSubNode& node) {
+    _compileExprResult = compileAddSubExpr(&node);
+}
+void Compiler::visitMulDivMod(ExprMulDivModNode& node) {
+    _compileExprResult = compileMulDivModExpr(&node);
+}
+void Compiler::visitBinOp(ExprBinOpNode& node) {
+    _compileExprResult = compileBinOpExpr(&node);
+}
+void Compiler::visitParen(ExprParenNode& node) {
+    _compileExprResult = compileParenExpr(&node);
+}
+void Compiler::visitCall(ExprCallNode& node) {
+    auto val = compileCallExpr(&node);
+    if (val) recordTemp(val, resolvedOrInferredType(&node));
+    _compileExprResult = val;
+}
+void Compiler::visitDot(ExprDotNode& node) {
+    _compileExprResult = compileDotExpr(&node);
+}
+void Compiler::visitCompare(ExprCompareNode& node) {
+    _compileExprResult = compileCompareExpr(&node);
+}
+void Compiler::visitIfElse(ExprIfElseNode& node) {
+    _compileExprResult = compileIfElseExpr(&node);
+}
+void Compiler::visitOneLineIfElse(ExprOneLineIfElseNode& node) {
+    _compileExprResult = compileOneLineIfElseExpr(&node);
+}
+void Compiler::visitGet(ExprGetNode& node) {
+    _compileExprResult = compileArrayGetExpr(&node);
+}
+void Compiler::visitArray(ExprArrayNode& node) {
+    auto val = compileArrayLiteralExpr(&node);
+    if (val) recordTemp(val, resolvedOrInferredType(&node));
+    _compileExprResult = val;
+}
+void Compiler::visitTuple(ExprTupleNode& node) {
+    _compileExprResult = compileTupleExpr(&node);
+}
+void Compiler::visitDynCtor(ExprDynCtorNode& node) {
+    _compileExprResult = compileDynCtorExpr(&node);
+}
+void Compiler::visitStructLit(ExprStructLitNode& node) {
+    _compileExprResult = compileStructLitExpr(&node);
+}
+void Compiler::visitPathCall(ExprPathCallNode& node) {
+    auto val = compileEnumCtorExpr(&node);
+    auto resType = resolvedOrInferredType(&node);
+    if (val && typeNeedsDestructor(resType)) recordTemp(val, resType);
+    _compileExprResult = val;
+}
+void Compiler::visitMatch(ExprMatchNode& node) {
+    _compileExprResult = compileMatchExpr(&node);
+}
+void Compiler::visitTryCatch(ExprTryCatchNode& node) {
+    _compileExprResult = compileTryCatchExpr(&node);
+}
+void Compiler::visitLambda(LambdaExprNode& node) {
+    _compileExprResult = compileLambdaExpr(&node);
+}
+void Compiler::visitGetRef(ExprGetRefNode& node) {
+    _compileExprResult = compileGetRefExpr(&node);
+}
+void Compiler::visitUnary(ExprUnaryNode& node) {
+    _compileExprResult = compileUnaryExpr(&node);
+}
+void Compiler::visitNullElse(ExprNullElseNode& node) {
+    _compileExprResult = compileNullElseExpr(&node);
+}
+void Compiler::visitMoveAssign(ExprMoveAssignNode& node) {
+    _compileExprResult = compileMoveAssignExpr(&node);
+}
+void Compiler::visitArrayInit(ExprArrayInitNode&) {
+    // 数组填充表达式需要类型注解，实际处理在 compileDeclareAssignStatement
+    _compileExprResult = nullptr;
+}
+
+// NOLINTBEGIN(bugprone-branch-clone)
+llvm::Value* Compiler::compileStructLitExpr(ExprStructLitNode* node) {
+    auto* structLitNode = node;
+    // Phase 3b 构造模型重构: `Self { .field = value ... }` codegen.
+    // 仅在 #Static fn 体内合法 (sema Phase 2d 已校验). 流程:
+    //   alloca Self -> 按 fieldIndex 依次 GEP + store -> Load 返回值.
+    // Phase 4a (BUGS #4): 句柄字段 (Rc / Array / Weak / fn-fat-ptr /
+    //   含 RC 字段的非平凡 struct) 在 store 前对非 fresh 源 retain,
+    //   与 `$.field = value` assign 路径行为对齐. fresh 源 (call/ctor/array-lit
+    //   等) 已自带 +1 所有权, 直接 move-in 不再 retain.
+    int line = structLitNode->resolveLineNumber();
+    int col = structLitNode->resolveColumn();
+    // DRAFT-const-eval Phase 5: TypeName{...} 形态从节点 structName() 取;
+    // Self{...}：泛型实例方法里 AST 记的是模板名（`Map`），LLVM 类型在
+    // `_generic.structs()` 里键为 mangled（`Map<i32,i32>`）。优先用当前单态名。
+    string structName = structLitNode->structName();
+    if (structLitNode->isSelfForm() && !_currentStructName.empty()) {
+        const auto* inst = _generic.structs().find(_currentStructName);
+        if (inst && inst->baseDecl && (structName.empty() || inst->baseDecl->name().getText() == structName)) {
             structName = _currentStructName;
         }
-        if (structName.empty()) {
-            // E3124 由 SemaPass Self/TypeName 字面量先抛。
-            throwSemaGap(line, col);
-        }
-        // Phase 6E.4-C: 泛型 struct #Static fn 体内 `Self {...}` —
-        // _currentStructName 是实例全限定名, getStructDecl 查不到; 走
-        // _generic.structs() 拿 baseDecl, llvmStructType 仍按 mangled 名解析.
-        TypeInfo litTy = typeInfoForNamedStruct(structName);
-        StructDeclNode* decl = nullptr;
-        if (!structLitNode->isSelfForm()) {
-            auto r = sema::resolveExprTypeLhs(_file, _riu, structLitNode->typePath(), line, col);
-            if (!r.type.empty()) {
-                litTy = r.type;
-                structName = r.type.name;
-            }
-            decl = r.structDecl;
-            if (!decl) decl = names().lookupStruct(litTy);
-        }
-        if (!decl) {
-            decl = names().lookupStruct(litTy);
-        }
-        if (!decl && _file) {
-            decl = _file->getStructDecl(structName);
-        }
-        if (!decl && _riu && _riu->sdkFile() && _riu->sdkFile() != _file) {
-            decl = _riu->sdkFile()->getStructDecl(structName);
-        }
-        if (!decl) {
-            if (auto* inst = _generic.structs().find(structName)) {
-                decl = inst->baseDecl;
-            }
-        }
-        if (!decl) {
-            // E3124 由 SemaPass 先抛；此处防 IR 无 decl 可 GEP。
-            throwSemaGap(line, col);
-        }
-        auto llvmStructType = getLLVMType(litTy);
-        if (!llvmStructType) {
-            throwSemaGap(line, col);
-        }
-        auto alloca = _builder.CreateAlloca(llvmStructType, nullptr, structName + ".lit");
-        // 零初始化, 与 ctor 入口保持一致, 避免遗漏字段 (实际上 sema 已强制全列)
-        auto& dl = _module->getDataLayout();
-        auto sizeBytes = dl.getTypeAllocSize(llvmStructType).getFixedValue();
-        _builder.CreateMemSetInline(alloca, llvm::MaybeAlign(1), _builder.getInt8(0), _builder.getInt64(sizeBytes));
-        std::unique_ptr<FieldInitNode> positionalInit;
-        vector<FieldInitNode*> fieldInits = structLitNode->fields();
-        if (auto* pos = structLitNode->positional()) {
-            if (decl->fields().size() != 1) {
-                throwSemaGap(line, col);
-            }
-            positionalInit = std::make_unique<FieldInitNode>(structLitNode, decl->fields()[0]->name(), pos);
-            fieldInits = {positionalInit.get()};
-        }
-        for (auto& fi : fieldInits) {
-            string fname = fi->name().getText();
-            int idx = decl->fieldIndex(fname);
-            string gepName = structName;
-            gepName += '.';
-            gepName += fname;
-            auto fieldPtr = _builder.CreateStructGEP(llvmStructType, alloca, static_cast<unsigned>(idx), gepName);
-            const auto* fdecl = decl->field(fname);
-            // Phase 6E.4-C: 泛型实例 Self {...} — 字段类型 (含 T) 透过当前
-            // SubstFrame 替换为具体类型, 让 isArrayGeneric / typeNeedsDestructor
-            // 识别本应是 Array<i32> 的字段而非 bare T.
-            const auto fieldType = fdecl ? applySubst(fdecl->getType()) : TypeInfo();
-            // Phase 4a: Array<T> 字段 + 数组字面量 RHS, 直接走 buildArrayLiteralBlock,
-            // 把字段的 element type 透传给 literal, 避免无目标类型语境下默认成定长 [N]T
-            // (与 compileDeclareAssignStatement 的 isArrayGeneric 分支对齐, BUGS #4)
-            if (fieldType.isArrayGeneric()) {
-                if (auto arrayNode = dynamic_cast<ExprArrayNode*>(fi->value())) {
-                    auto elemType = fieldType.arrayGenericElementType();
-                    if (!elemType) {
-                        throwSemaGap(line, col);
-                    }
-                    auto block = buildArrayLiteralBlock(arrayNode, *elemType);
-                    _builder.CreateStore(block, fieldPtr);
-                    continue;
-                }
-            }
-            // Phase 3d.3: Nullable<T> 字段处理
-            // 三种情况：null 字面量 / Heap<T>? move-out / T→Nullable<T> 隐式包装
-            llvm::Value* heapBdangSrcSlot = nullptr;
-            llvm::Type* heapBdangSrcTy = nullptr;
-            bool isHeapNullableField = false;
-            bool isNullableWrapDone = false;
-            if (fieldType.isNullable()) {
-                auto inner = fieldType.nullableInnerType();
-                if (inner && inner->isHeap()) {
-                    isHeapNullableField = true;
-                    tryHeapNullableLvalueSlot(fi->value(), heapBdangSrcSlot, heapBdangSrcTy);
-                }
-            }
-
-            // Phase B-1: E4031 #NoCopy 字段初始化检查已迁入 SemaPass，Compiler 端不再重复。
-
-            // Nullable<T> 字段：T → Nullable<T> 隐式包装 / null 字面量
-            // （与 compileDeclareAssignStatement 的 nullable 路径对齐）
-            if (fieldType.isNullable() && !isHeapNullableField) {
-                auto innerType = fieldType.nullableInnerType();
-                auto exprType = fi->value()->getType();
-                auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
-                auto one = llvm::ConstantInt::get(_builder.getInt32Ty(), 1);
-                auto nullableLLVMTy = getLLVMType(fieldType);
-                auto hasPtr = _builder.CreateGEP(nullableLLVMTy, fieldPtr, {zero, zero}, "nullable.has");
-                auto valuePtr = _builder.CreateGEP(nullableLLVMTy, fieldPtr, {zero, one}, "nullable.value");
-
-                if (innerType && exprType == *innerType) {
-                    // T → Nullable<T> 隐式包装：_has=true, 值写入 value 槽
-                    auto val = compileExpr(fi->value());
-                    takeOwnership(val, *innerType, fi->value());
-                    _builder.CreateStore(_builder.getInt1(true), hasPtr);
-                    _builder.CreateStore(val, valuePtr);
-                    isNullableWrapDone = true;
-                } else if (isFlexibleNullExpr(fi->value())) {
-                    // null 字面量：zero-init 已给出 _has=false + _value=zero，跳过即可
-                    isNullableWrapDone = true;
-                } else if (exprType.isNullable() && exprType == fieldType) {
-                    // 已是 Nullable<T> → 整体复制（走下方既有路径）
-                    // 不做 isNullableWrapDone，让 compileExpr + CreateStore 正常处理
-                }
-            }
-
-            if (!isNullableWrapDone) {
-                auto val = compileExpr(fi->value());
-                // Phase 4a: 句柄字段所有权转移 (与 declare-assign 路径对齐, BUGS #4)
-                //   - fresh 源 (call / ctor / array-lit): 已 +1, 直接 consume 临时帧, 不重复 retain
-                //   - 非 fresh 源 (let / 字段读取等): retain 一次, 让源句柄与字段都各持 +1
-                // Phase 3d.3: Heap<T>? 字段 + lvalue 源 = move-out, 跳过 retain.
-                if (fdecl && val && typeNeedsDestructor(fieldType)) {
-                    if (isHeapNullableField && heapBdangSrcSlot) {
-                        if (isFreshHandleExpr(fi->value())) consumeTemp(val);
-                    } else {
-                        takeOwnership(val, fieldType, fi->value());
-                    }
-                }
-                _builder.CreateStore(val, fieldPtr);
-            }
-            if (heapBdangSrcSlot && heapBdangSrcTy) {
-                auto z0 = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
-                auto z1 = llvm::ConstantInt::get(_builder.getInt32Ty(), 1);
-                auto ptrTy = llvm::PointerType::get(_context, 0);
-                auto hasField = _builder.CreateGEP(heapBdangSrcTy, heapBdangSrcSlot, {z0, z0}, "bdang.field.has");
-                auto valField = _builder.CreateGEP(heapBdangSrcTy, heapBdangSrcSlot, {z0, z1}, "bdang.field.value");
-                _builder.CreateStore(_builder.getInt1(false), hasField);
-                _builder.CreateStore(llvm::ConstantPointerNull::get(ptrTy), valField);
-            }
-        }
-        return _builder.CreateLoad(llvmStructType, alloca, structName + ".lit.load");
-    } else if (auto enumCtorNode = dynamic_cast<ExprPathCallNode*>(node)) {
-        // Phase 5: enum ctor 是 +1 fresh：构造时把实参（含 RC payload）写入 enum 槽，
-        // enum 值随后承担释放责任。仅当类型需要析构时才登记到临时帧
-        auto val = compileEnumCtorExpr(enumCtorNode);
-        // Phase 2.4: 同上，优先读 resolvedType
-        auto resType = resolvedOrInferredType(node);
-        if (val && typeNeedsDestructor(resType)) {
-            recordTemp(val, resType);
-        }
-        return val;
-    } else if (auto matchNode = dynamic_cast<ExprMatchNode*>(node)) {
-        // Phase 6: match 表达式 — switch on tag + 绑定 + arm 体
-        return compileMatchExpr(matchNode);
-    } else if (auto tryCatchNode = dynamic_cast<ExprTryCatchNode*>(node)) {
-        // Phase 10f: try-catch 表达式 — 仅占位 + 语义校验，IR 路由推 10g
-        return compileTryCatchExpr(tryCatchNode);
-    } else if (auto lambdaNode = dynamic_cast<LambdaExprNode*>(node)) {
-        // Phase 2b: lambda 字面量 → 16 字节 fat-ptr 值 { fn_ptr, captures=null }
-        return compileLambdaExpr(lambdaNode);
-    } else if (auto getRefNode = dynamic_cast<ExprGetRefNode*>(node)) {
-        return compileGetRefExpr(getRefNode);
-    } else if (auto unaryNode = dynamic_cast<ExprUnaryNode*>(node)) {
-        return compileUnaryExpr(unaryNode);
-    } else if (auto nullElseNode = dynamic_cast<ExprNullElseNode*>(node)) {
-        return compileNullElseExpr(nullElseNode);
-    } else if (auto moveAssignNode = dynamic_cast<ExprMoveAssignNode*>(node)) {
-        return compileMoveAssignExpr(moveAssignNode);
-    } else if (auto arrayInitNode = dynamic_cast<ExprArrayInitNode*>(node)) {
-        // 数组填充表达式需要类型注解，这里返回 nullptr
-        // 实际处理在 compileDeclareAssignStatement 中
-        return nullptr;
-    } else {
-        throw RiuError(node->getLineNumber(), node->getColumn(), ErrorCode::E3091);
     }
+    if (structName.empty()) {
+        structName = _currentStructName;
+    }
+    if (structName.empty()) {
+        // E3124 由 SemaPass Self/TypeName 字面量先抛。
+        throwSemaGap(line, col);
+    }
+    // Phase 6E.4-C: 泛型 struct #Static fn 体内 `Self {...}` —
+    // _currentStructName 是实例全限定名, getStructDecl 查不到; 走
+    // _generic.structs() 拿 baseDecl, llvmStructType 仍按 mangled 名解析.
+    TypeInfo litTy = typeInfoForNamedStruct(structName);
+    StructDeclNode* decl = nullptr;
+    if (!structLitNode->isSelfForm()) {
+        auto r = sema::resolveExprTypeLhs(_file, _riu, structLitNode->typePath(), line, col);
+        if (!r.type.empty()) {
+            litTy = r.type;
+            structName = r.type.name;
+        }
+        decl = r.structDecl;
+        if (!decl) decl = names().lookupStruct(litTy);
+    }
+    if (!decl) {
+        decl = names().lookupStruct(litTy);
+    }
+    if (!decl && _file) {
+        decl = _file->getStructDecl(structName);
+    }
+    if (!decl && _riu && _riu->sdkFile() && _riu->sdkFile() != _file) {
+        decl = _riu->sdkFile()->getStructDecl(structName);
+    }
+    if (!decl) {
+        if (auto* inst = _generic.structs().find(structName)) {
+            decl = inst->baseDecl;
+        }
+    }
+    if (!decl) {
+        // E3124 由 SemaPass 先抛；此处防 IR 无 decl 可 GEP。
+        throwSemaGap(line, col);
+    }
+    auto llvmStructType = getLLVMType(litTy);
+    if (!llvmStructType) {
+        throwSemaGap(line, col);
+    }
+    auto alloca = _builder.CreateAlloca(llvmStructType, nullptr, structName + ".lit");
+    // 零初始化, 与 ctor 入口保持一致, 避免遗漏字段 (实际上 sema 已强制全列)
+    auto& dl = _module->getDataLayout();
+    auto sizeBytes = dl.getTypeAllocSize(llvmStructType).getFixedValue();
+    _builder.CreateMemSetInline(alloca, llvm::MaybeAlign(1), _builder.getInt8(0), _builder.getInt64(sizeBytes));
+    std::unique_ptr<FieldInitNode> positionalInit;
+    vector<FieldInitNode*> fieldInits = structLitNode->fields();
+    if (auto* pos = structLitNode->positional()) {
+        if (decl->fields().size() != 1) {
+            throwSemaGap(line, col);
+        }
+        positionalInit = std::make_unique<FieldInitNode>(structLitNode, decl->fields()[0]->name(), pos);
+        fieldInits = {positionalInit.get()};
+    }
+    for (auto& fi : fieldInits) {
+        string fname = fi->name().getText();
+        int idx = decl->fieldIndex(fname);
+        string gepName = structName;
+        gepName += '.';
+        gepName += fname;
+        auto fieldPtr = _builder.CreateStructGEP(llvmStructType, alloca, static_cast<unsigned>(idx), gepName);
+        const auto* fdecl = decl->field(fname);
+        // Phase 6E.4-C: 泛型实例 Self {...} — 字段类型 (含 T) 透过当前
+        // SubstFrame 替换为具体类型, 让 isArrayGeneric / typeNeedsDestructor
+        // 识别本应是 Array<i32> 的字段而非 bare T.
+        const auto fieldType = fdecl ? applySubst(fdecl->getType()) : TypeInfo();
+        // Phase 4a: Array<T> 字段 + 数组字面量 RHS, 直接走 buildArrayLiteralBlock,
+        // 把字段的 element type 透传给 literal, 避免无目标类型语境下默认成定长 [N]T
+        // (与 compileDeclareAssignStatement 的 isArrayGeneric 分支对齐, BUGS #4)
+        if (fieldType.isArrayGeneric()) {
+            if (auto arrayNode = dynamic_cast<ExprArrayNode*>(fi->value())) {
+                auto elemType = fieldType.arrayGenericElementType();
+                if (!elemType) {
+                    throwSemaGap(line, col);
+                }
+                auto block = buildArrayLiteralBlock(arrayNode, *elemType);
+                _builder.CreateStore(block, fieldPtr);
+                continue;
+            }
+        }
+        // Phase 3d.3: Nullable<T> 字段处理
+        // 三种情况：null 字面量 / Heap<T>? move-out / T→Nullable<T> 隐式包装
+        llvm::Value* heapBdangSrcSlot = nullptr;
+        llvm::Type* heapBdangSrcTy = nullptr;
+        bool isHeapNullableField = false;
+        bool isNullableWrapDone = false;
+        if (fieldType.isNullable()) {
+            auto inner = fieldType.nullableInnerType();
+            if (inner && inner->isHeap()) {
+                isHeapNullableField = true;
+                tryHeapNullableLvalueSlot(fi->value(), heapBdangSrcSlot, heapBdangSrcTy);
+            }
+        }
+
+        // Phase B-1: E4031 #NoCopy 字段初始化检查已迁入 SemaPass，Compiler 端不再重复。
+
+        // Nullable<T> 字段：T → Nullable<T> 隐式包装 / null 字面量
+        // （与 compileDeclareAssignStatement 的 nullable 路径对齐）
+        if (fieldType.isNullable() && !isHeapNullableField) {
+            auto innerType = fieldType.nullableInnerType();
+            auto exprType = fi->value()->getType();
+            auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+            auto one = llvm::ConstantInt::get(_builder.getInt32Ty(), 1);
+            auto nullableLLVMTy = getLLVMType(fieldType);
+            auto hasPtr = _builder.CreateGEP(nullableLLVMTy, fieldPtr, {zero, zero}, "nullable.has");
+            auto valuePtr = _builder.CreateGEP(nullableLLVMTy, fieldPtr, {zero, one}, "nullable.value");
+
+            if (innerType && exprType == *innerType) {
+                // T → Nullable<T> 隐式包装：_has=true, 值写入 value 槽
+                auto val = compileExpr(fi->value());
+                takeOwnership(val, *innerType, fi->value());
+                _builder.CreateStore(_builder.getInt1(true), hasPtr);
+                _builder.CreateStore(val, valuePtr);
+                isNullableWrapDone = true;
+            } else if (isFlexibleNullExpr(fi->value())) {
+                // null 字面量：zero-init 已给出 _has=false + _value=zero，跳过即可
+                isNullableWrapDone = true;
+            } else if (exprType.isNullable() && exprType == fieldType) {
+                // 已是 Nullable<T> → 整体复制（走下方既有路径）
+                // 不做 isNullableWrapDone，让 compileExpr + CreateStore 正常处理
+            }
+        }
+
+        if (!isNullableWrapDone) {
+            auto val = compileExpr(fi->value());
+            // Phase 4a: 句柄字段所有权转移 (与 declare-assign 路径对齐, BUGS #4)
+            //   - fresh 源 (call / ctor / array-lit): 已 +1, 直接 consume 临时帧, 不重复 retain
+            //   - 非 fresh 源 (let / 字段读取等): retain 一次, 让源句柄与字段都各持 +1
+            // Phase 3d.3: Heap<T>? 字段 + lvalue 源 = move-out, 跳过 retain.
+            if (fdecl && val && typeNeedsDestructor(fieldType)) {
+                if (isHeapNullableField && heapBdangSrcSlot) {
+                    if (isFreshHandleExpr(fi->value())) consumeTemp(val);
+                } else {
+                    takeOwnership(val, fieldType, fi->value());
+                }
+            }
+            _builder.CreateStore(val, fieldPtr);
+        }
+        if (heapBdangSrcSlot && heapBdangSrcTy) {
+            auto z0 = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+            auto z1 = llvm::ConstantInt::get(_builder.getInt32Ty(), 1);
+            auto ptrTy = llvm::PointerType::get(_context, 0);
+            auto hasField = _builder.CreateGEP(heapBdangSrcTy, heapBdangSrcSlot, {z0, z0}, "bdang.field.has");
+            auto valField = _builder.CreateGEP(heapBdangSrcTy, heapBdangSrcSlot, {z0, z1}, "bdang.field.value");
+            _builder.CreateStore(_builder.getInt1(false), hasField);
+            _builder.CreateStore(llvm::ConstantPointerNull::get(ptrTy), valField);
+        }
+    }
+    return _builder.CreateLoad(llvmStructType, alloca, structName + ".lit.load");
 }
 // NOLINTEND(bugprone-branch-clone)
+
+void Compiler::visitBlock(StatementBlockNode& node) {
+    compileStatementBlock(&node);
+}
 
 void Compiler::compileStatementBlock(StatementBlockNode* block) {
     DEBUG_LOG_VAL("  compileStatementBlock", block->statements().size()
