@@ -4,11 +4,14 @@
 #ifndef RIU_LANG_SEMA_PASS_H
 #define RIU_LANG_SEMA_PASS_H
 
+#include "ast/node/ast_visitor.h"
 #include "ast/node/file_node.h"
 #include "generic/generic.h"
 #include "sema/name_resolver.h"
 
+#include <functional>
 #include <map>
+#include <optional>
 #include <vector>
 
 class ExprNode;
@@ -29,7 +32,8 @@ class Riu;
 //
 // 由 `riu_frontend` 静态库提供, 不依赖 LLVM, 给 `riu-lsp` / `riu-check` 共用。
 // 实现按文件拆：sema_pass.cpp（入口）/ sema_stmt.cpp / sema_expr.cpp / sema_check.cpp。
-class SemaPass {
+// 4.2：SemaPass 是 AstVisitor，visitExpr / visitStmt 经 accept 分派；漏 override 编不过。
+class SemaPass : public AstVisitor {
 public:
     // riu：前端环境句柄，提供 sdkFile / modulePath / specRegistry / specImplChecker
     // 等长期生存的服务。单文件 / SDK 自构建场景可传 nullptr（_sdkFile 与 _sourcePath
@@ -117,6 +121,66 @@ private:
     // 非空时数组字面量按靶向类型递归检查（E3009 / E3012），不再走无上下文的 getType。
     // callCallee：当前节点是调用的 callee（`x.foo()` 的 Dot），读路径字段检查跳过。
     void visitExpr(ExprNode* expr, const TypeInfo* expected = nullptr, bool callCallee = false);
+
+    // visitExpr 的靶向类型 / callee 标记 / 方法点 E3095。嵌套 visitExpr 用帧保存恢复。
+    const TypeInfo* _visitExpected = nullptr;
+    bool _visitCallCallee = false;
+    std::optional<RiuError> _deferredMethodE3095;
+    class ExprVisitFrame {
+        SemaPass& p;
+        const TypeInfo* prevExpected;
+        bool prevCallCallee;
+        std::optional<RiuError> prevDeferred;
+
+    public:
+        ExprVisitFrame(SemaPass& pass, const TypeInfo* expected, bool callCallee);
+        ~ExprVisitFrame();
+        ExprVisitFrame(const ExprVisitFrame&) = delete;
+        ExprVisitFrame& operator=(const ExprVisitFrame&) = delete;
+    };
+    void writeResolved(ExprNode* n, const std::function<TypeInfo()>& compute);
+    void finishCtrlResolved(ExprNode* n, const std::function<TypeInfo()>& compute);
+
+public:
+    void visitCall(ExprCallNode&) override;
+    void visitLiteral(ExprLiteralNode&) override;
+    void visitAddSub(ExprAddSubNode&) override;
+    void visitMulDivMod(ExprMulDivModNode&) override;
+    void visitBinOp(ExprBinOpNode&) override;
+    void visitParen(ExprParenNode&) override;
+    void visitDot(ExprDotNode&) override;
+    void visitCompare(ExprCompareNode&) override;
+    void visitIfElse(ExprIfElseNode&) override;
+    void visitOneLineIfElse(ExprOneLineIfElseNode&) override;
+    void visitGet(ExprGetNode&) override;
+    void visitArray(ExprArrayNode&) override;
+    void visitArrayInit(ExprArrayInitNode&) override;
+    void visitGetRef(ExprGetRefNode&) override;
+    void visitUnary(ExprUnaryNode&) override;
+    void visitLambda(LambdaExprNode&) override;
+    void visitTuple(ExprTupleNode&) override;
+    void visitPathCall(ExprPathCallNode&) override;
+    void visitStructLit(ExprStructLitNode&) override;
+    void visitMatch(ExprMatchNode&) override;
+    void visitTryCatch(ExprTryCatchNode&) override;
+    void visitDynCtor(ExprDynCtorNode&) override;
+    void visitMoveAssign(ExprMoveAssignNode&) override;
+    void visitNullElse(ExprNullElseNode&) override;
+
+    void visitBlock(StatementBlockNode&) override;
+    void visitExprStmt(StatementExprNode&) override;
+    void visitRet(StatementRetNode&) override;
+    void visitRetVoid(StatementRetVoidNode&) override;
+    void visitDeclare(StatementDeclareNode&) override;
+    void visitDeclareAssign(StatementDeclareAssignNode&) override;
+    void visitDeclareAssignTuple(StatementDeclareAssignTupleNode&) override;
+    void visitAssign(StatementAssignNode&) override;
+    void visitLoop(StatementLoopNode&) override;
+    void visitBreak(StatementBreakNode&) override;
+    void visitContinue(StatementContinueNode&) override;
+    void visitForIn(StatementForInNode&) override;
+    void visitStaticFieldSet(StatementStaticFieldSetNode&) override;
+    void visitSet(StatementSetNode&) override;
     // 实参列表：expected 非空且下标有具体类型时带靶向类型下钻。
     void visitExprList(const vector<ExprNode*>& args, const vector<TypeInfo>* expected = nullptr);
     // T& 捕获 lambda 不可写入变量 / 字段 / 容器 / 返回值（E4022）。须在 visitExpr 该节点之后调用。

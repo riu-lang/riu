@@ -147,7 +147,7 @@ flowchart TB
 - `riu/ast/` 禁止 `#include "sema/..."` / `"analyzer/..."` / `"tools/..."`（frontend 路径）。
 - `riu/frontend/sema/` 禁止 `#include "llvm/..."`，禁止访问 `IRBuilder` / `_module`。
 - 让 sema 接管某错误码 → **默认即由 SemaPass 重抛**。若必须暂留 Compiler（假阳性），加入 `kDeferredCodes`，禁止静默吞。
-- 新增 AST / 表达式类 → 在 `SemaPass::visitExpr` 加 dispatch 分支（即使是空占位），否则 sema 静默 skip 整个子树。
+- 新增 AST / 表达式类 → `AstVisitor` 加 `visitX = 0`，`SemaPass` override；漏 override 编不过，不再静默 skip。
 - sema 接管后 Compiler 端原 inline throw / validate 调用直接删除（v0.16 收尾）。
 
 ---
