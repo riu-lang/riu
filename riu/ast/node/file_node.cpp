@@ -151,6 +151,9 @@ FileNode::FileNode(string moduleName) : ScopeNode(nullptr), _moduleName(std::mov
 
 void FileNode::addFunction(FnNode* function) {
     _functions.push_back(function);
+    if (!function || !function->header()) return;
+    string n = function->header()->name().getText();
+    _fnsByName[n].push_back(function);
 }
 
 void FileNode::syncFnSymbolsFromAst() {
@@ -215,14 +218,18 @@ void FileNode::syncFnSymbolsFromAst() {
 
 void FileNode::addStructDecl(StructDeclNode* structDecl) {
     _structDecls.push_back(structDecl);
-    SymbolInfo sym(SymbolKind::Struct, structDecl->name().getText(),
-                   TypeInfo(structDecl->name().getText(), _moduleName));
+    string n = structDecl->name().getText();
+    if (!_structMap.contains(n)) _structMap[n] = structDecl;
+    SymbolInfo sym(SymbolKind::Struct, n, TypeInfo(n, _moduleName));
     sym.moduleName = _moduleName;
-    registerSymbol(structDecl->name().getText(), sym);
+    registerSymbol(n, std::move(sym));
 }
 
 void FileNode::addStructImpl(StructImplNode* structImpl) {
     _structImpls.push_back(structImpl);
+    if (!structImpl) return;
+    const string& n = structImpl->structName();
+    if (!_implMap.contains(n)) _implMap[n] = structImpl;
 }
 
 void FileNode::addSpecDecl(SpecDeclNode* specDecl) {
@@ -313,35 +320,39 @@ const vector<FnNode*>& FileNode::getFunctions() const {
     return _functions;
 }
 
+namespace {
+StructDeclNode* structFromMap(const map<string, StructDeclNode*>& m, const string& name, bool includeBuiltin) {
+    auto it = m.find(name);
+    if (it == m.end()) return nullptr;
+    StructDeclNode* decl = it->second;
+    // `#Builtin` 声明仅作语言层占位（Rc/Ref/Ptr/Array 及 i8..f64）。
+    // 默认过滤；Sema arity 等要看见占位时传 includeBuiltin=true。
+    if (!includeBuiltin && decl && decl->hasAnno("Builtin")) return nullptr;
+    return decl;
+}
+
+StructImplNode* implFromMap(const map<string, StructImplNode*>& m, const string& name) {
+    auto it = m.find(name);
+    return it != m.end() ? it->second : nullptr;
+}
+
+FnNode* firstFnByName(const map<string, vector<FnNode*>>& m, const string& name) {
+    auto it = m.find(name);
+    if (it == m.end() || it->second.empty()) return nullptr;
+    return it->second[0];
+}
+} // namespace
+
 StructDeclNode* FileNode::getStructDecl(const string& name, bool includeBuiltin) const {
-    // `#Builtin` 声明仅作语言层占位（如 Rc/Ref/Ptr/Array 及 i8..f64），
-    // 它们的布局与方法由编译器合成，对用户结构体逻辑不可见。默认过滤掉它们 ——
-    // Compiler 端用户结构体查找不应命中。SemaPass 走 arity / 形态校验时需要看到
-    // 这些占位 (否则 Rc/Ref 查不到), 显式传 includeBuiltin=true。
-    auto matches = [&](StructDeclNode* decl) {
-        if (decl->name().getText() != name) return false;
-        return includeBuiltin || !decl->hasAnno("Builtin");
-    };
-    for (auto& decl : _structDecls) {
-        if (matches(decl)) return decl;
-    }
+    if (auto* d = structFromMap(_structMap, name, includeBuiltin)) return d;
     for (auto* imp : _wildcardImports) {
-        for (auto& decl : imp->_structDecls) {
-            if (matches(decl)) return decl;
-        }
+        if (auto* d = structFromMap(imp->_structMap, name, includeBuiltin)) return d;
     }
     return nullptr;
 }
 
 StructDeclNode* FileNode::localStructDecl(const string& name, bool includeBuiltin) const {
-    auto matches = [&](StructDeclNode* decl) {
-        if (decl->name().getText() != name) return false;
-        return includeBuiltin || !decl->hasAnno("Builtin");
-    };
-    for (auto& decl : _structDecls) {
-        if (matches(decl)) return decl;
-    }
-    return nullptr;
+    return structFromMap(_structMap, name, includeBuiltin);
 }
 
 EnumDeclNode* FileNode::localEnumDecl(const string& name) const {
@@ -355,33 +366,19 @@ AliasDeclNode* FileNode::localAliasDecl(const string& name) const {
 }
 
 StructImplNode* FileNode::getStructImpl(const string& name) const {
-    for (auto& impl : _structImpls) {
-        if (impl->structName() == name) {
-            return impl;
-        }
-    }
+    if (auto* impl = implFromMap(_implMap, name)) return impl;
     for (auto* imp : _wildcardImports) {
-        for (auto& impl : imp->_structImpls) {
-            if (impl->structName() == name) return impl;
-        }
+        if (auto* impl = implFromMap(imp->_implMap, name)) return impl;
     }
     return nullptr;
 }
 
 StructImplNode* FileNode::localStructImpl(const string& name) const {
-    for (auto& impl : _structImpls) {
-        if (impl->structName() == name) return impl;
-    }
-    return nullptr;
+    return implFromMap(_implMap, name);
 }
 
 FnNode* FileNode::getFunction(const string& name) const {
-    for (auto& fn : _functions) {
-        if (fn->header()->name().getText() == name) {
-            return fn;
-        }
-    }
-    return nullptr;
+    return firstFnByName(_fnsByName, name);
 }
 
 // 递归沿 parentScope 链（仅 FileNode 层）查找函数。SDK 默认挂为 parent scope，
@@ -403,36 +400,40 @@ FileNode* parentFileNode(const FileNode* f) {
 bool isOwnModuleName(const FileNode* file, const string& moduleName) {
     return file && moduleName == file->moduleName();
 }
+
+FnNode* firstGenericFn(const map<string, vector<FnNode*>>& m, const string& name) {
+    auto it = m.find(name);
+    if (it == m.end()) return nullptr;
+    for (auto* fn : it->second) {
+        if (fn && fn->header() && fn->header()->isGeneric()) return fn;
+    }
+    return nullptr;
+}
+
+void collectGenericFnsIn(const map<string, vector<FnNode*>>& m, FileNode* owner, const string& name,
+                         vector<pair<FnNode*, FileNode*>>& out) {
+    auto it = m.find(name);
+    if (it == m.end()) return;
+    for (auto* fn : it->second) {
+        if (fn && fn->header() && fn->header()->isGeneric()) {
+            out.emplace_back(fn, owner);
+        }
+    }
+}
 } // namespace
 
 // 同 getFunction，同时返回所属 FileNode；搜索范围：本地 + wildcardImports + parent scope 链
 pair<FnNode*, FileNode*> FileNode::getFunctionWithOwner(const string& name) const {
-    for (auto& fn : _functions) {
-        if (fn->header()->name().getText() == name) {
-            return {fn, const_cast<FileNode*>(this)};
-        }
-    }
+    if (auto* fn = firstFnByName(_fnsByName, name)) return {fn, const_cast<FileNode*>(this)};
     for (auto* imp : _wildcardImports) {
-        for (auto& fn : imp->_functions) {
-            if (fn->header()->name().getText() == name) {
-                return {fn, imp};
-            }
-        }
+        if (auto* fn = firstFnByName(imp->_fnsByName, name)) return {fn, imp};
     }
     // 沿 parent scope 链搜索（含各 parent 的 wildcardImports——SDK 平铺文件拆分后，
     // _sdkFile 空壳不再直接持有函数，泛型函数定义在各子文件的 wildcardImport 里）
     for (auto* pf = parentFileNode(this); pf; pf = parentFileNode(pf)) {
-        for (auto& fn : pf->_functions) {
-            if (fn->header()->name().getText() == name) {
-                return {fn, pf};
-            }
-        }
+        if (auto* fn = firstFnByName(pf->_fnsByName, name)) return {fn, pf};
         for (auto* imp : pf->_wildcardImports) {
-            for (auto& fn : imp->_functions) {
-                if (fn->header()->name().getText() == name) {
-                    return {fn, imp};
-                }
-            }
+            if (auto* fn = firstFnByName(imp->_fnsByName, name)) return {fn, imp};
         }
     }
     return {nullptr, nullptr};
@@ -442,31 +443,14 @@ pair<FnNode*, FileNode*> FileNode::getFunctionWithOwner(const string& name) cons
 // （例：`assert_eq:<T>` 与 `assert_eq(String&, String&)` 共存时）
 // 搜索范围：本地 + wildcardImports + parent scope 链（含各 parent 的 wildcardImports）
 pair<FnNode*, FileNode*> FileNode::getGenericFunction(const string& name) const {
-    for (auto& fn : _functions) {
-        if (fn->header()->name().getText() == name && fn->header()->isGeneric()) {
-            return {fn, const_cast<FileNode*>(this)};
-        }
-    }
+    if (auto* fn = firstGenericFn(_fnsByName, name)) return {fn, const_cast<FileNode*>(this)};
     for (auto* imp : _wildcardImports) {
-        for (auto& fn : imp->_functions) {
-            if (fn->header()->name().getText() == name && fn->header()->isGeneric()) {
-                return {fn, imp};
-            }
-        }
+        if (auto* fn = firstGenericFn(imp->_fnsByName, name)) return {fn, imp};
     }
-    // 沿 parent scope 链搜索（含各 parent 的 wildcardImports）
     for (auto* pf = parentFileNode(this); pf; pf = parentFileNode(pf)) {
-        for (auto& fn : pf->_functions) {
-            if (fn->header()->name().getText() == name && fn->header()->isGeneric()) {
-                return {fn, pf};
-            }
-        }
+        if (auto* fn = firstGenericFn(pf->_fnsByName, name)) return {fn, pf};
         for (auto* imp : pf->_wildcardImports) {
-            for (auto& fn : imp->_functions) {
-                if (fn->header()->name().getText() == name && fn->header()->isGeneric()) {
-                    return {fn, imp};
-                }
-            }
+            if (auto* fn = firstGenericFn(imp->_fnsByName, name)) return {fn, imp};
         }
     }
     return {nullptr, nullptr};
@@ -476,34 +460,18 @@ pair<FnNode*, FileNode*> FileNode::getGenericFunction(const string& name) const 
 // 搜索范围：本地 + wildcardImports + parent scope 链（含各 parent 的 wildcardImports）
 void FileNode::collectGenericFunctions(const string& name, vector<pair<FnNode*, FileNode*>>& out,
                                        FileNode* owner) const {
-    for (auto& fn : _functions) {
-        if (fn->header()->name().getText() == name && fn->header()->isGeneric()) {
-            out.emplace_back(fn, owner);
-        }
-    }
+    collectGenericFnsIn(_fnsByName, owner, name, out);
     for (auto* imp : _wildcardImports) {
         if (imp == owner) continue; // 避免重复收集（调用方可能已用本地 owner 收集过该 imp）
-        for (auto& fn : imp->_functions) {
-            if (fn->header()->name().getText() == name && fn->header()->isGeneric()) {
-                out.emplace_back(fn, imp);
-            }
-        }
+        collectGenericFnsIn(imp->_fnsByName, imp, name, out);
     }
     // 沿 parent scope 链搜索（含各 parent 的 wildcardImports）
     for (auto* pf = parentFileNode(this); pf; pf = parentFileNode(pf)) {
         if (pf == owner) continue;
-        for (auto& fn : pf->_functions) {
-            if (fn->header()->name().getText() == name && fn->header()->isGeneric()) {
-                out.emplace_back(fn, pf);
-            }
-        }
+        collectGenericFnsIn(pf->_fnsByName, pf, name, out);
         for (auto* imp : pf->_wildcardImports) {
             if (imp == owner) continue;
-            for (auto& fn : imp->_functions) {
-                if (fn->header()->name().getText() == name && fn->header()->isGeneric()) {
-                    out.emplace_back(fn, imp);
-                }
-            }
+            collectGenericFnsIn(imp->_fnsByName, imp, name, out);
         }
     }
 }
@@ -631,9 +599,7 @@ void FileNode::addWildcardImport(FileNode* file) {
 }
 
 FileNode* FileNode::getStructOwner(const string& name) {
-    for (auto& decl : _structDecls) {
-        if (decl->name().getText() == name) return this;
-    }
+    if (_structMap.contains(name)) return this;
     if (auto* named = namedTypeImports(name)) {
         for (auto* o : *named) {
             if (o && (o->localStructDecl(name) || o->localStructImpl(name))) return o;

@@ -548,14 +548,17 @@ void validateGenericNamedTypeArity(const TypeInfo& raw, const NameResolver& nr, 
         const bool currentInst =
             t0.isSelf() || (!currentStructName.empty() && t0.name == currentStructName && t0.genericArgs.empty());
         if (!currentInst && !t0.isRef() && !t0.isFn() && !t0.isTuple() && !t0.name.empty()) {
-            if (auto* sd = nr.lookupStruct(t0, true)) {
-                size_t want = sd->typeParams().size();
-                size_t got = t0.genericArgs.size();
-                if (want > 0 && want != got) throwGenericNamedArity(t0.name, want, got, line, col);
-            } else if (auto* ed = nr.lookupEnum(t0)) {
-                size_t want = ed->typeParams().size();
-                size_t got = t0.genericArgs.size();
-                if (want > 0 && want != got) throwGenericNamedArity(t0.name, want, got, line, col);
+            // 基本类型无 typeParams；lookupStruct 以前会线性扫全文件 struct。
+            if (!isBuiltinType(t0.name)) {
+                if (auto* sd = nr.lookupStruct(t0, true)) {
+                    size_t want = sd->typeParams().size();
+                    size_t got = t0.genericArgs.size();
+                    if (want > 0 && want != got) throwGenericNamedArity(t0.name, want, got, line, col);
+                } else if (auto* ed = nr.lookupEnum(t0)) {
+                    size_t want = ed->typeParams().size();
+                    size_t got = t0.genericArgs.size();
+                    if (want > 0 && want != got) throwGenericNamedArity(t0.name, want, got, line, col);
+                }
             }
         }
 
