@@ -1,0 +1,10 @@
+fn f() {
+  let v = a
+    .b()
+    .c(1, 2)
+    .d
+  let x = builder
+    .with_a(1)
+    .with_b(2)
+    .build()
+}

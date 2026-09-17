@@ -394,6 +394,22 @@ bool Parser::aheadIsTrailingLambda() {
     return la(i).kind == Kind::ParStart;
 }
 
+bool Parser::aheadIsLineDotContinue() {
+    int i = 1;
+    while (la(i).kind == Kind::LineEnd)
+        ++i;
+    const Kind k = la(i).kind;
+    if (k == Kind::DOT_NUM) return true;
+    int dot_i = i;
+    if (k == Kind::SymbolQuest && la(i + 1).kind == Kind::SymbolDot) {
+        dot_i = i + 1;
+    } else if (k != Kind::SymbolDot) {
+        return false;
+    }
+    // `.name =` 是 fieldInit / 下一语句，不能接到上一表达式（§4.7.2.5 / g4）。
+    return !(la(dot_i + 1).kind == Kind::ID && la(dot_i + 2).kind == Kind::SymbolEq);
+}
+
 // ==== 表达式 ====
 
 NodeId Parser::parseLiteral() {
@@ -897,14 +913,8 @@ NodeId Parser::parseExpr(int min_bp, bool allow_brace) {
     if (left == kEmptyNode) return left;
     for (;;) {
         if (at(Kind::LineEnd)) {
-            int i = 1;
-            while (la(i).kind == Kind::LineEnd)
-                ++i;
-            const Token& t = la(i);
-            const bool member = t.kind == Kind::SymbolDot || t.kind == Kind::DOT_NUM ||
-                                (t.kind == Kind::SymbolQuest && la(i + 1).kind == Kind::SymbolDot);
-            // a\n  .b 只在 `.` 更靠右时续行；`.x = 1\n .y = 2` 的 `.y` 对齐字段，不接到 1 上。
-            if (!member || t.pos.column <= ast_.at(left).pos.column) break;
+            // g4 `expr LineEnd* '.' ID`：列号不能当续行条件（`let v = a\n    .b()` 的 `.` 在 `a` 左侧）。
+            if (!aheadIsLineDotContinue()) break;
             skipLineEnds();
         }
 

@@ -1,0 +1,24 @@
+; 换行方法链：`.` 列可以小于接收者（§4.7.2.5）
+struct Builder {
+  n i32
+
+  fn with_a(a i32) Builder {
+    ret Builder {
+      .n = $.n + a
+    }
+  }
+
+  fn build() i32 {
+    ret $.n
+  }
+}
+
+fn main() {
+  let b = Builder {
+    .n = 0
+  }
+  let x i32 = b
+    .with_a(1)
+    .build()
+  ret;
+}

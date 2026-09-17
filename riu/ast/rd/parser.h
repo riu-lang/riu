@@ -80,6 +80,8 @@ private:
     [[nodiscard]] bool aheadIsStructLit();
     [[nodiscard]] bool aheadIsEnumCtor();
     [[nodiscard]] bool aheadIsTrailingLambda();
+    // 当前在 LineEnd：下一非空行是方法链 / 元组成员，且不是 `.name =` 字段。
+    [[nodiscard]] bool aheadIsLineDotContinue();
     [[nodiscard]] NodeId parseType(int min_prec = 0);
     [[nodiscard]] NodeId parseTypePrimary();
     [[nodiscard]] NodeId parseTypePath();

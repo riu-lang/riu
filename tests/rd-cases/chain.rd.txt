@@ -1,0 +1,22 @@
+Program
+  Fn "f"
+    Block
+      Let "v"
+        Dot "d"
+          Call
+            Dot "c"
+              Call
+                Dot "b"
+                  Ident "a"
+            IntLit "1"
+            IntLit "2"
+      Let "x"
+        Call
+          Dot "build"
+            Call
+              Dot "with_b"
+                Call
+                  Dot "with_a"
+                    Ident "builder"
+                  IntLit "1"
+              IntLit "2"
