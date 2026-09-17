@@ -235,7 +235,11 @@ llvm::Value* Compiler::compileSafeDotMethodCall(ExprCallNode* callNode, ExprDotN
             genRetType = genericMethodNode->header()->retType()->getType().substitute(genericSubst);
             genRetType = bindStructSelfType(genRetType, actualType.name, genericEffName);
         }
-        string mFallibleErr = genericMethodNode->header()->resolvedFallibleErr();
+        string mFallibleErr;
+        if (genericMethodNode->header()->fallibleErrTypeNode()) {
+            mFallibleErr =
+                fallibleErrKey(genericMethodNode->header()->fallibleErrTypeNode()->getType().substitute(genericSubst));
+        }
         string mangledName =
             mangleMethod(ownerMod, genericEffName, member, argTypes, methPriv, genRetType, mFallibleErr);
         llvmFn = _module->getFunction(mangledName);
@@ -2033,7 +2037,11 @@ llvm::Value* Compiler::compileStructMethodCall(ExprCallNode* callNode, ExprNode*
                         genRetType = chosen->header()->retType()->getType().substitute(subst);
                         genRetType = bindStructSelfType(genRetType, inst.baseDecl->name().getText(), effName);
                     }
-                    string mFallibleErr = chosen->header()->resolvedFallibleErr();
+                    string mFallibleErr;
+                    if (chosen->header()->fallibleErrTypeNode()) {
+                        mFallibleErr =
+                            fallibleErrKey(chosen->header()->fallibleErrTypeNode()->getType().substitute(subst));
+                    }
 
                     vector<llvm::Value*> methodArgs;
                     methodArgs.push_back(basePtr);
@@ -2126,7 +2134,10 @@ llvm::Value* Compiler::compileStructMethodCall(ExprCallNode* callNode, ExprNode*
         if (genericMethod->header()->retType()) {
             retType = genericMethod->header()->retType()->getType().substitute(subst);
         }
-        const string fallibleErr = genericMethod->header()->resolvedFallibleErr();
+        const string fallibleErr =
+            genericMethod->header()->fallibleErrTypeNode()
+                ? fallibleErrKey(genericMethod->header()->fallibleErrTypeNode()->getType().substitute(subst))
+                : string();
         const string instanceKey =
             internGenericMethod(genericMethod, actualType.name, typeArgs, genericOwner, callNode->getLineNumber());
         const string& instanceName = _generic.fns()[instanceKey].mangledName;

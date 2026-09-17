@@ -56,9 +56,8 @@ struct FnSymbolInfo {
     // DRAFT-const-mut §4：`#Const fn` 标记——函数体内不得写 $/参数字段、写非 cval 全局、
     // 调非 #Const fn。供 const_mut_checker §4.2 在调用点判定。
     bool isConst = false;
-    // DRAFT-错误.md [#3.A]：`#Fallible(E)` 的错误 enum 类型名。空字符串表示该函数
-    // 未声明 `#Fallible`（无错误通道）。Phase 10e 仅按字符串比较；后续可扩展为完整
-    // TypeInfo（需要泛型 / 跨模块解析时）。
+    // DRAFT-错误.md [#3.A]：`T ! E` 的错误类型 E 的 getFullName。空字符串表示
+    // 该函数未声明错误通道。比较 / 透传 / mangle 用完整写法（`Box<String>` ≠ `Box<i32>`）。
     string fallibleErrType;
     // `#CName("link_symbol")`：extern fn 的链接时符号名（§6.6）。
     // 非空时 codegen 用此字符串声明 LLVM Function 而非 riu 声明名。

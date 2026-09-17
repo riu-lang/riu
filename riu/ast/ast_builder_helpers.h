@@ -243,8 +243,8 @@ static void checkFallibleRetMismatch(FnHeaderNode* header) {
     const string err = header->resolvedFallibleErr();
     if (err.empty() || !header->retType()) return;
     const TypeInfo retType = header->retType()->getType().withoutFallible();
-    if (retType.name == err) {
-        throw RiuError(header->getLineNumber(), header->getColumn(), ErrorCode::E7008, retType.name, err);
+    if (retType.getFullName() == err) {
+        throw RiuError(header->getLineNumber(), header->getColumn(), ErrorCode::E7008, retType.getFullName(), err);
     }
 }
 

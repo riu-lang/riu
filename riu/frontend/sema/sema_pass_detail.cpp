@@ -516,7 +516,7 @@ bool lambdaExpectedRetType(LambdaExprNode* lam, TypeInfo& out) {
         try {
             out = lam->retType()->getType();
             if (lam->fallibleErrTypeNode()) {
-                out.attachFallibleErr(lam->fallibleErrTypeNode()->getType().name);
+                out.attachFallibleErr(fallibleErrKey(lam->fallibleErrTypeNode()->getType()));
             }
             return true;
         } catch (const RiuError&) {
@@ -703,7 +703,7 @@ void checkRetExpr(ExprNode* expr, const TypeInfo& declRet, bool hasDeclRet, int 
         if (!isSuccess && hasDeclRet && isEmptyArrayType(resolvedRet) && resolvedOk.isArrayGeneric()) {
             isSuccess = true;
         }
-        bool isError = (resolvedRet.name == ctx.fallibleErr);
+        bool isError = (resolvedRet.getFullName() == ctx.fallibleErr);
         if (!isSuccess && !isError) {
             // fallible void 成功通道：`ret <void-expr>` 与 `ret;` 同义（先求副作用）。
             // 典型：`fn f() ! E { if c { ret E::V } }` 块末 if 无 else，被包成隐式 ret。

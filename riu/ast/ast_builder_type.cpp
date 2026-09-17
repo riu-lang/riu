@@ -169,7 +169,7 @@ std::any ASTBuilder::visitTypeFallible(riu::riuParser::TypeFallibleContext* ctx)
                        tok ? static_cast<int>(tok->getCharPositionInLine()) + 1 : 0, ErrorCode::E2001)
             .withHint("`T ! E?` is invalid — error type `E` must not be nullable");
     }
-    DEBUG_LOG_VAL("    Type: Fallible", base->getType().getFullName() << " ! " << err->getType().name);
+    DEBUG_LOG_VAL("    Type: Fallible", base->getType().getFullName() << " ! " << err->getType().getFullName());
     auto* inner = static_cast<TypeNode*>(createWithLine<TypeFallibleNode>(ctx, parent, base, err));
     return wrapRefIfAnd(ctx, parent, inner, ctx->SymbolAnd());
 }

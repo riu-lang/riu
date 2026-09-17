@@ -762,7 +762,7 @@ public:
         : ScopeNode(parent), _errName(std::move(errName)), _errType(std::move(errType)), _body(body) {}
 
     [[nodiscard]] const Token& errName() const { return _errName; }
-    [[nodiscard]] const string& errType() const { return _errType.name; }
+    [[nodiscard]] string errType() const { return _errType.getFullName(); }
     [[nodiscard]] const TypeInfo& errTypeInfo() const { return _errType; }
     [[nodiscard]] StatementBlockNode* body() const { return _body; }
 };

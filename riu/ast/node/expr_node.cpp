@@ -1959,7 +1959,7 @@ TypeInfo LambdaExprNode::structuralType() const {
     if (_retType) {
         rt = make_shared<TypeInfo>(_retType->getType());
         if (_fallibleErrType) {
-            rt->attachFallibleErr(_fallibleErrType->getType().name);
+            rt->attachFallibleErr(fallibleErrKey(_fallibleErrType->getType()));
         }
     } else if (_bodyExpr) {
         auto bt = _bodyExpr->getType();

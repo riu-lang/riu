@@ -1741,7 +1741,7 @@ void SemaPass::visitLambda(LambdaExprNode& node) {
                        .typeParams = &_currentTypeParams,
                        .subst = currentInstSubst()};
     if (n->fallibleErrTypeNode()) {
-        lamRetCtx.fallibleErr = n->fallibleErrTypeNode()->getType().name;
+        lamRetCtx.fallibleErr = fallibleErrKey(applyInstSubst(n->fallibleErrTypeNode()->getType()));
     } else if (bodyRetStorage.isFallible()) {
         lamRetCtx.fallibleErr = bodyRetStorage.fallibleErr;
     }
@@ -2235,8 +2235,14 @@ void SemaPass::visitPathCall(ExprPathCallNode& node) {
                 checkGenericImplInst(structImpl, staticSubst);
             }
             vector<string>* seen = _tryStack.empty() ? nullptr : &_tryStack.back();
-            sema::checkErrPropagateForPathCall(_currentFn, n, lhsName + "::" + rhsName,
-                                               methodHeader->resolvedFallibleErr(), seen, _sourcePath, _currentLambda);
+            string calleeErr;
+            if (methodHeader->fallibleErrTypeNode()) {
+                TypeInfo errTy = methodHeader->fallibleErrTypeNode()->getType();
+                if (!staticSubst.empty()) errTy = errTy.substitute(staticSubst);
+                calleeErr = fallibleErrKey(errTy);
+            }
+            sema::checkErrPropagateForPathCall(_currentFn, n, lhsName + "::" + rhsName, calleeErr, seen, _sourcePath,
+                                               _currentLambda);
             return;
         }
     }

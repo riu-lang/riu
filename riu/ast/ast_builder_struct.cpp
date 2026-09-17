@@ -454,9 +454,9 @@ std::any ASTBuilder::visitStructDecl(riu::riuParser::StructDeclContext* ctx) {
         methodFnSym.isNoReturn = method->header()->hasAnno("NoReturn");
         methodFnSym.isConst = method->header()->hasAnno("Const");
         methodFnSym.fallibleErrType = method->header()->resolvedFallibleErr();
-        if (!methodFnSym.fallibleErrType.empty() && retType.name == methodFnSym.fallibleErrType) {
+        if (!methodFnSym.fallibleErrType.empty() && retType.getFullName() == methodFnSym.fallibleErrType) {
             throw RiuError(method->header()->getLineNumber(), method->header()->getColumn(), ErrorCode::E7008,
-                           retType.name, methodFnSym.fallibleErrType);
+                           retType.getFullName(), methodFnSym.fallibleErrType);
         }
         file->registerFnSymbol(fullName, methodFnSym);
     }

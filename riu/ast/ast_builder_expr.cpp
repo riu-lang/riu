@@ -149,23 +149,24 @@ void applyLambdaFallibleSuffix(ASTBuilder* self, riu::riuParser::TypeContext* er
                 .withHint("`T ! E?` is invalid — error type `E` must not be nullable");
         }
         if (retFallibleFromType) {
-            throw RiuError(node->getLineNumber(), node->getColumn(), ErrorCode::E7019, errType->getType().name);
+            throw RiuError(node->getLineNumber(), node->getColumn(), ErrorCode::E7019,
+                           fallibleErrKey(errType->getType()));
         }
         node->setFallibleErrType(errType);
         if (retType) {
-            const string err = errType->getType().name;
-            if (retType->getType().name == err) {
-                throw RiuError(node->getLineNumber(), node->getColumn(), ErrorCode::E7008, retType->getType().name,
-                               err);
+            const string err = fallibleErrKey(errType->getType());
+            if (retType->getType().getFullName() == err) {
+                throw RiuError(node->getLineNumber(), node->getColumn(), ErrorCode::E7008,
+                               retType->getType().getFullName(), err);
             }
         }
     } else if (retFallibleFromType) {
         node->setFallibleErrType(retFallibleFromType);
         if (retType) {
-            const string err = retFallibleFromType->getType().name;
-            if (retType->getType().name == err) {
-                throw RiuError(node->getLineNumber(), node->getColumn(), ErrorCode::E7008, retType->getType().name,
-                               err);
+            const string err = fallibleErrKey(retFallibleFromType->getType());
+            if (retType->getType().getFullName() == err) {
+                throw RiuError(node->getLineNumber(), node->getColumn(), ErrorCode::E7008,
+                               retType->getType().getFullName(), err);
             }
         }
     }

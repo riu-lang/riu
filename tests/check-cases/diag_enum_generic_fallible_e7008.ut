@@ -1,0 +1,12 @@
+; 3.6: 成功类型与错误类型完整相等 → E7008（裸名相同不够）
+enum Box<T> {
+  V(T)
+}
+
+fn bad() Box<i32> ! Box<i32> {  ; check: E7008
+  ret Box:<i32>::V(1)
+}
+
+fn main() {
+  ret;
+}

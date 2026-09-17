@@ -823,13 +823,17 @@ llvm::Value* Compiler::compileGenericFunctionCall(ExprCallNode* callNode, const 
     if (genericFn->header()->retType()) {
         instRetType = genericFn->header()->retType()->getType().substitute(subst);
     }
+    string gFallibleErr;
+    if (genericFn->header()->fallibleErrTypeNode()) {
+        gFallibleErr = fallibleErrKey(genericFn->header()->fallibleErrTypeNode()->getType().substitute(subst));
+    }
 
     bool isPrivate = !fnName.empty() && fnName[0] == '_';
     // 泛型实例：定义模块作符号前缀（与 emitFnInstances 一致；多 TU 靠 linkonce_odr 合并）
     auto& fi = _generic.fns()[mangledName];
     string ownerModForMangle = fi.ownerFile ? fi.ownerFile->moduleName() : fnOwner->moduleName();
-    string cName = mangleFunction(ownerModForMangle, fi.mangledName, instParamTypes, isPrivate, instRetType,
-                                  genericFn->header()->resolvedFallibleErr());
+    string cName =
+        mangleFunction(ownerModForMangle, fi.mangledName, instParamTypes, isPrivate, instRetType, gFallibleErr);
     DEBUG_LOG_VAL("    Expr: GenericFunctionCall", fnName << " -> " << cName);
 
     auto fn = _module->getFunction(cName);
@@ -842,8 +846,6 @@ llvm::Value* Compiler::compileGenericFunctionCall(ExprCallNode* callNode, const 
                 paramTypes.push_back(getLLVMType(t));
             }
         }
-        string gFallibleErr;
-        gFallibleErr = genericFn->header()->resolvedFallibleErr();
         auto retType = wrapFallibleRetType(instRetType, gFallibleErr);
         auto fnType = llvm::FunctionType::get(retType, paramTypes, false);
         fn = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, cName, _module);

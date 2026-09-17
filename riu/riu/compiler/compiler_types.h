@@ -44,6 +44,8 @@
     llvm::Value* wrapFallibleSuccessRet(llvm::Value* okVal, const TypeInfo& successType, const string& fallibleErr);
     // 同上，但强制返回 StructType* 用于 ret 路径构造 insertvalue。errTypeName 必须非空。
     llvm::StructType* getFallibleRetStructType(const TypeInfo& retType, const string& errTypeName);
+    // T ! E 字符串槽还原完整 TypeInfo（含 genericArgs），再补 owner。
+    [[nodiscard]] TypeInfo fallibleErrAsType(const string& err) const;
     llvm::StructType* getOrCreateStructType(StructDeclNode* structDecl,
                                             FileNode* sourceFile = nullptr); // 获取或创建结构体类型
 

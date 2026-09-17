@@ -338,7 +338,8 @@ struct TypeInfo {
     sp<TypeInfo> elementType = nullptr; // Array 元素类型 / Fn 返回类型（unit 时为 nullptr）
     vector<sp<TypeInfo>> genericArgs;   // Generic 实参 / Tuple 元素 / Fn 形参类型列表
     bool fnNullable = false;            // Fn: Function<...>? 可空（仍 16 字节 fat-ptr，不套 Nullable）
-    string fallibleErr;                 // T ! E 的错误类型 E；空 = 非 fallible 签名位
+    string fallibleErr; // T ! E 的错误类型 E 的 getFullName；空 = 非 fallible。须存完整写法（`Box<String>` 而非裸名
+                        // `Box`）
 
     TypeInfo() = default;
 
@@ -412,13 +413,17 @@ struct TypeInfo {
         return t;
     }
 
-    // 在成功类型上附加 fallible 后缀，刷新 name
+    // 在成功类型上附加 fallible 后缀，刷新 name。`err` 须是 E 的 getFullName。
     void attachFallibleErr(string err) {
         fallibleErr = std::move(err);
         if (fallibleErr.empty()) return;
         const string base = withoutFallible().getFullName();
         name = base + "!" + fallibleErr;
     }
+
+    // 从 getFullName 写法还原 TypeInfo（`Name` / `Name<A,B>` / 嵌套）。
+    // 用于 T ! E 字符串槽还原 LLVM 类型；对不上的输入当裸名。
+    [[nodiscard]] static TypeInfo fromFullName(const string& s);
 
     [[nodiscard]] bool isArray() const { return kind == TypeKind::Array; }
 
@@ -706,11 +711,18 @@ struct TypeInfo {
     }
 
     // 应用类型形参替换。无类型实参的具名类型（Normal / Ptr / 空 Generic）匹配 subst 键则整体替换。
+    // T ! E 的 E 按 getFullName 还原后再 subst（`i32 ! Box<T>` → `i32 ! Box<String>`）。
     [[nodiscard]] TypeInfo substitute(const std::map<std::string, TypeInfo>& subst) const {
+        auto withErr = [&](TypeInfo r) -> TypeInfo {
+            if (fallibleErr.empty()) return r;
+            TypeInfo err = TypeInfo::fromFullName(fallibleErr).substitute(subst);
+            r.attachFallibleErr(err.getFullName());
+            return r;
+        };
         if (kind == TypeKind::Normal || kind == TypeKind::Ptr || (kind == TypeKind::Generic && genericArgs.empty())) {
             auto it = subst.find(name);
-            if (it != subst.end()) return it->second;
-            if (kind != TypeKind::Generic) return *this;
+            if (it != subst.end()) return withErr(it->second);
+            if (kind != TypeKind::Generic) return withErr(*this);
         }
         if (hasGenericArgs() && !genericArgs.empty()) {
             vector<sp<TypeInfo>> newArgs;
@@ -720,11 +732,11 @@ struct TypeInfo {
             }
             TypeInfo r{name, std::move(newArgs)};
             r.ownerModule = ownerModule;
-            return r;
+            return withErr(std::move(r));
         }
         if (kind == TypeKind::Array && elementType) {
             auto sub = elementType->substitute(subst);
-            return {std::make_shared<TypeInfo>(std::move(sub)), arraySize};
+            return withErr({std::make_shared<TypeInfo>(std::move(sub)), arraySize});
         }
         if (kind == TypeKind::Tuple) {
             vector<sp<TypeInfo>> newElems;
@@ -732,7 +744,7 @@ struct TypeInfo {
             for (auto& a : genericArgs) {
                 newElems.push_back(std::make_shared<TypeInfo>(a ? a->substitute(subst) : TypeInfo()));
             }
-            return TypeInfo(TupleTag{}, std::move(newElems));
+            return withErr(TypeInfo(TupleTag{}, std::move(newElems)));
         }
         if (kind == TypeKind::Fn) {
             vector<sp<TypeInfo>> newParams;
@@ -742,9 +754,9 @@ struct TypeInfo {
             }
             sp<TypeInfo> newRet = nullptr;
             if (elementType) newRet = std::make_shared<TypeInfo>(elementType->substitute(subst));
-            return TypeInfo(FnTag{}, std::move(newParams), newRet, fnNullable);
+            return withErr(TypeInfo(FnTag{}, std::move(newParams), newRet, fnNullable));
         }
-        return *this;
+        return withErr(*this);
     }
 
     bool operator==(const TypeInfo& other) const {
@@ -818,6 +830,51 @@ inline TypeInfo::TypeInfo(string n, vector<sp<TypeInfo>> args) {
     kind = kindForBuiltinWrapper(n);
     name = std::move(n);
     genericArgs = std::move(args);
+}
+
+// T ! E 错误通道的比较 / 存储键：完整写法（`Box<String>` 而非裸名 `Box`）
+inline string fallibleErrKey(const TypeInfo& t) {
+    return t.getFullName();
+}
+
+inline TypeInfo TypeInfo::fromFullName(const string& s) {
+    if (s.empty()) return {};
+    struct Parser {
+        const string& s;
+        size_t i = 0;
+        TypeInfo parse() {
+            const size_t start = i;
+            while (i < s.size()) {
+                const char c = s[i];
+                if (c == '<' || c == '>' || c == ',') break;
+                ++i;
+            }
+            string n = s.substr(start, i - start);
+            if (i < s.size() && s[i] == '<') {
+                ++i;
+                vector<sp<TypeInfo>> args;
+                if (i < s.size() && s[i] != '>') {
+                    while (true) {
+                        args.push_back(std::make_shared<TypeInfo>(parse()));
+                        if (i < s.size() && s[i] == ',') {
+                            ++i;
+                            continue;
+                        }
+                        break;
+                    }
+                }
+                if (i < s.size() && s[i] == '>') ++i;
+                if (n.empty()) return {};
+                return {std::move(n), std::move(args)};
+            }
+            if (n.empty()) return {};
+            return TypeInfo(std::move(n));
+        }
+    };
+    Parser p{.s = s};
+    TypeInfo t = p.parse();
+    if (p.i != s.size() && t.empty()) return TypeInfo(s);
+    return t;
 }
 
 inline bool isBuiltinType(const string& typeName) {

@@ -154,7 +154,12 @@ vector<TypeInfo> Compiler::withMangleOwners(const vector<TypeInfo>& ts, FileNode
 
 string Compiler::mangleFallibleErr(const string& err, FileNode* fromFile) const {
     if (err.empty()) return err;
-    return withMangleOwners(TypeInfo(err), fromFile).getMangleName();
+    return withMangleOwners(TypeInfo::fromFullName(err), fromFile).getMangleName();
+}
+
+TypeInfo Compiler::fallibleErrAsType(const string& err) const {
+    if (err.empty()) return {};
+    return withMangleOwners(TypeInfo::fromFullName(err), _file);
 }
 
 string Compiler::mangleFunction(const string& module, const string& name, const vector<TypeInfo>& params,
@@ -824,7 +829,10 @@ llvm::FunctionType* Compiler::getLLVMFunctionType(FnHeaderNode* header) {
     auto retType = header->retType();
     TypeInfo retTypeInfo = retType ? retType->getType() : TypeInfo();
     // DRAFT-错误.md [#10.A]：#Fallible(E) 函数返回类型包成 { i1, T_ok?, ErrEnum }
-    string fallibleErr = header->resolvedFallibleErr();
+    string fallibleErr;
+    if (header->fallibleErrTypeNode()) {
+        fallibleErr = fallibleErrKey(applySubst(header->fallibleErrTypeNode()->getType()));
+    }
     auto llvmRetType = wrapFallibleRetType(retTypeInfo, fallibleErr);
     DEBUG_LOG_VAL("    return type", (retTypeInfo.empty() ? "void" : retTypeInfo.name)
                                          << (fallibleErr.empty() ? "" : (string(" #Fallible(") + fallibleErr + ")")));
@@ -847,7 +855,7 @@ llvm::Value* Compiler::wrapFallibleSuccessRet(llvm::Value* okVal, const TypeInfo
                                               const string& fallibleErr) {
     if (fallibleErr.empty()) return okVal;
     auto retStructTy = getFallibleRetStructType(successType, fallibleErr);
-    TypeInfo errTy = withMangleOwners(TypeInfo(fallibleErr), _file);
+    TypeInfo errTy = fallibleErrAsType(fallibleErr);
     auto errLLVMTy = getLLVMType(errTy);
     llvm::Value* retStruct = llvm::UndefValue::get(retStructTy);
     retStruct = _builder.CreateInsertValue(retStruct, _builder.getInt1(false), {0});
@@ -863,9 +871,9 @@ llvm::Value* Compiler::wrapFallibleSuccessRet(llvm::Value* okVal, const TypeInfo
 }
 
 llvm::StructType* Compiler::getFallibleRetStructType(const TypeInfo& retType, const string& errTypeName) {
-    // ErrEnum 必为已声明 enum（10e 静态层已校 + E7011）；走 withMangleOwners 再 getLLVMType，
-    // 避免短名 `IoErr` 与全限定拆成两种 LLVM 类型（InsertValue abort）。
-    TypeInfo errType = withMangleOwners(TypeInfo(errTypeName), _file);
+    // ErrEnum 必为已声明 enum（10e 静态层已校 + E7011）；走 fallibleErrAsType 再 getLLVMType，
+    // 避免短名 `IoErr` 与全限定拆成两种 LLVM 类型（InsertValue abort），也保住 genericArgs。
+    TypeInfo errType = fallibleErrAsType(errTypeName);
     auto errLLVMType = getLLVMType(errType);
     vector<llvm::Type*> fields;
     fields.push_back(_builder.getInt1Ty()); // 字段 0：isErr
@@ -956,8 +964,9 @@ void Compiler::emitMainStartupFallible(const string& fallibleErrName) {
     auto tag = _builder.CreateExtractValue(errVal, {0}, "main.err.tag");
 
     // 查 enum decl 拿 variant 列表（含模块名修饰）
+    TypeInfo errTy = fallibleErrAsType(fallibleErrName);
     FileNode* enumOwner = nullptr;
-    auto enumDecl = names().lookupEnum(fallibleErrName, &enumOwner);
+    auto enumDecl = names().lookupEnum(errTy, &enumOwner);
     if (!enumDecl) {
         // 防御：10e 已校 #Fallible 类型存在；走 unreachable 兜底
         _builder.CreateCall(exitProcess, {_builder.getInt32(1)});
@@ -968,7 +977,7 @@ void Compiler::emitMainStartupFallible(const string& fallibleErrName) {
     }
 
     string moduleName = enumOwner ? enumOwner->moduleName() : _file->moduleName();
-    string prefix = "error: " + moduleName + "." + fallibleErrName + "::";
+    string prefix = "error: " + moduleName + "." + errTy.getFullName() + "::";
 
     auto i32Ty = _builder.getInt32Ty();
     auto ptrTy = llvm::PointerType::get(_context, 0);

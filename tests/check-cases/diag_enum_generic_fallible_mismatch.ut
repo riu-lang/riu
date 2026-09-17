@@ -1,0 +1,12 @@
+; 3.6: 错误通道须是该次实参的 E；Box<i64> 不能当 Box<i32> 返回
+enum Box<T> {
+  V(T)
+}
+
+fn parse() i32 ! Box<i32> {
+  ret Box:<i64>::V(1)  ; check: E3014
+}
+
+fn main() {
+  ret;
+}

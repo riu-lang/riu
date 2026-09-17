@@ -1,6 +1,7 @@
 use riu.core.*
 
 ; 3.5: 每单态一份 LLVM 类型；拷贝 / 析构 tag dispatch 走 subst 后 payload。
+; 3.6: T ! E 的 E 是完整类型；Box<String> 与 Box<i32> 分得开。
 enum Box<T> {
   V(T)
 }
@@ -29,9 +30,37 @@ fn take_opt(x Opt<i32>) i32 {
   }
 }
 
+fn fail_str() i32 ! Box<String> {
+  ret Box:<String>::V("e")
+}
+
+fn fail_i32() i32 ! Box<i32> {
+  ret Box:<i32>::V(7)
+}
+
 fn main() {
   println(unwrap_i32(Box:<i32>::V(41)))
   println(unwrap_str(Box:<String>::V("ok")))
   println(take_opt(Opt:<i32>::None))
   println(take_opt(Opt:<i32>::Some(2)))
+  let es i32 = try {
+    fail_str()
+  } catch e Box<String> {
+    match e {
+      Box::V(s) => {
+        println(s)
+        0
+      }
+    }
+  }
+  let ei i32 = try {
+    fail_i32()
+  } catch e Box<i32> {
+    match e {
+      Box::V(n) => {
+        println(n)
+        n
+      }
+    }
+  }
 }

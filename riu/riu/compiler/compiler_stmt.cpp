@@ -90,11 +90,11 @@ void Compiler::compileRetStatement(StatementRetNode* node) {
     //   - 都不匹配 → 复用既有 E3020
     // 析构序与成功路径完全一致（[#10.B] U1）：构 retStruct 后调 callDestructorsForScope。
     string fallibleErrName;
-    if (_currentFnNode && _currentFnNode->header()) {
-        fallibleErrName = _currentFnNode->header()->resolvedFallibleErr();
+    if (_currentFnNode && _currentFnNode->header() && _currentFnNode->header()->fallibleErrTypeNode()) {
+        fallibleErrName = fallibleErrKey(applySubst(_currentFnNode->header()->fallibleErrTypeNode()->getType()));
     } else if (_currentLambdaForCapture) {
         if (_currentLambdaForCapture->fallibleErrTypeNode()) {
-            fallibleErrName = _currentLambdaForCapture->fallibleErrTypeNode()->getType().name;
+            fallibleErrName = fallibleErrKey(_currentLambdaForCapture->fallibleErrTypeNode()->getType());
         } else {
             auto ft = _currentLambdaForCapture->getType();
             if (ft.isFn() && ft.fnReturnType() && !ft.fnReturnType()->fallibleErr.empty()) {
@@ -109,7 +109,7 @@ void Compiler::compileRetStatement(StatementRetNode* node) {
             retType = resolvedOrInferredType(node->expr());
         }
         bool isSuccess = hasDeclaredRetType && (resolveAlias(retType) == resolveAlias(declRetType));
-        bool isError = (resolveAlias(retType).name == fallibleErrName);
+        bool isError = (resolveAlias(retType).getFullName() == fallibleErrName);
         if (!isSuccess && !isError) {
             int ln = node->getLineNumber();
             if (ln < 0) ln = node->expr()->resolveLineNumber();
@@ -120,7 +120,7 @@ void Compiler::compileRetStatement(StatementRetNode* node) {
                 pushTempFrame();
                 callDestructorsForScope();
                 auto retStructTy = getFallibleRetStructType(TypeInfo(), fallibleErrName);
-                TypeInfo voidErrType(fallibleErrName);
+                TypeInfo voidErrType = fallibleErrAsType(fallibleErrName);
                 auto errLLVMTy = getLLVMType(voidErrType);
                 llvm::Value* retStruct = llvm::UndefValue::get(retStructTy);
                 retStruct = _builder.CreateInsertValue(retStruct, _builder.getInt1(false), {0});
@@ -156,7 +156,7 @@ void Compiler::compileRetStatement(StatementRetNode* node) {
 
         // 构 retStruct
         TypeInfo successType = hasDeclaredRetType ? declRetType : TypeInfo();
-        TypeInfo errTy(fallibleErrName);
+        TypeInfo errTy = fallibleErrAsType(fallibleErrName);
         auto retStructTy = getFallibleRetStructType(successType, fallibleErrName);
         auto errLLVMTy = getLLVMType(errTy);
         llvm::Value* retStruct = llvm::UndefValue::get(retStructTy);
@@ -383,11 +383,11 @@ void Compiler::compileRetVoidStatement(StatementRetVoidNode* node) {
     // #Fallible(E) 函数体内 `ret;` 表示成功-void 通道（[#10.A] T_ok=void）：
     // 构 { false, zero(ErrEnum) }（字段 0 = isErr, 字段 1 = ErrEnum）
     string fallibleErrName;
-    if (_currentFnNode && _currentFnNode->header()) {
-        fallibleErrName = _currentFnNode->header()->resolvedFallibleErr();
+    if (_currentFnNode && _currentFnNode->header() && _currentFnNode->header()->fallibleErrTypeNode()) {
+        fallibleErrName = fallibleErrKey(applySubst(_currentFnNode->header()->fallibleErrTypeNode()->getType()));
     } else if (_currentLambdaForCapture) {
         if (_currentLambdaForCapture->fallibleErrTypeNode()) {
-            fallibleErrName = _currentLambdaForCapture->fallibleErrTypeNode()->getType().name;
+            fallibleErrName = fallibleErrKey(_currentLambdaForCapture->fallibleErrTypeNode()->getType());
         } else {
             auto ft = _currentLambdaForCapture->getType();
             if (ft.isFn() && ft.fnReturnType() && !ft.fnReturnType()->fallibleErr.empty()) {
@@ -397,7 +397,7 @@ void Compiler::compileRetVoidStatement(StatementRetVoidNode* node) {
     }
     if (!fallibleErrName.empty()) {
         auto retStructTy = getFallibleRetStructType(TypeInfo(), fallibleErrName);
-        TypeInfo voidErrType(fallibleErrName);
+        TypeInfo voidErrType = fallibleErrAsType(fallibleErrName);
         auto errLLVMTy = getLLVMType(voidErrType);
         llvm::Value* retStruct = llvm::UndefValue::get(retStructTy);
         retStruct = _builder.CreateInsertValue(retStruct, _builder.getInt1(false), {0});

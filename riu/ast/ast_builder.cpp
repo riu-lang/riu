@@ -115,7 +115,7 @@ std::any ASTBuilder::visitProgram(riu::riuParser::ProgramContext* ctx) {
         if (header->retType) {
             auto typeNode = any_cast_p<TypeNode>(visit(header->retType));
             if (auto* fallible = dynamic_cast<TypeFallibleNode*>(typeNode)) {
-                suffixFallibleErr = fallible->errType()->getType().name;
+                suffixFallibleErr = fallibleErrKey(fallible->errType()->getType());
                 retType = fallible->baseType()->getType();
             } else {
                 retType = typeNode->getType();
@@ -137,13 +137,13 @@ std::any ASTBuilder::visitProgram(riu::riuParser::ProgramContext* ctx) {
         }
         if (header->errType) {
             auto errNode = any_cast_p<TypeNode>(visit(header->errType));
-            suffixFallibleErr = errNode->getType().name;
+            suffixFallibleErr = fallibleErrKey(errNode->getType());
         }
         fnFnSym.fallibleErrType = suffixFallibleErr;
-        if (!fnFnSym.fallibleErrType.empty() && retType.name == fnFnSym.fallibleErrType) {
+        if (!fnFnSym.fallibleErrType.empty() && retType.getFullName() == fnFnSym.fallibleErrType) {
             throw RiuError(static_cast<int>(header->name->getLine()),
-                           static_cast<int>(header->name->getCharPositionInLine()) + 1, ErrorCode::E7008, retType.name,
-                           fnFnSym.fallibleErrType);
+                           static_cast<int>(header->name->getCharPositionInLine()) + 1, ErrorCode::E7008,
+                           retType.getFullName(), fnFnSym.fallibleErrType);
         }
         file->registerFnSymbol(fnName, fnFnSym);
     }

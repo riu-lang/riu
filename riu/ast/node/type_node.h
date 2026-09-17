@@ -132,11 +132,11 @@ class TypeFallibleNode : public TypeNode {
 
 public:
     TypeFallibleNode(Node* parent, TypeNode* base, TypeNode* errType)
-        : TypeNode(parent), _base(std::move(base)), _errType(std::move(errType)) {}
+        : TypeNode(parent), _base(base), _errType(errType) {}
 
     [[nodiscard]] TypeInfo getType() const override {
         TypeInfo ti = _base->getType();
-        ti.attachFallibleErr(_errType->getType().name);
+        ti.attachFallibleErr(fallibleErrKey(_errType->getType()));
         return ti;
     }
 

@@ -583,7 +583,7 @@ void SemaPass::visitRet(StatementRetNode& node) {
             retExpPtr = &retExpectedResolved;
         }
         if (_currentLambda->fallibleErrTypeNode()) {
-            retCtx.fallibleErr = _currentLambda->fallibleErrTypeNode()->getType().name;
+            retCtx.fallibleErr = fallibleErrKey(applyInstSubst(_currentLambda->fallibleErrTypeNode()->getType()));
         } else if (retExpected.isFallible()) {
             retCtx.fallibleErr = retExpected.fallibleErr;
         }
@@ -599,8 +599,8 @@ void SemaPass::visitRet(StatementRetNode& node) {
             } catch (...) { // NOLINT(bugprone-empty-catch)
             }
         }
-        if (header) {
-            retCtx.fallibleErr = header->resolvedFallibleErr();
+        if (header && header->fallibleErrTypeNode()) {
+            retCtx.fallibleErr = fallibleErrKey(applyInstSubst(header->fallibleErrTypeNode()->getType()));
         }
     }
     if (ret->expr()) visitExpr(ret->expr(), retExpPtr);

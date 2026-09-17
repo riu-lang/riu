@@ -967,7 +967,10 @@ void Compiler::emitFnInstances() {
                 if (baseFn->header()->retType()) {
                     retType = applySubst(baseFn->header()->retType()->getType());
                 }
-                string fallibleErr = baseFn->header()->resolvedFallibleErr();
+                string fallibleErr;
+                if (baseFn->header()->fallibleErrTypeNode()) {
+                    fallibleErr = fallibleErrKey(applySubst(baseFn->header()->fallibleErrTypeNode()->getType()));
+                }
 
                 if (!inst.methodStructName.empty()) {
                     string ownerMod = inst.ownerFile ? inst.ownerFile->moduleName() : inst.consumerModule;
@@ -1084,12 +1087,14 @@ void Compiler::compileFn(FnNode* node, llvm::Function* func) {
         // #Fallible(E) void-return 函数体走到末尾：补隐式成功-void ret struct
         // （与 compileRetVoidStatement 同形；[#10.A] T_ok=void）
         string fallibleErrName;
-        fallibleErrName = node->header()->resolvedFallibleErr();
+        if (node->header()->fallibleErrTypeNode()) {
+            fallibleErrName = fallibleErrKey(applySubst(node->header()->fallibleErrTypeNode()->getType()));
+        }
         bool fnRetVoid = !node->header()->retType() || node->header()->retType()->getType().isUnit();
         if (!fallibleErrName.empty() && fnRetVoid) {
             callDestructorsForScope();
             auto retStructTy = getFallibleRetStructType(TypeInfo(), fallibleErrName);
-            TypeInfo errType(fallibleErrName);
+            TypeInfo errType = fallibleErrAsType(fallibleErrName);
             auto errLLVMTy = getLLVMType(errType);
             llvm::Value* rs = llvm::UndefValue::get(retStructTy);
             rs = _builder.CreateInsertValue(rs, _builder.getInt1(false), {0});
@@ -1200,12 +1205,14 @@ void Compiler::compileMethodImpl(FnNode* node, llvm::Function* func, const strin
     if (!_builder.GetInsertBlock()->getTerminator()) {
         // 方法上的 #Fallible(E) void：补隐式成功-void ret struct（与 fn 同型）
         string fallibleErrName;
-        fallibleErrName = node->header()->resolvedFallibleErr();
+        if (node->header()->fallibleErrTypeNode()) {
+            fallibleErrName = fallibleErrKey(applySubst(node->header()->fallibleErrTypeNode()->getType()));
+        }
         bool methRetVoid = !node->header()->retType();
         if (!fallibleErrName.empty() && methRetVoid && !isDestructor) {
             callDestructorsForScope();
             auto retStructTy = getFallibleRetStructType(TypeInfo(), fallibleErrName);
-            TypeInfo errType(fallibleErrName);
+            TypeInfo errType = fallibleErrAsType(fallibleErrName);
             auto errLLVMTy = getLLVMType(errType);
             llvm::Value* rs = llvm::UndefValue::get(retStructTy);
             rs = _builder.CreateInsertValue(rs, _builder.getInt1(false), {0});

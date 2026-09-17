@@ -51,7 +51,10 @@ llvm::Function* Compiler::getFunction(FnHeaderNode* header) {
         if (header->retType()) {
             retType = applySubst(header->retType()->getType());
         }
-        string fallibleErr = header->resolvedFallibleErr();
+        string fallibleErr;
+        if (header->fallibleErrTypeNode()) {
+            fallibleErr = fallibleErrKey(applySubst(header->fallibleErrTypeNode()->getType()));
+        }
         bool isPriv = !name.empty() && name[0] == '_';
         name = mangleFunction(_file->moduleName(), name, paramTypes, isPriv, retType, fallibleErr);
         DEBUG_LOG_VAL("    -> mangled name", name);
@@ -732,13 +735,15 @@ llvm::Value* Compiler::handleFallibleCallResult(llvm::Value* callResult, const s
     string callerErr;
     TypeInfo callerRetType;
     if (_currentFnNode && _currentFnNode->header()) {
-        callerErr = _currentFnNode->header()->resolvedFallibleErr();
+        if (_currentFnNode->header()->fallibleErrTypeNode()) {
+            callerErr = fallibleErrKey(applySubst(_currentFnNode->header()->fallibleErrTypeNode()->getType()));
+        }
         if (_currentFnNode->header()->retType()) {
-            callerRetType = _currentFnNode->header()->retType()->getType();
+            callerRetType = applySubst(_currentFnNode->header()->retType()->getType());
         }
     } else if (_currentLambdaForCapture) {
         if (_currentLambdaForCapture->fallibleErrTypeNode()) {
-            callerErr = _currentLambdaForCapture->fallibleErrTypeNode()->getType().name;
+            callerErr = fallibleErrKey(_currentLambdaForCapture->fallibleErrTypeNode()->getType());
         } else {
             auto ft = _currentLambdaForCapture->getType();
             if (ft.isFn() && ft.fnReturnType() && !ft.fnReturnType()->fallibleErr.empty()) {

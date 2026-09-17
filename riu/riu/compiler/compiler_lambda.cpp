@@ -76,7 +76,7 @@ llvm::Function* Compiler::emitLambdaFunction(LambdaExprNode* node, const TypeInf
     if (node->retType()) {
         retType = node->retType()->getType();
         if (node->fallibleErrTypeNode()) {
-            fallibleErr = node->fallibleErrTypeNode()->getType().name;
+            fallibleErr = fallibleErrKey(node->fallibleErrTypeNode()->getType());
         }
     } else if (expectedFnType.isFn() && expectedFnType.fnReturnType()) {
         retType = expectedFnType.fnReturnType()->withoutFallible();

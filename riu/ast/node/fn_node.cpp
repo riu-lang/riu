@@ -35,7 +35,7 @@ TypeInfo FnHeaderNode::getType() const {
 }
 
 string FnHeaderNode::resolvedFallibleErr() const {
-    if (_fallibleErrType) return _fallibleErrType->getType().name;
+    if (_fallibleErrType) return fallibleErrKey(_fallibleErrType->getType());
     return {};
 }
 

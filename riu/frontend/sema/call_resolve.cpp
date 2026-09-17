@@ -629,7 +629,7 @@ string callerFallibleErr(FnNode* fn, LambdaExprNode* lam) {
         if (!e.empty()) return e;
     }
     if (lam && lam->fallibleErrTypeNode()) {
-        return lam->fallibleErrTypeNode()->getType().name;
+        return fallibleErrKey(lam->fallibleErrTypeNode()->getType());
     }
     if (lam) {
         auto ft = lam->getType();

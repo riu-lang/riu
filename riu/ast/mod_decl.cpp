@@ -492,7 +492,7 @@ FnHeaderNode* makeHeader(NodeOwner& own, Node* parent, const HeaderData& d) {
         header->addParam(param);
     }
     if (!d.fallibleErr.empty()) {
-        header->setFallibleErrType(typeNodeFromInfo(own, header, TypeInfo(d.fallibleErr), d.line));
+        header->setFallibleErrType(typeNodeFromInfo(own, header, TypeInfo::fromFullName(d.fallibleErr), d.line));
     }
     return header;
 }

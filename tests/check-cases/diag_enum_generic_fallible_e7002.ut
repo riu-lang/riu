@@ -1,0 +1,17 @@
+; 3.6: try-catch 按完整 E 穷尽；catch Box<i64> 盖不住 Box<i32>
+enum Box<T> {
+  V(T)
+}
+
+fn parse() i32 ! Box<i32> {
+  ret 0
+}
+
+fn main() {
+  #Mut let x i32 = try {  ; check: E7002
+    parse()
+  } catch e Box<i64> {
+    ret;
+  }
+  ret;
+}

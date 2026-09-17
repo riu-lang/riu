@@ -1,0 +1,17 @@
+; 3.6: `!` 透传须 E 完整类型相等；Box<i32> 不能透传到 Box<i64>
+enum Box<T> {
+  V(T)
+}
+
+fn parse_i32() i32 ! Box<i32> {
+  ret 0
+}
+
+fn run() i32 ! Box<i64> {
+  #Mut let x i32 = parse_i32()!  ; check: E7004
+  ret x
+}
+
+fn main() {
+  ret;
+}
