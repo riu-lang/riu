@@ -78,6 +78,11 @@ void FlatAst::setOp(NodeId id, Kind op) {
     nodes_[static_cast<size_t>(id)].op = op;
 }
 
+void FlatAst::setValue(NodeId id, std::string_view value) {
+    if (id < 0 || static_cast<size_t>(id) >= nodes_.size()) return;
+    nodes_[static_cast<size_t>(id)].value = value;
+}
+
 FlatAst emptyProgram() {
     FlatAst ast;
     ast.setRoot(ast.add(NodeKind::Program));

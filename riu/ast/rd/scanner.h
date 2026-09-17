@@ -23,6 +23,9 @@ public:
     // 下一 default 通道 token（跳过 Space / LineComment / LineEndComment）。
     [[nodiscard]] Token next();
 
+    // 含 hidden（Space / 注释）。default 通道与 next() 共用下标计数。
+    [[nodiscard]] Token nextRaw();
+
     [[nodiscard]] std::string_view src() const { return src_; }
     [[nodiscard]] const std::vector<ParseError>& errors() const { return *diags_; }
 
@@ -38,6 +41,7 @@ public:
         std::vector<std::uint8_t> mode_stack;
         std::vector<int> interp_brace_depth;
         size_t diag_count = 0;
+        i32 default_index = 0;
     };
     [[nodiscard]] Snapshot snapshot() const;
     void restore(const Snapshot& s);
@@ -85,6 +89,7 @@ private:
     Mode mode_ = Mode::Default;
     std::vector<Mode> mode_stack_;
     std::vector<int> interp_brace_depth_;
+    i32 default_index_ = 0;
 };
 
 } // namespace rd

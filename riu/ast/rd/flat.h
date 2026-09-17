@@ -2,7 +2,7 @@
 // MPL-2.0
 //
 // 结构参考 V flat（MIT）。NodeKind 按 riuParser.g4 构造，不是 V 的 key_go / payload 表。
-// 本栈只给 riu-ast dump 用；ANTLR FileNode 仍是 riu / riu-check / LSP / format 主路。
+// rd.8 起 FileNode 主路走本栈；format / LSP / skeleton 仍 ANTLR。
 
 #ifndef RIU_LANG_RD_FLAT_H
 #define RIU_LANG_RD_FLAT_H
@@ -126,6 +126,7 @@ public:
     [[nodiscard]] NodeId child(NodeId parent, i32 index) const;
     [[nodiscard]] const Node& at(NodeId id) const;
     void setOp(NodeId id, Kind op);
+    void setValue(NodeId id, std::string_view value);
     [[nodiscard]] NodeId root() const { return root_; }
     void setRoot(NodeId id) { root_ = id; }
 

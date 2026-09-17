@@ -121,6 +121,7 @@ Scanner::Snapshot Scanner::snapshot() const {
         s.mode_stack.push_back(static_cast<std::uint8_t>(m));
     s.interp_brace_depth = interp_brace_depth_;
     s.diag_count = diags_->size();
+    s.default_index = default_index_;
     return s;
 }
 
@@ -136,6 +137,7 @@ void Scanner::restore(const Snapshot& s) {
         mode_stack_.push_back(static_cast<Mode>(m));
     interp_brace_depth_ = s.interp_brace_depth;
     if (diags_->size() > s.diag_count) diags_->resize(s.diag_count);
+    default_index_ = s.default_index;
 }
 
 unsigned char Scanner::ch() const {
@@ -234,14 +236,7 @@ Token Scanner::skipIllegal(size_t start_byte, i32 start_line, i32 start_col) {
     const auto d = decodeAt(src_, byte_pos_);
     const size_t n = d.n == 0 ? 1 : d.n;
     const std::string_view text = src_.substr(start_byte, n);
-    bool ws = !text.empty();
-    for (unsigned char c : text) {
-        if (c != ' ' && c != '\t' && c != '\n' && c != '\r') {
-            ws = false;
-            break;
-        }
-    }
-    if (!ws) pushLexerError(start_line, start_col, text);
+    pushLexerError(start_line, start_col, text);
     adv(n);
     Token skip;
     skip.kind = Kind::Invalid;
@@ -746,24 +741,62 @@ Token Scanner::scanOne() {
     return skipIllegal(start_byte, start_line, start_col);
 }
 
-Token Scanner::next() {
+Token Scanner::nextRaw() {
     if (hit_eof_) return makeEof();
-    for (;;) {
-        if (hit_eof_) return makeEof();
-        skipTrivia();
-        if (atEnd()) {
-            hit_eof_ = true;
-            if (mode_ == Mode::Default && src_.empty()) {
-                Token t;
-                t.kind = Kind::LineEnd;
-                t.pos = Pos{.offset = 0, .end = 0, .line = 1, .column = 0};
-                t.text = "<EOF>";
-                return t;
+    if (mode_ == Mode::Default && !atEnd()) {
+        const unsigned char c = ch();
+        const size_t start_byte = byte_pos_;
+        const i32 start_line = line_;
+        const i32 start_col = column_;
+        if (c == ' ') {
+            if (column_ == 0) {
+                size_t i = 0;
+                while (ch(i) == ' ')
+                    ++i;
+                if (ch(i) == ';') {
+                    adv(i + 1);
+                    skipLineComment();
+                    return emit(Kind::LineComment, start_byte, start_line, start_col);
+                }
             }
-            return makeEof();
+            size_t i = 0;
+            while (ch(i) == ' ')
+                ++i;
+            if (ch(i) == ';') {
+                adv(i + 1);
+                skipLineEndComment();
+                return emit(Kind::LineEndComment, start_byte, start_line, start_col);
+            }
+            adv(i);
+            return emit(Kind::Space, start_byte, start_line, start_col);
         }
-        Token t = scanOne();
-        if (atEnd()) hit_eof_ = true;
+        if (c == ';' && column_ == 0) {
+            adv(1);
+            skipLineComment();
+            return emit(Kind::LineComment, start_byte, start_line, start_col);
+        }
+    }
+    if (atEnd()) {
+        hit_eof_ = true;
+        if (mode_ == Mode::Default && src_.empty()) {
+            Token t;
+            t.kind = Kind::LineEnd;
+            t.pos = Pos{.offset = 0, .end = 0, .line = 1, .column = 0};
+            t.text = "<EOF>";
+            t.index = default_index_++;
+            return t;
+        }
+        return makeEof();
+    }
+    Token t = scanOne();
+    if (atEnd()) hit_eof_ = true;
+    if (!isTrivia(t.kind) && t.kind != Kind::Invalid && t.kind != Kind::Eof) t.index = default_index_++;
+    return t;
+}
+
+Token Scanner::next() {
+    for (;;) {
+        Token t = nextRaw();
         if (t.kind == Kind::Invalid) continue;
         if (isTrivia(t.kind)) continue;
         return t;

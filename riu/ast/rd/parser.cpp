@@ -106,13 +106,13 @@ void Parser::errorExpected(Kind k) {
 void Parser::errorUnknown() {
     std::string msg = "no viable alternative at input '";
     msg += tok_.text;
-    msg += "'";
+    msg += '\'';
     errorSyntax(std::move(msg));
     skipToLineEnd();
 }
 
 Parser::Mark Parser::mark() const {
-    return Mark{tok_, peeked_, scanner_.snapshot()};
+    return Mark{.tok = tok_, .peeked = peeked_, .scan = scanner_.snapshot()};
 }
 
 void Parser::rewind(const Mark& m) {
@@ -534,7 +534,9 @@ NodeId Parser::parseEnumCtor(NodeId lhs, bool lhs_is_self) {
     kids.push_back(lhs);
     if (at(Kind::SymbolColon) && peekIs(Kind::SymbolLt)) {
         next();
-        appendIf(kids, parseGenericArgs());
+        NodeId g = parseGenericArgs();
+        if (g != kEmptyNode) ast_.setValue(g, "lhs");
+        appendIf(kids, g);
     }
     eat(Kind::SymbolColonColon);
     std::string_view name;
@@ -546,7 +548,9 @@ NodeId Parser::parseEnumCtor(NodeId lhs, bool lhs_is_self) {
     }
     if (at(Kind::SymbolColon) && peekIs(Kind::SymbolLt)) {
         next();
-        appendIf(kids, parseGenericArgs());
+        NodeId g = parseGenericArgs();
+        if (g != kEmptyNode) ast_.setValue(g, "rhs");
+        appendIf(kids, g);
     }
     if (at(Kind::ParStart)) parseArgList(kids, Kind::ParEnd);
     NodeId n = ast_.add(NodeKind::EnumCtor, pos, name, kids);
@@ -621,7 +625,7 @@ NodeId Parser::parseArrayOrInit() {
 
 NodeId Parser::parseParenLambdaOrTuple() {
     const Pos start = tok_.pos;
-    if (peekIs(Kind::ParEnd) && la(2).kind != Kind::SymbolEqMt) {
+    if (peekIs(Kind::ParEnd) && la(2).kind != Kind::SymbolEqMt && !aheadIsLambda()) {
         next();
         next();
         return ast_.add(NodeKind::UnitLit, start);
@@ -1152,21 +1156,23 @@ NodeId Parser::parseForIn() {
     std::vector<NodeId> kids;
     appendIf(kids, e);
     appendIf(kids, body);
+    // 标签放在末尾 Ident，无标签时树与旧金样一致。
+    if (!label.empty()) kids.push_back(ast_.add(NodeKind::Ident, start, label));
     return ast_.add(NodeKind::ForIn, start, name, kids);
 }
 
 NodeId Parser::parseStatement() {
     std::vector<NodeId> annos;
-    while (at(Kind::SymbolHash)) {
+    if (at(Kind::SymbolHash)) {
         const Mark m = mark();
-        NodeId a = parseAnno();
-        skipLineEnds();
-        if (at(Kind::Let)) {
-            appendIf(annos, a);
-            continue;
+        while (at(Kind::SymbolHash)) {
+            appendIf(annos, parseAnno());
+            skipLineEnds();
         }
-        rewind(m);
-        break;
+        if (!at(Kind::Let)) {
+            rewind(m);
+            annos.clear();
+        }
     }
     if (at(Kind::Let)) return parseLet(std::move(annos), false);
     if (at(Kind::TypeKw)) return parseAlias();
@@ -1318,9 +1324,10 @@ NodeId Parser::parseStatement() {
         appendIf(kids, v);
         return ast_.add(NodeKind::Set, ast_.at(e).pos, {}, kids);
     }
-    eat(Kind::SymbolSemicolon);
+    const bool semi = eat(Kind::SymbolSemicolon);
     eat(Kind::LineEnd);
-    return ast_.add(NodeKind::ExprStmt, ast_.at(e).pos, {}, std::vector<NodeId>{e});
+    return ast_.add(NodeKind::ExprStmt, ast_.at(e).pos, {}, std::vector<NodeId>{e},
+                    semi ? Kind::SymbolSemicolon : Kind::Invalid);
 }
 
 // ==== 顶层 ====
@@ -1335,7 +1342,8 @@ NodeId Parser::parseAnno() {
     const std::string_view name = tok_.text;
     next();
     std::vector<NodeId> kids;
-    if (eat(Kind::ParStart)) {
+    const bool has_arg = eat(Kind::ParStart);
+    if (has_arg) {
         if (at(Kind::INT) || at(Kind::FLOAT) || at(Kind::STR_LINE_RAW) || at(Kind::STR_TPL_OPEN) ||
             at(Kind::CODE_POINT)) {
             if (at(Kind::STR_TPL_OPEN))
@@ -1350,7 +1358,7 @@ NodeId Parser::parseAnno() {
         eat(Kind::ParEnd);
     }
     eat(Kind::LineEnd);
-    return ast_.add(NodeKind::Anno, start, name, kids);
+    return ast_.add(NodeKind::Anno, start, name, kids, has_arg ? Kind::ParStart : Kind::Invalid);
 }
 
 NodeId Parser::parseUse() {
@@ -1557,6 +1565,16 @@ NodeId Parser::parseStruct(std::vector<NodeId> annos) {
     eat(Kind::LineEnd);
     while (!at(Kind::BlockEnd) && !at(Kind::Eof) && !at(Kind::Fn)) {
         if (eat(Kind::LineEnd)) continue;
+        if (at(Kind::SymbolHash)) {
+            const Mark m = mark();
+            while (at(Kind::SymbolHash)) {
+                (void)parseAnno();
+                skipLineEnds();
+            }
+            const bool forFn = at(Kind::Fn);
+            rewind(m);
+            if (forFn) break;
+        }
         std::vector<NodeId> fa;
         while (at(Kind::SymbolHash)) {
             appendIf(fa, parseAnno());

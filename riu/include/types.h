@@ -86,6 +86,13 @@ public:
     // 例如 T? -> Nullable<T> 时，"Nullable" 这个名字没有源文件来源
     TokenInfo(string text, size_t line) : _text(std::move(text)), _line(line) {}
 
+    // 从 rd::Pos 填行列与字节区间。charPositionInLine 0-based；start/stop 为 UTF-8 字节，
+    // stop 与 ANTLR 一样是闭区间（半开 end-1）。
+    TokenInfo(string text, size_t line, size_t charPositionInLine, size_t tokenIndex, size_t startIndex,
+              size_t stopIndex)
+        : _text(std::move(text)), _line(line), _charPositionInLine(charPositionInLine), _tokenIndex(tokenIndex),
+          _startIndex(startIndex), _stopIndex(stopIndex) {}
+
     TokenInfo(const TokenInfo& other) = default;
     TokenInfo(TokenInfo&& other) noexcept = default;
     TokenInfo& operator=(const TokenInfo& other) = default;

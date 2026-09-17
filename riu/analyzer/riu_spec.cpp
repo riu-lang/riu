@@ -11,6 +11,7 @@
 
 #include "ast/ast_builder.h"
 #include "ast/mod_decl.h"
+#include "ast/rd_builder.h"
 #include "spec_impl_checker.h"
 #include "spec_registry.h"
 
@@ -18,6 +19,7 @@ Riu::Riu() : _sdkFile(nullptr) {}
 
 Riu::~Riu() {
     _moduleBuilders.clear();
+    _rdBuilders.clear();
     _declOwners.clear();
     for (auto file : _files) {
         delete file;

@@ -32,6 +32,15 @@ static_library("riu_ast") {
     "syntax_diag.cpp",
     "syntax_error_listener.cpp",
     "type_path.cpp",
+    "rd/dump.cpp",
+    "rd/flat.cpp",
+    "rd/parser.cpp",
+    "rd/scanner.cpp",
+    "rd/token.cpp",
+    "rd_builder.cpp",
+    "rd_builder_decl.cpp",
+    "rd_builder_expr.cpp",
+    "rd_builder_stmt.cpp",
     "node/ast_visitor.cpp",
     "node/expr_node.cpp",
     "node/file_node.cpp",
@@ -50,29 +59,10 @@ static_library("riu_ast") {
   ]
 }
 
-# 手写词法 / FlatAst（只给 riu-ast dump；不进 riu / riu-check 主路）
-config("riu_rd_public") {
-  include_dirs = [ "//riu" ]
-}
-
-static_library("riu_rd") {
-  public_configs = [ ":riu_rd_public" ]
-  sources = [
-    "rd/dump.cpp",
-    "rd/flat.cpp",
-    "rd/parser.cpp",
-    "rd/scanner.cpp",
-    "rd/token.cpp",
-  ]
-}
-
 executable("riu-ast") {
   output_dir = "$root_out_dir/bin"
   defines = [ "RIU_VERSION=\"$riu_version_str\"" ]
-  deps = [
-    ":riu_rd",
-    "//riu/frontend:riu_frontend",
-  ]
+  deps = [ "//riu/frontend:riu_frontend" ]
   include_dirs = [ "//third_party/cli11/include" ]
   sources = [ "ast_main.cpp" ]
 }

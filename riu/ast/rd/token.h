@@ -123,6 +123,7 @@ struct Token {
     Kind kind = Kind::Eof;
     Pos pos;
     std::string_view text; // 指向 Scanner 持有的源；Eof 为空
+    i32 index = 0;         // default 通道连续下标（hidden 不占）；Eof 为 0
 };
 
 // 一条词法（E1001）或文法（E1002）错误。message 是错误码模板 `{}` 的实参。

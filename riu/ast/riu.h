@@ -9,6 +9,7 @@
 #include <memory>
 
 class ASTBuilder;
+class RdBuilder;
 class SpecRegistry;
 class SpecImplChecker;
 
@@ -47,8 +48,9 @@ class Riu {
     vector<string> _loadOrder;        // 首次加载顺序，用于后续 codegen 与链接
     vector<string> _loadStack;        // 加载栈，用于循环依赖检测
 
-    // 持有导入模块的 ASTBuilder，使 AST 节点存活至 Riu 析构
+    // 持有导入模块的 ASTBuilder / RdBuilder，使 AST 节点存活至 Riu 析构
     vector<std::unique_ptr<ASTBuilder>> _moduleBuilders;
+    vector<std::unique_ptr<RdBuilder>> _rdBuilders;
     // .ud 重建的节点（不经 ASTBuilder）
     vector<std::unique_ptr<mod_decl::NodeOwner>> _declOwners;
 
@@ -83,6 +85,7 @@ public:
     // SDK 自举等场景先登记已知依赖路径，供 pkg `to` 目标校验使用；不代表模块已加载。
     void registerModulePath(const string& absPath, const string& moduleName);
     void keepBuilder(std::unique_ptr<ASTBuilder> builder);
+    void keepRdBuilder(std::unique_ptr<RdBuilder> builder);
     void adoptDeclOwner(std::unique_ptr<mod_decl::NodeOwner> owner);
 
     [[nodiscard]] FileNode* sdkFile() const { return _sdkFile; }
@@ -174,7 +177,7 @@ public:
 private:
     [[nodiscard]] string packageSourceDir(const string& package) const;
     [[nodiscard]] bool isInsidePackage(const FileNode* caller, const string& package) const;
-    // 底层解析 + ASTBuilder。内部用。
+    // 底层解析 + RdBuilder（format / LSP / skeleton 仍走 ANTLR）。内部用。
     FileNode* _parseFile(const string& absPath, const string& moduleName, int errorLine);
 
     // 项目模式（有 riu.toml / _projectName）才读写 `.ud`；riu-check 单文件不写。

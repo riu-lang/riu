@@ -6,17 +6,15 @@
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <map>
 #include <optional>
 
 #include <toml.hpp>
 
-#include "ast/syntax_error_listener.h"
 #include "ast_builder.h"
 #include "mod_decl.h"
-#include "parse_program.h"
-#include "riu/riuLexer.h"
-#include "riu/riuParser.h"
+#include "rd_builder.h"
 
 // 全局调试输出开关（声明于 include/types.h，仅 _DEBUG 构建可用），
 // 由 `riu build -d` / `riu test -d` 在 main.cpp 中翻成 true；
@@ -27,6 +25,10 @@ bool debug = false;
 
 void Riu::keepBuilder(std::unique_ptr<ASTBuilder> builder) {
     _moduleBuilders.push_back(std::move(builder));
+}
+
+void Riu::keepRdBuilder(std::unique_ptr<RdBuilder> builder) {
+    _rdBuilders.push_back(std::move(builder));
 }
 
 void Riu::adoptDeclOwner(std::unique_ptr<mod_decl::NodeOwner> owner) {
@@ -187,30 +189,21 @@ string Riu::modulePath(const string& moduleName) const {
 }
 
 FileNode* Riu::_parseFile(const string& absPath, const string& moduleName, int errorLine) {
-    antlr4::ANTLRFileStream stream;
-    stream.loadFromFile(absPath);
-    riu::riuLexer lexer(&stream);
-    SyntaxErrorListener errListener(absPath, std::cerr);
-    lexer.removeErrorListeners();
-    lexer.addErrorListener(&errListener);
-    antlr4::CommonTokenStream tokenStream(&lexer);
-    riu::riuParser parser(&tokenStream);
-    parser.removeErrorListeners();
-    parser.addErrorListener(&errListener);
-    auto program = parseRiuProgram(parser, tokenStream, &errListener);
-    if (errListener.hasErrors() || parser.getNumberOfSyntaxErrors()) {
-        // 用首个语法错误的实际错误码（E1001/E1002）+ 行号替代通用 E5010，
-        // 使 riu-check test 的 ; check: 注解能精确匹配。
-        throw RiuError(errListener.firstErrorLine(), errListener.firstErrorCol(), *errListener.firstErrorCodeDef(),
-                       absPath);
+    (void)errorLine;
+    std::ifstream in(absPath, std::ios::binary);
+    if (!in) throw RiuError(1, ErrorCode::E5012, moduleName, absPath);
+    string src((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    if (src.size() >= 3 && static_cast<unsigned char>(src[0]) == 0xEF && static_cast<unsigned char>(src[1]) == 0xBB &&
+        static_cast<unsigned char>(src[2]) == 0xBF) {
+        src.erase(0, 3);
     }
 
     // 测试文件按文件名后缀识别（spec §11.3.3.1）
     bool isTestFile = absPath.ends_with(".test.ut");
-    auto astBuilder = std::make_unique<ASTBuilder>(*this, moduleName, isTestFile, absPath);
-    auto fileNode = astBuilder->build(program);
+    auto builder = std::make_unique<RdBuilder>(*this, std::move(src), moduleName, isTestFile, absPath);
+    auto fileNode = builder->build();
     if (fileNode) fileNode->setSourcePath(absPath);
-    _moduleBuilders.push_back(std::move(astBuilder));
+    keepRdBuilder(std::move(builder));
     return fileNode;
 }
 

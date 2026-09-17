@@ -2,7 +2,7 @@
 // MPL-2.0
 //
 // 结构参考 V parser（MIT）。产生式跟 riuParser.g4，不搬 V 的 ASI / import。
-// 本栈只给 riu-ast dump 用；ANTLR FileNode 仍是 riu / riu-check / LSP / format 主路。
+// rd.8 起 FileNode 主路走本栈；format / LSP / skeleton 仍 ANTLR。
 
 #ifndef RIU_LANG_RD_PARSER_H
 #define RIU_LANG_RD_PARSER_H
