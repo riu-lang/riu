@@ -1,0 +1,8 @@
+Program
+  Enum "Color"
+    EnumVariant "Red"
+    EnumVariant "Green"
+    EnumVariant "Rgb"
+      TypePath "i32"
+      TypePath "i32"
+      TypePath "i32"

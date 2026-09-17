@@ -73,6 +73,11 @@ const Node& FlatAst::at(NodeId id) const {
     return nodes_[static_cast<size_t>(id)];
 }
 
+void FlatAst::setOp(NodeId id, Kind op) {
+    if (id < 0 || static_cast<size_t>(id) >= nodes_.size()) return;
+    nodes_[static_cast<size_t>(id)].op = op;
+}
+
 FlatAst emptyProgram() {
     FlatAst ast;
     ast.setRoot(ast.add(NodeKind::Program));

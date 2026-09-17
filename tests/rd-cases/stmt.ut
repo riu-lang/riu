@@ -1,0 +1,12 @@
+fn f() {
+  #Mut let i usize = 0
+  if i == 0 {
+    i += 1
+    continue;
+  }
+  if !first {
+    print(" ")
+  }
+  first = false
+  ret;
+}

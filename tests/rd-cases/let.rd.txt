@@ -1,0 +1,13 @@
+Program
+  Let "g"
+    TypePath "i32"
+    IntLit "1"
+  Fn "f"
+    Block
+      Let "x"
+        TypePath "i32"
+        IntLit "2"
+      Let "y"
+        Infix op=SymbolAdd
+          Ident "x"
+          IntLit "1"

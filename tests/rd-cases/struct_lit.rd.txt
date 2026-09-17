@@ -1,0 +1,16 @@
+Program
+  Struct "Point"
+    Field "x"
+      TypePath "i32"
+    Field "y"
+      TypePath "i32"
+  Fn "f"
+    TypePath "Point"
+    Block
+      ExprStmt
+        StructLit
+          TypePath "Point"
+          FieldInit "x"
+            IntLit "1"
+          FieldInit "y"
+            IntLit "2"

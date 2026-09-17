@@ -1,0 +1,6 @@
+Program
+  Struct "Point"
+    Field "x"
+      TypePath "i32"
+    Field "y"
+      TypePath "i32"

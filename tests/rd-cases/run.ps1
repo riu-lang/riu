@@ -1,7 +1,7 @@
 #!/usr/bin/env pwsh
 #Requires -Version 5.1
 # rd 对照：每个 .ut 的 --rd-tokens 须等于 --tokens；有 *.tokens.txt 则再对金样。
-# 有 *.rd.txt 则 --rd dump 对金样（program / use；其余顶层跳过）。
+# 有 *.rd.txt 则 --rd dump 对金样。
 $ErrorActionPreference = 'Stop'
 $Here = $PSScriptRoot
 $fail = 0

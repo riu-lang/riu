@@ -1,0 +1,17 @@
+Program
+  Fn "main"
+    Block
+  Fn "add"
+    Param "a"
+      TypePath "i32"
+    Param "b"
+      TypePath "i32"
+    TypePath "i32"
+    Block
+      Ret
+        Infix op=SymbolAdd
+          Ident "a"
+          Ident "b"
+  Fn "answer"
+    TypePath "i32"
+    IntLit "42"

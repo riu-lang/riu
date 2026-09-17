@@ -125,6 +125,7 @@ public:
 
     [[nodiscard]] NodeId child(NodeId parent, i32 index) const;
     [[nodiscard]] const Node& at(NodeId id) const;
+    void setOp(NodeId id, Kind op);
     [[nodiscard]] NodeId root() const { return root_; }
     void setRoot(NodeId id) { root_ = id; }
 

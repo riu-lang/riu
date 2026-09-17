@@ -1,0 +1,4 @@
+Program
+  Fn
+  Let "变量"
+    IntLit "1"

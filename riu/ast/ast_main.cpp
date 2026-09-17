@@ -14,7 +14,7 @@
 //   riu-ast <input.ut> --oneline   ; 单行输出 (默认多行 pretty)
 //   riu-ast <input.ut> --tokens    ; ANTLR default 通道 token
 //   riu-ast <input.ut> --rd-tokens ; rd Scanner default 通道 token
-//   riu-ast <input.ut> --rd        ; rd FlatAst 缩进树（program / use；其余顶层跳过）
+//   riu-ast <input.ut> --rd        ; rd FlatAst 缩进树（program / use / fn / let / struct / …）
 
 #include "riu/riuLexer.h"
 #include "riu/riuParser.h"

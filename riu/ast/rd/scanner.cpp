@@ -351,6 +351,35 @@ constexpr auto kOps = std::to_array<std::pair<std::string_view, Kind>>({
 
 Scanner::Scanner(std::string_view src) : src_(src) {}
 
+Scanner::Snapshot Scanner::snapshot() const {
+    Snapshot s;
+    s.byte_pos = byte_pos_;
+    s.cp_pos = cp_pos_;
+    s.line = line_;
+    s.column = column_;
+    s.hit_eof = hit_eof_;
+    s.mode = static_cast<std::uint8_t>(mode_);
+    s.mode_stack.reserve(mode_stack_.size());
+    for (Mode m : mode_stack_)
+        s.mode_stack.push_back(static_cast<std::uint8_t>(m));
+    s.interp_brace_depth = interp_brace_depth_;
+    return s;
+}
+
+void Scanner::restore(const Snapshot& s) {
+    byte_pos_ = s.byte_pos;
+    cp_pos_ = s.cp_pos;
+    line_ = s.line;
+    column_ = s.column;
+    hit_eof_ = s.hit_eof;
+    mode_ = static_cast<Mode>(s.mode);
+    mode_stack_.clear();
+    mode_stack_.reserve(s.mode_stack.size());
+    for (std::uint8_t m : s.mode_stack)
+        mode_stack_.push_back(static_cast<Mode>(m));
+    interp_brace_depth_ = s.interp_brace_depth;
+}
+
 Token Scanner::next() {
     if (hit_eof_) return makeEof();
     for (;;) {

@@ -1,0 +1,30 @@
+Program
+  Fn "f"
+    Block
+      Let "i"
+        Anno "Mut"
+        TypePath "usize"
+        IntLit "0"
+      ExprStmt
+        If
+          Infix op=SymbolEqEq
+            Ident "i"
+            IntLit "0"
+          Block
+            Assign op=SymbolAddEq
+              Ident "i"
+              IntLit "1"
+            Continue
+      ExprStmt
+        If
+          Prefix op=SymbolExcl
+            Ident "first"
+          Block
+            ExprStmt
+              Call
+                Ident "print"
+                StringLit " "
+      Assign op=SymbolEq
+        Ident "first"
+        BoolLit "false"
+      RetVoid

@@ -1,0 +1,14 @@
+Program
+  Fn "f"
+    Param "a"
+      TypeGeneric "Array"
+        TypeNullable
+          TypePath "i32"
+    Param "b"
+      TypeGeneric "Map" op=SymbolAnd
+        TypePath "String"
+        TypePath "i32"
+    TypeFallible
+      TypePath "i32"
+      TypePath "E"
+    Block

@@ -1,0 +1,7 @@
+Program
+  Alias "Int"
+    TypePath "i32"
+  Fn "f"
+    Block
+      Alias "N"
+        TypePath "Int"

@@ -1,0 +1,6 @@
+let g i32 = 1
+
+fn f() {
+  let x i32 = 2
+  let y = x + 1
+}

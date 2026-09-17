@@ -1,0 +1,39 @@
+Program
+  Fn "f"
+    Block
+      Let "a"
+        Infix op=SymbolAdd
+          IntLit "1"
+          Infix op=SymbolMul
+            IntLit "2"
+            IntLit "3"
+      Let "b"
+        Call
+          Ident "foo"
+          IntLit "1"
+          IntLit "2"
+      Let "c"
+        Dot "b"
+          Ident "a"
+      Let "d"
+        Get
+          Ident "xs"
+          IntLit "0"
+      Let "e"
+        Prefix op=SymbolExcl
+          Ident "ok"
+      Let "f"
+        NullElse
+          Ident "n"
+          IntLit "0"
+      Let "g"
+        Prefix op=SymbolSub
+          Ident "x"
+      Let "h"
+        Infix op=SymbolAndAnd
+          Infix op=SymbolEqEq
+            Ident "a"
+            IntLit "1"
+          Infix op=SymbolExclEq
+            Ident "b"
+            IntLit "2"

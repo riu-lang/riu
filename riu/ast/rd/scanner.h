@@ -23,6 +23,20 @@ public:
 
     [[nodiscard]] std::string_view src() const { return src_; }
 
+    // 词法位置快照，给 parser 试探 lambda / 结构体字面量失败时回退。
+    struct Snapshot {
+        size_t byte_pos = 0;
+        i32 cp_pos = 0;
+        i32 line = 1;
+        i32 column = 0;
+        bool hit_eof = false;
+        std::uint8_t mode = 0;
+        std::vector<std::uint8_t> mode_stack;
+        std::vector<int> interp_brace_depth;
+    };
+    [[nodiscard]] Snapshot snapshot() const;
+    void restore(const Snapshot& s);
+
 private:
     enum class Mode : std::uint8_t { Default, StrTpl };
 

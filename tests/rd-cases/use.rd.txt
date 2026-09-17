@@ -3,3 +3,5 @@ Program
   Use "a.b.c"
   Use "riu.io.*"
   Use "包.名"
+  Fn "skipped"
+    Block

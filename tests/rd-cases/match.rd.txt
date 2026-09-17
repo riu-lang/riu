@@ -1,0 +1,25 @@
+Program
+  Enum "E"
+    EnumVariant "A"
+    EnumVariant "B"
+      TypePath "i32"
+  Fn "f"
+    Param "x"
+      TypePath "E"
+    TypePath "i32"
+    Block
+      ExprStmt
+        Match
+          Ident "x"
+          MatchArm
+            Pattern "A"
+              TypePath "E"
+            IntLit "1"
+          MatchArm
+            Pattern "B"
+              TypePath "E"
+              Ident "n"
+            Ident "n"
+          MatchArm
+            Pattern "else"
+            IntLit "0"

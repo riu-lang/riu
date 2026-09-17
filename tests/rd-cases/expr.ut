@@ -1,0 +1,10 @@
+fn f() {
+  let a = 1 + 2 * 3
+  let b = foo(1, 2)
+  let c = a.b
+  let d = xs[0]
+  let e = !ok
+  let f = n ?? 0
+  let g = -x
+  let h = a == 1 && b != 2
+}
