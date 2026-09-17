@@ -15,6 +15,7 @@
 //   riu-ast <input.ut> --tokens    ; ANTLR default 通道 token
 //   riu-ast <input.ut> --rd-tokens ; rd Scanner default 通道 token
 //   riu-ast <input.ut> --rd        ; rd FlatAst 缩进树（program / use / fn / let / struct / …）
+//   riu-ast <input.ut> --quiet     ; 只词法/语法分析，不 dump（可与上列 flag 组合，便于计时）
 
 #include "riu/riuLexer.h"
 #include "riu/riuParser.h"
@@ -108,6 +109,13 @@ std::string collectRdTokens(std::string_view src) {
     return out;
 }
 
+void drainRdTokens(std::string_view src) {
+    rd::Scanner scanner(src);
+    for (;;) {
+        if (scanner.next().kind == rd::Kind::Eof) break;
+    }
+}
+
 } // namespace
 
 int main(int argc, char* argv[]) { // NOLINT(bugprone-exception-escape)
@@ -141,9 +149,11 @@ int main(int argc, char* argv[]) { // NOLINT(bugprone-exception-escape)
     bool dumpTokens = false;
     bool dumpRdTokens = false;
     bool dumpRdAst = false;
+    bool quiet = false;
     auto* tokensFlag = app.add_flag("--tokens", dumpTokens, "Dump ANTLR default-channel tokens");
     auto* rdTokensFlag = app.add_flag("--rd-tokens", dumpRdTokens, "Dump rd scanner tokens");
     auto* rdAstFlag = app.add_flag("--rd", dumpRdAst, "Dump rd FlatAst tree");
+    app.add_flag("--quiet", quiet, "Parse/tokenize without dumping (for timing)");
     tokensFlag->excludes(rdTokensFlag);
     tokensFlag->excludes(rdAstFlag);
     rdTokensFlag->excludes(tokensFlag);
@@ -166,7 +176,9 @@ int main(int argc, char* argv[]) { // NOLINT(bugprone-exception-escape)
             std::cerr << "Error: cannot load file " << inputFile << ": " << e.what() << '\n';
             return 1;
         }
-        return writeOut(outputFile, rd::dumpTree(rd::parseProgram(src)));
+        rd::FlatAst ast = rd::parseProgram(src);
+        if (quiet) return 0;
+        return writeOut(outputFile, rd::dumpTree(ast));
     }
 
     if (dumpRdTokens) {
@@ -176,6 +188,10 @@ int main(int argc, char* argv[]) { // NOLINT(bugprone-exception-escape)
         } catch (const std::exception& e) {
             std::cerr << "Error: cannot load file " << inputFile << ": " << e.what() << '\n';
             return 1;
+        }
+        if (quiet) {
+            drainRdTokens(src);
+            return 0;
         }
         return writeOut(outputFile, collectRdTokens(src));
     }
@@ -191,8 +207,15 @@ int main(int argc, char* argv[]) { // NOLINT(bugprone-exception-escape)
 
     riu::riuLexer lexer(&stream);
     antlr4::CommonTokenStream tokenStream(&lexer);
+    if (quiet) {
+        lexer.removeErrorListeners();
+    }
 
     if (dumpTokens) {
+        if (quiet) {
+            tokenStream.fill();
+            return 0;
+        }
         return writeOut(outputFile, dumpAntlrTokens(lexer, tokenStream));
     }
 
@@ -200,8 +223,10 @@ int main(int argc, char* argv[]) { // NOLINT(bugprone-exception-escape)
     // 任务约定 "ast 仅 antlr, 无错误输出树", 即只输出 ANTLR 自身的 parse tree,
     // 哪怕源文件存在语法错误也照样把 (可能含 <error> 节点的) 树打印出来.
     riu::riuParser parser(&tokenStream);
+    if (quiet) parser.removeErrorListeners();
 
     auto* tree = parser.program();
+    if (quiet) return 0;
     std::string out = tree->toStringTree(&parser, !oneline);
     if (!out.empty() && out.back() != '\n') out += '\n';
     return writeOut(outputFile, out);

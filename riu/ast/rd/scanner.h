@@ -1,7 +1,8 @@
 // Copyright (c) 2026. Yin-Jinlong@github
 // MPL-2.0
 //
-// 结构参考 V scanner（MIT）。词法规则跟 riuLexer.g4（`;` 注释、LineEnd、StrTpl），不搬 V 的 ASI / 关键字。
+// 结构参考 V scanner（MIT）。语言可见 token 跟 riu（关键字、`;` 注释、StrTpl），
+// 扫描按 UTF-8 字节分流，不模拟 ANTLR 最长匹配 / code point 下标。
 
 #ifndef RIU_LANG_RD_SCANNER_H
 #define RIU_LANG_RD_SCANNER_H
@@ -26,7 +27,6 @@ public:
     // 词法位置快照，给 parser 试探 lambda / 结构体字面量失败时回退。
     struct Snapshot {
         size_t byte_pos = 0;
-        i32 cp_pos = 0;
         i32 line = 1;
         i32 column = 0;
         bool hit_eof = false;
@@ -42,17 +42,34 @@ private:
 
     [[nodiscard]] Token makeEof() const;
     [[nodiscard]] Token scanOne();
-    [[nodiscard]] Token emit(Kind kind, size_t start_byte, i32 start_cp, i32 start_line, i32 start_col);
-    void consumeCp();
-    void advanceBytes(size_t n);
+    [[nodiscard]] Token scanStrTpl();
+    [[nodiscard]] Token emit(Kind kind, size_t start_byte, i32 start_line, i32 start_col);
+    [[nodiscard]] Token scanIdent(size_t start_byte, i32 start_line, i32 start_col);
+    [[nodiscard]] Token scanNumber(size_t start_byte, i32 start_line, i32 start_col);
+    void consumeIdentRest();
+    [[nodiscard]] bool tryRawString();
+    [[nodiscard]] bool tryCodePoint();
+
+    void skipTrivia();
+    void skipLineComment();
+    void skipLineEndComment();
+    void consumeNewline();
+    void adv(size_t n);
+    void consumeInt10();
+    void consumeGrouped(bool (*ok)(unsigned char));
+    bool consumeIntSuffix();
+    bool consumeFloatSuffix();
+
+    [[nodiscard]] unsigned char ch() const;
+    [[nodiscard]] unsigned char ch(size_t n) const;
+    [[nodiscard]] bool atEnd() const { return byte_pos_ >= src_.size(); }
+
     void pushMode(Mode m);
     void popMode();
     void applySideEffects(Kind kind);
-    [[nodiscard]] bool atEnd() const { return byte_pos_ >= src_.size(); }
 
     std::string_view src_;
     size_t byte_pos_ = 0;
-    i32 cp_pos_ = 0;
     i32 line_ = 1;
     i32 column_ = 0;
     bool hit_eof_ = false;

@@ -1,7 +1,7 @@
 // Copyright (c) 2026. Yin-Jinlong@github
 // MPL-2.0
 //
-// 结构参考 V token/position（MIT）。Kind 与 riuLexer.g4 对齐，不是 V 关键字。
+// 结构参考 V token/position（MIT）。Kind 名沿用 g4 规则名，不是 V 关键字。
 // 本栈只给 riu-ast dump 用；ANTLR 仍是 riu / riu-check / LSP / format 主路。
 
 #ifndef RIU_LANG_RD_TOKEN_H
@@ -110,8 +110,8 @@ enum class Kind : std::uint8_t {
 #undef RD_KIND_ENUM
 };
 
-// 半开区间 [offset, end)。offset / end 是 Unicode code point 下标（对 ANTLR CharStream index）。
-// line 1-based；column 0-based（对 ANTLR charPositionInLine）。Token.text 仍是源上的 UTF-8 切片。
+// 半开区间 [offset, end)，UTF-8 字节下标。line 1-based；column 0-based（行内字节）。
+// Token.text 是源上的 UTF-8 切片。
 struct Pos {
     i32 offset = 0;
     i32 end = 0;
@@ -131,8 +131,7 @@ struct Token {
 // 精确匹配 g4 关键字；非关键字返回 Invalid。
 [[nodiscard]] Kind keywordKind(std::string_view ident);
 
-// dump 一行：KIND  line:col  offset-end  "escaped"\n
-// offset 与 ANTLR start/stop+1 对齐（code point，非字节）。
+// dump 一行：KIND  line:col  offset-end  "escaped"\n（offset 为字节）。
 [[nodiscard]] std::string formatTokenLine(std::string_view kind, Pos pos, std::string_view text);
 [[nodiscard]] std::string formatTokenLine(const Token& tok);
 
