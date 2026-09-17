@@ -14,10 +14,12 @@
 //   riu-ast <input.ut> --oneline   ; 单行输出 (默认多行 pretty)
 //   riu-ast <input.ut> --tokens    ; ANTLR default 通道 token
 //   riu-ast <input.ut> --rd-tokens ; rd Scanner default 通道 token
+//   riu-ast <input.ut> --rd        ; rd FlatAst 缩进树（parser 未接时打空 Program）
 
 #include "riu/riuLexer.h"
 #include "riu/riuParser.h"
 
+#include "ast/rd/flat.h"
 #include "ast/rd/scanner.h"
 #include "ast/rd/token.h"
 
@@ -95,7 +97,7 @@ std::string dumpAntlrTokens(riu::riuLexer& lexer, antlr4::CommonTokenStream& tok
     return out;
 }
 
-std::string dumpRdTokens(std::string_view src) {
+std::string collectRdTokens(std::string_view src) {
     rd::Scanner scanner(src);
     std::string out;
     for (;;) {
@@ -137,11 +139,17 @@ int main(int argc, char* argv[]) { // NOLINT(bugprone-exception-escape)
     app.add_flag("--oneline", oneline, "Print tree on a single line (default: pretty multi-line)");
 
     bool dumpTokens = false;
-    bool dumpRd = false;
+    bool dumpRdTokens = false;
+    bool dumpRdAst = false;
     auto* tokensFlag = app.add_flag("--tokens", dumpTokens, "Dump ANTLR default-channel tokens");
-    auto* rdTokensFlag = app.add_flag("--rd-tokens", dumpRd, "Dump rd scanner tokens");
+    auto* rdTokensFlag = app.add_flag("--rd-tokens", dumpRdTokens, "Dump rd scanner tokens");
+    auto* rdAstFlag = app.add_flag("--rd", dumpRdAst, "Dump rd FlatAst tree");
     tokensFlag->excludes(rdTokensFlag);
+    tokensFlag->excludes(rdAstFlag);
     rdTokensFlag->excludes(tokensFlag);
+    rdTokensFlag->excludes(rdAstFlag);
+    rdAstFlag->excludes(tokensFlag);
+    rdAstFlag->excludes(rdTokensFlag);
 
     CLI11_PARSE(app, argc, argv);
 
@@ -150,7 +158,12 @@ int main(int argc, char* argv[]) { // NOLINT(bugprone-exception-escape)
         return 1;
     }
 
-    if (dumpRd) {
+    if (dumpRdAst) {
+        // TODO: rd.5 接 Parser 后按源文件建树；目前手填空 Program。
+        return writeOut(outputFile, rd::dumpTree(rd::emptyProgram()));
+    }
+
+    if (dumpRdTokens) {
         std::string src;
         try {
             src = readUtf8File(inputFile);
@@ -158,7 +171,7 @@ int main(int argc, char* argv[]) { // NOLINT(bugprone-exception-escape)
             std::cerr << "Error: cannot load file " << inputFile << ": " << e.what() << '\n';
             return 1;
         }
-        return writeOut(outputFile, dumpRdTokens(src));
+        return writeOut(outputFile, collectRdTokens(src));
     }
 
     // 加载源文件 (UTF-8). ANTLRFileStream 自带 BOM 处理.

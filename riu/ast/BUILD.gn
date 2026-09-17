@@ -57,6 +57,8 @@ config("riu_rd_public") {
 static_library("riu_rd") {
   public_configs = [ ":riu_rd_public" ]
   sources = [
+    "rd/dump.cpp",
+    "rd/flat.cpp",
     "rd/scanner.cpp",
     "rd/token.cpp",
   ]
