@@ -1,0 +1,64 @@
+; #15：闭 / 开 / 闭标在泛型 struct；边界按实参查找
+#Spec
+struct To<T> {
+    fn to() T
+    fn echo() T = $.to()
+}
+
+#Impl(To<i32>)
+struct Counter {
+    n i32
+
+    fn to() i32 {
+        $.n
+    }
+}
+
+#Impl(To<T>)
+struct Cell<T> {
+    v T
+
+    #Static
+    fn make(v T) Self {
+        Self {
+            .v = v
+        }
+    }
+
+    fn to() T {
+        $.v
+    }
+}
+
+#Impl(To<i32>)
+struct Wrap<T> {
+    n i32
+
+    #Static
+    fn make(n i32) Self {
+        Self {
+            .n = n
+        }
+    }
+
+    fn to() i32 {
+        $.n
+    }
+}
+
+fn take_i32<X : To<i32>>(x X) i32 {
+    x.to()
+}
+
+fn main() {
+    let c = Counter {
+        .n = 1
+    }
+    let n1 i32 = take_i32(c)
+    let cell Cell<i32> = Cell:<i32>::make(2)
+    let n2 i32 = take_i32(cell)
+    let w Wrap<bool> = Wrap:<bool>::make(3)
+    let n3 i32 = take_i32(w)
+    let n4 i32 = c.echo()
+    ret;
+}

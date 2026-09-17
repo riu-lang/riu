@@ -1271,7 +1271,8 @@ void SemaPass::visitCall(ExprCallNode& node) {
             if (!isCurrentTypeParam(baseType) && !_substStack.empty() && isCurrentTypeParam(rawBase) &&
                 !baseType.isDyn() && !baseType.isPtr() && !baseType.name.empty()) {
                 string member = dotCallee->member();
-                auto rt = instantiatedMethodRet(_currentFn, _file, _sdkFile, rawBase, baseType, member);
+                auto rt =
+                    instantiatedMethodRet(_currentFn, _file, _sdkFile, rawBase, baseType, member, currentInstSubst());
                 if (!rt) {
                     throw RiuError(n->getLineNumber(), n->getColumn(), ErrorCode::E3095, baseType.getFullName());
                 }

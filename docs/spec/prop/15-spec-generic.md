@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| 状态 | 提议 |
+| 状态 | 已落地 |
 | 开 | 2026-09-13 |
 | 旧档 | [DRAFT-spec-unify.md](../draft/DRAFT-spec-unify.md) [#1.R]（类型参数 spec 已写入 §12，勿改草案） |
 
@@ -35,9 +35,9 @@
 
 ## 决定
 
-- 日期：
-- 结论：实施 / 关闭
-- 理由：
+- 日期：2026-09-17
+- 结论：实施
+- 理由：条文已有形态；单 Impl、不做 Dyn；闭标在泛型 struct 允许。
 
 ## 规范要点
 
@@ -60,4 +60,4 @@
 
 ## 落地
 
-- （未开始。建议切片：AST/边界带实参 → 穷尽性 subst；E1103 维持 `(S, D)` → `<X : D<A>>` 单态化校验 → SDK 最小用例 `To<T>` 级测试。不在本条落地 Iter / 并存 / 分离 impl。）
+- 2026-09-17（`notes/0.23`）：AST / `.ud` v3 边界带实参；E1103 维持 `(S, D)`；E1142 缺参错元；`boundSatisfied` subst 开 impl；check-cases + `tests/projects/spec_generic`；回写 §12 / §6.4.4 / 附录 D。不落地 Iter / 并存 / 分离 impl / Dyn。

@@ -643,7 +643,7 @@ void collectSelfTypesInTypeNode(TypeNode* tn, vector<TypeSelfNode*>& out) {
 // emitMethodName 决定 LLVM 函数符号 + fnSymbol 表 key; 默认 = header 上的方法名 (fall-through),
 // 也可传入 "m@SpecA" 形态 (DRAFT-spec-disambig-at escape hatch).
 void Compiler::emitSpecDefaultBodyMethod(SpecDeclNode* spec, size_t sigIdx, const string& structName,
-                                         const string& emitMethodName) {
+                                         const string& emitMethodName, const map<string, TypeInfo>& subst) {
     if (!spec) return;
     auto body = spec->defaultBody(sigIdx);
     if (!body) return;
@@ -705,6 +705,7 @@ void Compiler::emitSpecDefaultBodyMethod(SpecDeclNode* spec, size_t sigIdx, cons
         if (auto* sym = body->lookupSymbol(pname)) {
             paramPatches.push_back({.name = pname, .saved = *sym, .had = true});
             TypeInfo newType = param->type() ? param->type()->getType() : TypeInfo();
+            newType = newType.substitute(subst);
             SymbolInfo si{SymbolKind::Variable, pname, newType};
             if (param->isFrozen()) si.isFrozen = true;
             *sym = si;
@@ -714,10 +715,10 @@ void Compiler::emitSpecDefaultBodyMethod(SpecDeclNode* spec, size_t sigIdx, cons
     // === 3) 取 patch 后的 paramTypes / retType, 准备 LLVM 函数 ===
     vector<TypeInfo> paramTypes;
     for (auto& param : header->params()) {
-        if (param->type()) paramTypes.push_back(param->type()->getType());
+        if (param->type()) paramTypes.push_back(param->type()->getType().substitute(subst));
     }
     TypeInfo retType;
-    if (header->retType()) retType = header->retType()->getType();
+    if (header->retType()) retType = header->retType()->getType().substitute(subst);
     string mFallibleErr;
     mFallibleErr = header->resolvedFallibleErr();
     bool isStatic = header->isStatic();
@@ -775,7 +776,7 @@ void Compiler::compileInheritedDefaults(StructImplNode* impl, const string& stru
         auto body = rec.spec->defaultBody(rec.sigIdx);
         if (!body || !body->header()) continue;
         const string methodName = body->header()->name().getText();
-        emitSpecDefaultBodyMethod(rec.spec, rec.sigIdx, structName, methodName);
+        emitSpecDefaultBodyMethod(rec.spec, rec.sigIdx, structName, methodName, rec.subst);
     }
 
     // DRAFT-spec-disambig-at: 同步发射每条 @-tagged 副本 (即便 impl 覆盖了 m, escape hatch
@@ -785,7 +786,7 @@ void Compiler::compileInheritedDefaults(StructImplNode* impl, const string& stru
         DEBUG_LOG_VAL("    Compiling spec @-disambig emits", disambigs.size() << " methods on " << structName);
     }
     for (const auto& rec : disambigs) {
-        emitSpecDefaultBodyMethod(rec.spec, rec.sigIdx, structName, rec.emitMethodName);
+        emitSpecDefaultBodyMethod(rec.spec, rec.sigIdx, structName, rec.emitMethodName, rec.subst);
     }
 }
 

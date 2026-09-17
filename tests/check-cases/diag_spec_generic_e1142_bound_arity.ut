@@ -1,0 +1,11 @@
+; #15：边界缺 spec 实参 → E1142
+#Spec
+struct To<T> {
+    fn to() T
+}
+
+fn f<T : To>(x T) {  ; check: E1142
+}
+
+fn main() {
+}

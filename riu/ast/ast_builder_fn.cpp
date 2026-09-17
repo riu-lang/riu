@@ -153,20 +153,15 @@ std::any ASTBuilder::visitFnHeader(riu::riuParser::FnHeaderContext* ctx) {
 
     if (auto gd = ctx->genericDef()) {
         vector<string> typeParams;
-        vector<vector<string>> typeParamBounds;
+        vector<vector<SpecRef>> typeParamBounds;
         for (auto pCtx : gd->params) {
             // 形参名：裸 typeNormal，拒绝 `T&`
             typeParams.push_back(requireBareTypeParamName(pCtx->type(0)));
 
-            // 边界：typeParam.bounds 中每个 type → 取名（仅支持 typeNormal / typeGeneric 的基名）
-            vector<string> bounds;
-            for (auto bCtx : pCtx->bounds) {
-                if (auto tn = dynamic_cast<riu::riuParser::TypeNormalContext*>(bCtx)) {
-                    bounds.push_back(typeNormalLastName(tn));
-                } else if (auto tg = dynamic_cast<riu::riuParser::TypeGenericContext*>(bCtx)) {
-                    bounds.push_back(typeGenericLastName(tg));
-                }
-            }
+            vector<SpecRef> bounds;
+            bounds.reserve(pCtx->bounds.size());
+            for (auto bCtx : pCtx->bounds)
+                bounds.push_back(specBoundFromTypeCtx(bCtx));
             typeParamBounds.push_back(std::move(bounds));
         }
         header->setTypeParams(typeParams);

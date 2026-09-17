@@ -8,7 +8,7 @@
 // 做语义检查:
 //   - §12.2.2.1 穷尽性     E1101: 实现块缺 D 中的方法签名
 //   - §12.2.2.1 不多余     E1102: 实现块出现非 D 签名集中的方法
-//   - §12.2.2.2 重复       E1103: 同一 (typeQualified, specQualified+typeArgs) 多次出现
+//   - §12.2.2.2 重复       E1103: 同一 (typeQualified, specQualified 基名) 多次出现
 //   - §12.5    orphan      E1120: Type / D 都不在 impl 所在包
 //   - §12.3.1  签名等价: 方法名 / 形参类型逐位 / 返回类型 (receiver 不参与,
 //               参数名不参与); 应用 draft 自身泛型形参替换.
@@ -93,7 +93,7 @@ public:
 private:
     Riu* _riu;
 
-    // 已登记的 (typeQualified, specQualifiedWithArgs) → impl, 用于 E1103.
+    // 已登记的 (typeQualified, specQualified 基名) → impl, 用于 E1103.
     std::map<std::pair<std::string, std::string>, StructImplNode*> _seen;
 
     // §12.9 对象安全结果 memo: SpecDeclNode* → object-safe?  Phase 2a.
@@ -117,10 +117,6 @@ private:
     // 形参 → impl 块给出的类型实参的替换表.
     bool sigEquivalent(FnHeaderNode* implMethod, FnHeaderNode* specSig,
                        const std::map<std::string, TypeInfo>& subst) const;
-
-    // 拼 `<i32,String>` 形态尾缀, 让 `Counter : To<i32>` 与
-    // `Counter : To<String>` 在 _seen 中视为不同 key (§12.3.2.3).
-    static std::string specTypeArgsSuffix(const SpecRef& ref);
 
     // 类型 bare 名 → 所属模块. 未登记返回空串.
     std::string moduleOfType(const std::string& typeBareName) const;

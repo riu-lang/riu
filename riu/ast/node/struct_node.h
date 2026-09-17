@@ -146,8 +146,8 @@ public:
     struct InheritedDefault {
         SpecDeclNode* spec = nullptr;
         size_t sigIdx = 0;
-        // spec 自身泛型形参 → impl 块给出的类型实参替换表 (与 sigEquivalent 同源).
-        // v1 codegen 暂未消费 (Phase 5 base.ut 5-set 全部非泛型 spec), 留位备用.
+        // spec 自身泛型形参 → impl 块给出的类型实参替换表（与 sigEquivalent 同源）。
+        // emitSpecDefaultBodyMethod 用来把默认体签名 / LLVM 类型里的 spec 形参换成实参。
         map<string, TypeInfo> subst;
     };
     void addInheritedDefault(InheritedDefault d) { _inheritedDefaults.push_back(std::move(d)); }

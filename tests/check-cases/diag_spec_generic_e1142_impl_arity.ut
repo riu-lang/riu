@@ -1,0 +1,12 @@
+; #15：泛型 spec 缺实参 → E1142
+#Spec
+struct To<T> {
+    fn to() T
+}
+
+#Impl(To)  ; check: E1142
+struct S {
+}
+
+fn main() {
+}

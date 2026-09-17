@@ -417,10 +417,10 @@ Array 内置方法（E6042）：
 |--------|-------------|------|
 | E1101  | `Type '{}' does not implement draft method '{}: {}' (impl block missing)` | `Type : D` 实现块缺方法（§12.2.2.1）；spec-default-body 落地后复用为"未实现 + 无默认体"统一诊断；`$.m@SpecA()` 中 T 未 `#Impl(SpecA)` 或 `Dyn<D>` 上 `@OtherSpec` 复用本码（§12.10.8.2 / §12.10.8.4） |
 | E1102  | `Method '{}' in 'Type {} : D' impl block is not part of D's signature set` | 实现块多余非 draft 方法（§12.2.2.1） |
-| E1103  | `Duplicate impl block 'Type {} : {}'` | 同 `Type : D` 实现块重复出现（§12.2.2.2） |
+| E1103  | `Duplicate impl block 'Type {} : {}'` | 同 `Type` 对同一 spec **基名**重复 `#Impl`（含不同实参，§12.2.2.3） |
 | E1104  | `draft method '{}.{}' must not introduce its own generic parameters` | draft 体内 `fn` 引入本地泛型（§12.3.2） |
 | E1105  | `Method '{}' on type '{}' is defined in both an ordinary impl block and a 'Type : {}' impl block` | 同包显隐共存情形 A（§12.4.2.1） |
-| E1106  | `Type '{}' does not satisfy draft bound '{}' for type parameter '{}'` | `<T : D>` 边界单态化未命中（§6.4.4.4） |
+| E1106  | `Type '{}' does not satisfy spec bound '{}' for type parameter '{}'` | `<T : D>` / `<T : D<A>>` 边界单态化未命中（§6.4.4.4） |
 | E1110  | `'#DraftLike' annotation is only allowed on 'draft' declarations` | `#DraftLike` 标在非 draft（§11.4.2.1） |
 | E1111  | `'#DraftLike' draft '{}' must not declare default method bodies` | `#DraftLike` 与默认体共用（§11.4.2.2） |
 | E1112  | `'#DraftLike' draft '{}' must not contain method-local generic parameters` | `#DraftLike` 与方法本地泛型共用（§11.4.2.3） |
@@ -436,6 +436,7 @@ Array 内置方法（E6042）：
 | E1139  | *（已退役）* | DRAFT-spec-default-body 落地（§12.10）解锁 spec body 方法带 body，编号保留不复用 |
 | E1140  | `` spec `{}` default body references unknown method `$.{}`; must appear in this spec's signatures `` | spec 默认体 sema 占位校验失败（§12.10.3.2）；`$.m@SpecA()` 中 SpecA 无该方法 / 默认体（§12.10.8.2，消息按上下文区分"unknown method" vs "no default body"） |
 | E1141  | `` Type `{}` does not implement spec static field `{}` (declared in `#Impl({})`) `` | `#Impl(D)` 缺静态字段契约，或字段类型 / `#Cval` / `#Inline` 属性不符（§12.2.2.1） |
+| E1142  | `Spec '{}' expects {} type args, got {}` | `#Impl(D<…>)` 或 `<T : D<…>>` 实参数与 spec 形参数不一致（§12.2.1.4 / §6.4.4.2） |
 | E3132  | `` Type `{}` inherits conflicting default bodies for method `{}` from specs {}; implementer must provide an explicit override `` | 多 spec 默认体组合冲突未消歧（§12.10.5） |
 | E3133  | `` `Field.value` requires `f` to be compile-time determinable; `{}` is a runtime variable — cannot rewrite to field access `` | `Field.value` sema 改名时 f 非编译期可定（§13.5.2） |
 | E3134  | `` `Field.value` rewrite has no receiver binding in this context (must be inside a struct method with `$`) `` | `Field.value` 改名无 `$` receiver 绑定（§13.5.2） |

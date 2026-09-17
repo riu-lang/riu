@@ -71,7 +71,15 @@ draftBound ::= modulePath? ID genericDef?     ; 例：ToString / pkg.Display / T
 
 §12.2.1.2 `#Impl(D)` 不接受嵌套 spec 参数之外的形态；turbofish `#Impl(To<i32>)` 通过 g4 `buildAnno` 的 `arg=ID genericDef?` 槽承载（§11.1.1.1）。
 
-§12.2.1.3 被宣告的 struct **应当**为 owned 名义类型；语法层不可能在 struct 头位写 `T&` / `T?`（与 §7.1 一致）。泛型 struct 可写 `#Impl(D) struct Foo<T> { ... }`；每个泛型实例化产出一份独立的实现位（与 §6.4.2.3 单态化路径一致）。
+§12.2.1.3 被宣告的 struct **应当**为 owned 名义类型；语法层不可能在 struct 头位写 `T&` / `T?`（与 §7.1 一致）。泛型 struct 可写 `#Impl(D) struct Foo<T> { ... }`；每个泛型实例化产出一份独立的实现位（与 §6.4.2.3 单态化路径一致）。`D` 带类型参数时，同一 `S` 对同一 spec **基名**只能挑下面三种之一（每种一条，§12.2.2.3）：
+
+- 闭、非泛型：`#Impl(D<i32>) struct S` — 只这一份。
+- 闭、泛型：`#Impl(D<i32>) struct S<T>` — 任意 `T` 的 `S<T>` 都实现 `D<i32>`（与 `#Impl(ToString) struct Foo<T>` 同一模型：impl 不提 `T`）。
+- 开：`#Impl(D<T>) struct S<T>` / `#Impl(D<K>) struct Map<K, V>` — 每个单态一份；实参可以是实现者的任一形参，不必与 spec 形参同名。
+
+无 `where`、不特化：不能写「仅当 `T : Foo`」或另开一份 `S<i32>` 更特殊的 `#Impl`。
+
+§12.2.1.4 `D` 声明带 N 个形参时，`#Impl(D)` 无 turbofish、或实参数 ≠ N，报 **E1142**。实参是普通 `type`（标量 / 用户类型 / 实现者自己的形参名 / 嵌套泛型）；禁止 `T&`（**E4037**，与其它类型实参同规）。
 
 ### §12.2.2 穷尽性
 
@@ -82,7 +90,7 @@ draftBound ::= modulePath? ID genericDef?     ; 例：ToString / pkg.Display / T
 
 §12.2.2.2 v1 **不再**对 "多余于 D 的方法" 报错——struct body 内未命中任何 `#Impl(D)` 的方法**应当**视为该类型自身的普通方法，照常存在并参与普通方法分发。早期 `E1102`（"多余"）已废弃；严格的 spec 隔离待 [`draft/DRAFT-extension-blocks.md`](draft/DRAFT-extension-blocks.md) 落地后回归。
 
-§12.2.2.3 同一 `S` 上**不得**重复宣告同一 spec `D`：写两条 `#Impl(D)` 报 **E1103**。同一 `S` 上写多条 `#Impl(D1) #Impl(D2) ... #Impl(Dn)` 合法，方法集需穷尽全部 Di 的并集（重复签名按 §12.3 等价判一致即可，无须重复实现）。
+§12.2.2.3 同一 `S` 上**不得**重复宣告同一 spec **基名** `D`：写两条 `#Impl(D)`，或 `#Impl(D<A>)` 与 `#Impl(D<B>)`，均报 **E1103**。身份键为 `(S, D)`，不含实参。`#Impl(D<i32>)` + `#Impl(Eq)` 合法（不同基名）。同一 `S` 上写多条不同基名的 `#Impl(D1) #Impl(D2) ... #Impl(Dn)` 合法，方法集需穷尽全部 Di 的并集（重复签名按 §12.3 等价判一致即可，无须重复实现）。不同实参并存（`#Impl(To<i32>)` + `#Impl(To<String>)`）本阶段不成立，见 [prop/16](prop/16-impl-split.md)。
 
 ### §12.2.3 方法分发
 
@@ -132,7 +140,7 @@ struct Bad {
 
 §12.3.2.2 需要这种能力时，写在外层泛型函数 `fn map<T : Mappable, U>(...)` 的 `genericDef` 中。
 
-§12.3.2.3 spec 自身允许 `genericDef`（§12.1.1.3）；不同实参（如 `#Impl(To<String>)` / `#Impl(To<i32>)`）视为不同实现，可在同一 struct 上并存。
+§12.3.2.3 spec 自身允许 `genericDef`（§12.1.1.3）。穷尽性把 spec 形参换成 `#Impl` 实参，再按 §12.3.1 比对；`Self` 仍换实现者。查找满足关系按 `(S, D+实参)`：`#Impl(D<i32>)` 的 `S` 满足 `D<i32>`，不满足 `D<String>`。宣告次数仍按 `(S, D)`（§12.2.2.3）；同一 `S` 上不同实参并存本阶段不成立，见 [prop/16](prop/16-impl-split.md)。
 
 ## §12.4 `#Spec` / `#Impl` 注解互锁
 
@@ -152,7 +160,7 @@ struct Bad {
 
 §12.4.2.2 `#Impl(D)` **必须**带单参数 `(D)`，其中 D 由 `ID genericDef?` 形态表达（§11.1.1.1 单参数糖）。缺参 / 多参 / 字面量参报 **E2010**（注解参数形态不合）。
 
-§12.4.2.3 同一 struct 上多条 `#Impl(D)` 顺序无语义；重复同名 D 按 §12.2.2.3 报 **E1103**。
+§12.4.2.3 同一 struct 上多条 `#Impl(D)` 顺序无语义；重复同名 **基名** D（含不同实参）按 §12.2.2.3 报 **E1103**。实参数与 spec 形参数不一致报 **E1142**。
 
 §12.4.2.4 D 解析失败 / 非 spec（解析到其它顶层符号或解析到普通 struct）时报 **E1131**。
 

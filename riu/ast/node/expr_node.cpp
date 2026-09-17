@@ -287,13 +287,13 @@ static TypeInfo lookupSpecBoundMethodRetType(Node* contextParent, const string& 
     }
     if (!file) return {};
 
-    for (auto& dname : bounds[idx]) {
-        SpecDeclNode* draft = file->getSpecDecl(dname);
+    for (auto& bound : bounds[idx]) {
+        SpecDeclNode* draft = file->getSpecDecl(bound.name);
         if (!draft) {
             ScopeNode* p = file->parentScope();
             while (p && !draft) {
                 if (auto pf = dynamic_cast<FileNode*>(p)) {
-                    draft = pf->getSpecDecl(dname);
+                    draft = pf->getSpecDecl(bound.name);
                 }
                 p = p->parentScope();
             }
@@ -302,8 +302,13 @@ static TypeInfo lookupSpecBoundMethodRetType(Node* contextParent, const string& 
         for (auto& sig : draft->signatures()) {
             if (sig->name().getText() != methodName) continue;
             if (sig->retType()) {
-                auto ret = sig->retType()->getType();
-                return ret.substitute({{"Self", TypeInfo(typeParamName)}});
+                std::map<string, TypeInfo> subst;
+                const auto& dParams = draft->typeParams();
+                for (size_t pi = 0; pi < dParams.size() && pi < bound.typeArgs.size(); ++pi) {
+                    subst[dParams[pi]] = bound.typeArgs[pi];
+                }
+                subst["Self"] = TypeInfo(typeParamName);
+                return sig->retType()->getType().substitute(subst);
             }
             return {};
         }

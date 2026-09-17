@@ -1,0 +1,15 @@
+; #15：穷尽性把 spec 形参换成 #Impl 实参再比签名
+#Spec
+struct To<T> {
+    fn to() T
+}
+
+#Impl(To<i32>)  ; check: E1101
+struct S {
+    fn to() bool {
+        false
+    }
+}
+
+fn main() {
+}

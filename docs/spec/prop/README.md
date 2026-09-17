@@ -26,5 +26,5 @@
 | 12 | SDK：正则 / `Command` / JSON | 提议 | [12-sdk-surface.md](12-sdk-surface.md) |
 | 13 | 工具链（LSP / 测试 / 文档） | 提议 | [13-toolchain.md](13-toolchain.md) |
 | 14 | 性能 / layout | 提议 | [14-perf.md](14-perf.md) |
-| 15 | 泛型 spec | 提议 | [15-spec-generic.md](15-spec-generic.md) |
+| 15 | 泛型 spec | 已落地 | [15-spec-generic.md](15-spec-generic.md) |
 | 16 | 分离 impl | 提议 | [16-impl-split.md](16-impl-split.md) |

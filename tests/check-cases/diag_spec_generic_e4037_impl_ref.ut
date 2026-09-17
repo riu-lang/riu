@@ -1,0 +1,12 @@
+; #15：#Impl 实参禁止 T&
+#Spec
+struct To<T> {
+    fn to() T
+}
+
+#Impl(To<i32&>)  ; check: E4037
+struct S {
+}
+
+fn main() {
+}

@@ -1,0 +1,13 @@
+; #15：同一类型对同一 spec 基名只能一条 #Impl（不同实参也拒）
+#Spec
+struct To<T> {
+    fn to() T
+}
+
+#Impl(To<i32>)  ; check: E1103
+#Impl(To<bool>)
+struct S {
+}
+
+fn main() {
+}

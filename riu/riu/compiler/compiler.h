@@ -229,7 +229,7 @@ public:
     // 单条 spec 默认体 emit (compileInheritedDefaults / disambig 共用): emitMethodName 决定
     // LLVM 函数符号 + fnSymbol 表 key.
     void emitSpecDefaultBodyMethod(SpecDeclNode* spec, size_t sigIdx, const string& structName,
-                                   const string& emitMethodName);
+                                   const string& emitMethodName, const std::map<std::string, TypeInfo>& subst);
     void compileStatement(StatementNode* node); // 编译语句 (分发函数)
 };
 

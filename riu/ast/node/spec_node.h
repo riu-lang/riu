@@ -6,6 +6,7 @@
 
 #include "fn_node.h"
 #include "node.h"
+#include "spec_ref.h"
 
 // spec 声明节点（spec §12.1.1）：承载方法签名集；签名可附带可选默认体
 // （DRAFT-spec-default-body）。`_defaultBodies` 与 `_signatures` 等长并按 index
@@ -54,14 +55,6 @@ public:
 
     void setSourceText(string s) { _sourceText = std::move(s); }
     [[nodiscard]] const string& sourceText() const { return _sourceText; }
-};
-
-// spec 引用：`#Impl(D1 + D2) struct X` 中每个 D 的解析结果（v0.5 仅按名 + 类型实参字串记录）。
-struct SpecRef {
-    string name;
-    vector<TypeInfo> typeArgs;
-    int line = 0;
-    int col = 0;
 };
 
 #endif // RIU_LANG_SPEC_NODE_H

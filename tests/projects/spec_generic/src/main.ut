@@ -1,0 +1,67 @@
+use riu.core.*
+
+#Spec
+struct To<T> {
+    fn to() T
+}
+
+#Impl(To<i32>)
+struct Counter {
+    n i32
+
+    fn to() i32 {
+        $.n
+    }
+}
+
+#Impl(To<T>)
+struct Cell<T> {
+    v T
+
+    #Static
+    fn make(v T) Self {
+        Self {
+            .v = v
+        }
+    }
+
+    fn to() T {
+        $.v
+    }
+}
+
+#Impl(To<i32>)
+struct Wrap<T> {
+    n i32
+
+    #Static
+    fn make(n i32) Self {
+        Self {
+            .n = n
+        }
+    }
+
+    fn to() i32 {
+        $.n
+    }
+}
+
+fn take_i32<X : To<i32>>(x X) i32 {
+    x.to()
+}
+
+fn take_open<X : To<T>, T>(x X) T {
+    x.to()
+}
+
+fn main() {
+    let c = Counter {
+        .n = 7
+    }
+    println(take_i32(c))
+    let cell = Cell:<i32>::make(8)
+    println(take_i32(cell))
+    println(take_open:<Cell<i32>, i32>(cell))
+    let w = Wrap:<bool>::make(9)
+    println(take_i32(w))
+}

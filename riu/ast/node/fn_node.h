@@ -5,6 +5,7 @@
 #define RIU_LANG_FN_NODE_H
 
 #include "node.h"
+#include "spec_ref.h"
 #include "type_node.h"
 
 #include <utility>
@@ -37,17 +38,17 @@ class FnHeaderNode : public Node, public Named, public Typed, public Annotated {
 protected:
     vector<FnParamNode*> _params;
     vector<string> _typeParams;
-    // 与 _typeParams 等长；每个槽位的 draft 边界名（如 ["ToString", "Eq"]）。
+    // 与 _typeParams 等长；每个槽位的 spec 边界（`ToString` / `To<i32>`）。
     // 空 vector 表示该类型形参无 bound。spec §12 / §6.4.4。
-    vector<vector<string>> _typeParamBounds;
+    vector<vector<SpecRef>> _typeParamBounds;
     TypeNode* _retType;
-    TypeNode* _fallibleErrType;
+    TypeNode* _fallibleErrType{nullptr};
 
 public:
     FnHeaderNode(Node* parent, Token name, TypeNode* retType)
-        : Node(parent), Named(std::move(name)), _retType(retType), _fallibleErrType(nullptr) {}
+        : Node(parent), Named(std::move(name)), _retType(retType) {}
 
-    void setFallibleErrType(TypeNode* errType) { _fallibleErrType = std::move(errType); }
+    void setFallibleErrType(TypeNode* errType) { _fallibleErrType = errType; }
     [[nodiscard]] TypeNode* fallibleErrTypeNode() const { return _fallibleErrType; }
     [[nodiscard]] string resolvedFallibleErr() const;
 
@@ -57,8 +58,8 @@ public:
     [[nodiscard]] const vector<string>& typeParams() const { return _typeParams; }
     [[nodiscard]] bool isGeneric() const { return !_typeParams.empty(); }
 
-    void setTypeParamBounds(vector<vector<string>> bounds) { _typeParamBounds = std::move(bounds); }
-    [[nodiscard]] const vector<vector<string>>& typeParamBounds() const { return _typeParamBounds; }
+    void setTypeParamBounds(vector<vector<SpecRef>> bounds) { _typeParamBounds = std::move(bounds); }
+    [[nodiscard]] const vector<vector<SpecRef>>& typeParamBounds() const { return _typeParamBounds; }
 
     [[nodiscard]] Token name() const override;
     [[nodiscard]] TypeNode* retType() const;

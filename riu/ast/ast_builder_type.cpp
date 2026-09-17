@@ -220,3 +220,43 @@ std::any ASTBuilder::visitTypeNullable(riu::riuParser::TypeNullableContext* ctx)
     auto* nul = applyNullableSuffix(ctx, parent, inner, questTok);
     return wrapRefIfAnd(ctx, parent, nul, ctx->SymbolAnd());
 }
+
+TypeInfo ASTBuilder::typeArgFromTypeCtx(riu::riuParser::TypeContext* ctx) {
+    if (!ctx) return {};
+    auto* start = ctx->getStart();
+    int line = start ? static_cast<int>(start->getLine()) : 1;
+    int col = start ? static_cast<int>(start->getCharPositionInLine()) + 1 : 1;
+    auto* tn = any_cast_p<TypeNode>(visit(ctx));
+    TypeInfo t = tn ? tn->getType() : TypeInfo();
+    validateOwnedTypeArgs("spec type arg", {t}, line, col);
+    return t;
+}
+
+SpecRef ASTBuilder::specBoundFromTypeCtx(riu::riuParser::TypeContext* ctx) {
+    SpecRef r;
+    if (!ctx) return r;
+    auto* start = ctx->getStart();
+    r.line = start ? static_cast<int>(start->getLine()) : 1;
+    r.col = start ? static_cast<int>(start->getCharPositionInLine()) + 1 : 1;
+    if (auto* tn = dynamic_cast<riu::riuParser::TypeNormalContext*>(ctx)) {
+        if (tn->SymbolAnd()) {
+            throw RiuError(r.line, r.col, ErrorCode::E4037, std::string("spec bound"))
+                .withHint("边界写 `<T : D>` / `<T : D<A>>`，不要 `D&`");
+        }
+        r.name = typeNormalLastName(tn);
+        return r;
+    }
+    if (auto* tg = dynamic_cast<riu::riuParser::TypeGenericContext*>(ctx)) {
+        if (tg->SymbolAnd()) {
+            throw RiuError(r.line, r.col, ErrorCode::E4037, std::string("spec bound"))
+                .withHint("边界写 `<T : D>` / `<T : D<A>>`，不要 `D&`");
+        }
+        r.name = typeGenericLastName(tg);
+        if (auto* gd = tg->genericDefWithRef()) {
+            for (auto* inner : gd->types)
+                r.typeArgs.push_back(typeArgFromTypeCtx(inner));
+        }
+        return r;
+    }
+    throw RiuError(r.line, r.col, ErrorCode::E3030, ctx->getText());
+}

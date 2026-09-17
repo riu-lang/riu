@@ -6,6 +6,7 @@
 
 #include "node/fn_node.h"
 #include "node/global_const_node.h"
+#include "node/spec_ref.h"
 #include "riu.h"
 #include "riu/riuParserBaseVisitor.h"
 #include "riu/riuParserVisitor.h"
@@ -178,6 +179,10 @@ public:
     std::any visitLiteralCodePoint(riu::riuParser::LiteralCodePointContext* ctx) override;
     std::any visitNumInt(riu::riuParser::NumIntContext* ctx) override;
     std::any visitNumFloat(riu::riuParser::NumFloatContext* ctx) override;
+
+    // `#Impl(D<A>)` 实参 / `<T : D<A>>` 边界：把 type 槽收成 TypeInfo / SpecRef。
+    TypeInfo typeArgFromTypeCtx(riu::riuParser::TypeContext* ctx);
+    SpecRef specBoundFromTypeCtx(riu::riuParser::TypeContext* ctx);
 };
 
 #endif // RIU_LANG_AST_BUILDER_H

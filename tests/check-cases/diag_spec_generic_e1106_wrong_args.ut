@@ -1,0 +1,24 @@
+; #15：#Impl(To<i32>) 不满足 To<bool>
+#Spec
+struct To<T> {
+    fn to() T
+}
+
+#Impl(To<i32>)
+struct Counter {
+    n i32
+
+    fn to() i32 {
+        $.n
+    }
+}
+
+fn need_bool<T : To<bool>>(x T) {
+}
+
+fn main() {
+    let c = Counter {
+        .n = 1
+    }
+    need_bool(c)  ; check: E1106
+}

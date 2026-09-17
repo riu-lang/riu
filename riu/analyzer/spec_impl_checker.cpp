@@ -105,6 +105,30 @@ void SpecImplChecker::validate() {
     for (auto& f : _riu->files())
         runOnce(f);
 
+    auto checkHeaderBounds = [&](FileNode* file, FnHeaderNode* h) {
+        if (!file || !h) return;
+        auto& reg = _riu->specRegistry();
+        for (auto& slot : h->typeParamBounds()) {
+            for (auto& b : slot) {
+                auto resolved = reg.resolve(b.name, file);
+                if (!resolved) continue;
+                if (resolved->decl->typeParams().size() != b.typeArgs.size()) {
+                    throw RiuError(b.line, b.col, ErrorCode::E1142, resolved->qualifiedName,
+                                   resolved->decl->typeParams().size(), b.typeArgs.size());
+                }
+            }
+        }
+    };
+    for (auto* f : processedSet) {
+        if (!f) continue;
+        for (auto& fn : f->getFunctions())
+            checkHeaderBounds(f, fn->header());
+        for (auto& impl : f->getStructImpls()) {
+            for (auto& m : impl->methods())
+                checkHeaderBounds(f, m->header());
+        }
+    }
+
     // §12.4.2.1 E1105 显隐冲突: 必须等所有显式 impl 全部 §12.2 校验通过
     // 后再做, 避免"穷尽性 / 不多余" 与 显隐冲突 互相覆盖错误位置.
     checkExplicitImplicitConflict();
@@ -222,13 +246,16 @@ void SpecImplChecker::validateImpl(FileNode* implFile, StructImplNode* impl) {
         }
         SpecDeclNode* draft = resolved->decl;
         const std::string& specQualified = resolved->qualifiedName;
-        const std::string specKey = specQualified + specTypeArgsSuffix(dref);
+        if (draft->typeParams().size() != dref.typeArgs.size()) {
+            throw RiuError(dref.line, dref.col, ErrorCode::E1142, specQualified, draft->typeParams().size(),
+                           dref.typeArgs.size());
+        }
 
-        // §12.2.2.2 重复
-        auto key = std::make_pair(typeQualified, specKey);
+        // §12.2.2.3 重复：同一 spec 基名，不含实参（#15 单 Impl）
+        auto key = std::make_pair(typeQualified, specQualified);
         auto seenIt = _seen.find(key);
         if (seenIt != _seen.end()) {
-            throw RiuError(impl->getLineNumber(), impl->getColumn(), ErrorCode::E1103, typeQualified, specKey);
+            throw RiuError(impl->getLineNumber(), impl->getColumn(), ErrorCode::E1103, typeQualified, specQualified);
         }
         _seen.emplace(key, impl);
 
@@ -252,12 +279,9 @@ void SpecImplChecker::validateImpl(FileNode* implFile, StructImplNode* impl) {
         }
 
         // 构造 draft 自身泛型形参 → 实参替换表.
-        // 形参 / 实参 arity 不一致暂不在此处报 (留给 turbofish 解析层),
-        // 此时 subst 只覆盖能配上的前缀, 后续 sig 比对自然失败.
         std::map<std::string, TypeInfo> subst;
         const auto& dParams = draft->typeParams();
-        size_t n = std::min(dParams.size(), dref.typeArgs.size());
-        for (size_t i = 0; i < n; ++i) {
+        for (size_t i = 0; i < dParams.size(); ++i) {
             subst[dParams[i]] = dref.typeArgs[i];
         }
         // spec 体内 `Self` 占位符号 (TypeSelfNode 在 spec scope 内 structName 为空,
@@ -491,29 +515,46 @@ bool SpecImplChecker::typeSatisfiesSpec(const std::string& typeBareName, SpecDec
 
 bool SpecImplChecker::boundSatisfied(const TypeInfo& typeArg, SpecDeclNode* draft, const std::string& specQualified,
                                      const std::vector<TypeInfo>& specTypeArgs) const {
-    if (!draft) return false;
+    if (!draft || !_riu) return false;
 
     // §8.6.7.1: T 形参实参不接 `T&`. 这里只做正常形态; 调用侧若传入 ref,
     // 视作不满足任何 draft (上层 §6.4 应已拒绝).
     if (typeArg.isRef()) return false;
 
     const std::string& typeBare = typeArg.name;
-    const std::string typeOwnerMod = moduleOfType(typeBare);
-    const std::string typeQualified = typeOwnerMod.empty() ? typeBare : (typeOwnerMod + "." + typeBare);
+    auto& reg = _riu->specRegistry();
 
-    // 拼 specKey: 与 validateImpl 写入 _seen 时一致.
-    std::string specKey = specQualified;
-    if (!specTypeArgs.empty()) {
-        specKey += '<';
-        for (size_t i = 0; i < specTypeArgs.size(); ++i) {
-            if (i) specKey += ',';
-            specKey += specTypeArgs[i].getFullName();
+    auto tryFile = [&](FileNode* file) -> bool {
+        if (!file) return false;
+        auto* impl = file->getStructImpl(typeBare);
+        if (!impl) return false;
+        for (auto& dref : impl->specRefs()) {
+            auto resolved = reg.resolve(dref.name, file);
+            if (!resolved || resolved->qualifiedName != specQualified) continue;
+            std::map<std::string, TypeInfo> subst;
+            const auto& tps = impl->typeParams();
+            for (size_t i = 0; i < tps.size() && i < typeArg.genericArgs.size(); ++i) {
+                if (typeArg.genericArgs[i]) subst[tps[i]] = *typeArg.genericArgs[i];
+            }
+            auto implArgs = substSpecTypeArgs(dref.typeArgs, subst);
+            if (specTypeArgsEqual(implArgs, specTypeArgs)) return true;
         }
-        specKey += '>';
-    }
+        return false;
+    };
 
-    if (_seen.find({typeQualified, specKey}) != _seen.end()) {
-        return true;
+    std::set<FileNode*> processed;
+    auto run = [&](FileNode* f) -> bool {
+        if (!f || !processed.insert(f).second) return false;
+        return tryFile(f);
+    };
+    if (auto sdk = _riu->sdkFile()) {
+        if (run(sdk)) return true;
+        for (auto* imp : sdk->wildcardImports()) {
+            if (run(imp)) return true;
+        }
+    }
+    for (auto& f : _riu->files()) {
+        if (run(f)) return true;
     }
 
     if (draft->isDraftLike()) {
@@ -812,15 +853,4 @@ void SpecImplChecker::validateDynInTypeNode(TypeNode* tn, FileNode* file, const 
         }
         _dynAliasVisited.erase(name);
     }
-}
-
-std::string SpecImplChecker::specTypeArgsSuffix(const SpecRef& ref) {
-    if (ref.typeArgs.empty()) return {};
-    std::string s = "<";
-    for (size_t i = 0; i < ref.typeArgs.size(); ++i) {
-        if (i) s += ',';
-        s += ref.typeArgs[i].getFullName();
-    }
-    s += '>';
-    return s;
 }

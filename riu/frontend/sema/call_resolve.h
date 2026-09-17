@@ -56,16 +56,10 @@ void validateGenericTypeArgsArity(const string& fnName, size_t expectedCount, si
 
 // 泛型 fn 的 typeArgs 边界校验 (Phase 3.3.3.c, E3032 / E1106).
 //
-// `<T : D1 + D2>` 形态: 对每个 typeParam[i], 在 fnOwner 的可见性下解析每个 bound
-// 名 D (SpecRegistry), 然后用 SpecImplChecker::boundSatisfied 校验 typeArgs[i]
-// 是否满足该 draft. 不满足:
-//   - bound 名 D 无法解析 → E3032 (draft 名未声明)
-//   - 解析成功但 boundSatisfied 返回 false → E1106 (typeArg 不实现 D)
-//
-// `registry` / `checker` 任一为 nullptr 时 helper 直接 no-op (Riu 未就绪时不强制).
-//
-// v0.5: 函数声明位 specBound 暂未携带类型实参 (ast_builder 仅取基名), 这里始终用
-// 空 vector 传给 boundSatisfied; 草案 §6.4.4.1 文法允许 `D<T>` 形态留待后续扩展.
+// `<T : D>` / `<T : D<A>>`：对每个 typeParam[i] 解析 bound，用 boundSatisfied 校验
+// typeArgs[i] 是否满足该 spec（A 先按本函数 typeParams subst）。不满足:
+//   - bound 名无法解析 → E3030
+//   - boundSatisfied 返回 false → E1106
 //
 // 调用方:
 //   - Compiler::compileGenericFunctionCall 在 typeArgs 解析就绪后调用

@@ -1048,17 +1048,19 @@ void validateGenericTypeArgsSpecBound(const SpecRegistry* registry, const SpecIm
     if (bounds.empty()) return;
     const auto& typeParams = header->typeParams();
     for (size_t i = 0; i < typeParams.size() && i < bounds.size() && i < typeArgs.size(); ++i) {
-        for (auto& boundName : bounds[i]) {
-            auto resolved = registry->resolve(boundName, fnOwner);
+        for (auto& bound : bounds[i]) {
+            auto resolved = registry->resolve(bound.name, fnOwner);
             if (!resolved) {
-                throw RiuError(line, col, ErrorCode::E3030, boundName);
+                throw RiuError(line, col, ErrorCode::E3030, bound.name);
             }
-            // v0.5: 函数声明位 specBound 暂未携带类型实参 (ast_builder 仅取基名),
-            // specTypeArgs 传空; 草案 §6.4.4.1 文法允许 `D<T>` 形态留待扩展.
-            vector<TypeInfo> specTypeArgs;
+            std::map<std::string, TypeInfo> subst;
+            for (size_t j = 0; j < typeParams.size() && j < typeArgs.size(); ++j) {
+                subst[typeParams[j]] = typeArgs[j];
+            }
+            auto specTypeArgs = substSpecTypeArgs(bound.typeArgs, subst);
             if (!checker->boundSatisfied(typeArgs[i], resolved->decl, resolved->qualifiedName, specTypeArgs)) {
-                throw RiuError(line, col, ErrorCode::E1106, typeArgs[i].getFullName(), resolved->qualifiedName,
-                               typeParams[i]);
+                throw RiuError(line, col, ErrorCode::E1106, typeArgs[i].getFullName(),
+                               formatSpecBound(resolved->qualifiedName, specTypeArgs), typeParams[i]);
             }
         }
     }

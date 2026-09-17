@@ -187,8 +187,17 @@ void writeHeader(Writer& w, FnHeaderNode* h) {
     writeAnnos(w, *h);
     writeStrings(w, h->typeParams());
     w.u32(static_cast<uint32_t>(h->typeParamBounds().size()));
-    for (auto& b : h->typeParamBounds())
-        writeStrings(w, b);
+    for (auto& slot : h->typeParamBounds()) {
+        w.u32(static_cast<uint32_t>(slot.size()));
+        for (auto& b : slot) {
+            w.str(b.name);
+            w.u32(static_cast<uint32_t>(b.typeArgs.size()));
+            for (auto& ta : b.typeArgs)
+                writeType(w, ta);
+            w.i32(b.line);
+            w.i32(b.col);
+        }
+    }
     auto params = h->params();
     w.u32(static_cast<uint32_t>(params.size()));
     for (auto p : params) {
@@ -415,7 +424,7 @@ struct HeaderData {
     vector<string> annos;
     vector<string> annoArgs;
     vector<string> typeParams;
-    vector<vector<string>> bounds;
+    vector<vector<SpecRef>> bounds;
     struct Param {
         string name;
         int line = 0;
@@ -439,8 +448,19 @@ HeaderData readHeaderData(Reader& r) {
     d.typeParams = readStrings(r);
     uint32_t nb = r.u32();
     d.bounds.resize(nb);
-    for (uint32_t i = 0; i < nb; ++i)
-        d.bounds[i] = readStrings(r);
+    for (uint32_t i = 0; i < nb; ++i) {
+        uint32_t nref = r.u32();
+        d.bounds[i].resize(nref);
+        for (uint32_t j = 0; j < nref; ++j) {
+            d.bounds[i][j].name = r.str();
+            uint32_t nta = r.u32();
+            d.bounds[i][j].typeArgs.resize(nta);
+            for (uint32_t k = 0; k < nta; ++k)
+                d.bounds[i][j].typeArgs[k] = readType(r);
+            d.bounds[i][j].line = r.i32();
+            d.bounds[i][j].col = r.i32();
+        }
+    }
     uint32_t np = r.u32();
     d.params.resize(np);
     for (uint32_t i = 0; i < np; ++i) {

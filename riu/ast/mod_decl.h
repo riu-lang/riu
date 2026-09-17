@@ -6,6 +6,7 @@
 // 二进制接口 + 泛型体 / spec 默认体 / 全局 init 的源文本 skeleton。
 // 失效键：kFormatVersion + 源码 FNV-1a-64。重编 riu.exe 不使 .ud 作废。
 // v2：fn header 与 TypeInfo 写入 fallibleErr（`T ! E`），否则跨模块调用 mangle 丢 `!E`。
+// v3：fn header 边界从裸名改为 SpecRef（基名 + 类型实参），#15 泛型 spec。
 
 #ifndef RIU_LANG_MOD_DECL_H
 #define RIU_LANG_MOD_DECL_H
@@ -22,7 +23,7 @@ class Node;
 
 namespace mod_decl {
 
-inline constexpr uint32_t kFormatVersion = 2;
+inline constexpr uint32_t kFormatVersion = 3;
 
 // 重建节点的所有者，生命周期跟 Riu。
 class NodeOwner {

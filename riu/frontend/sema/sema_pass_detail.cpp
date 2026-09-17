@@ -291,7 +291,8 @@ bool isMorphologicalGenericCode(const char* code) {
 
 // 实例化后方法返回类型。nullopt = 方法不存在。
 std::optional<TypeInfo> instantiatedMethodRet(FnNode* fn, FileNode* file, FileNode* sdk, const TypeInfo& rawRecv,
-                                              const TypeInfo& instRecv, const string& member) {
+                                              const TypeInfo& instRecv, const string& member,
+                                              const std::map<string, TypeInfo>* instSubst) {
     TypeInfo peeledRaw = rawRecv.peelAutoDeref();
     if (typeParamBoundHasMethod(fn, file, sdk, peeledRaw.name, member) && fn && fn->header()) {
         auto hdr = fn->header();
@@ -305,15 +306,22 @@ std::optional<TypeInfo> instantiatedMethodRet(FnNode* fn, FileNode* file, FileNo
             }
         }
         if (idx != SIZE_MAX && idx < bounds.size()) {
-            for (auto& dname : bounds[idx]) {
-                SpecDeclNode* draft = file ? file->getSpecDecl(dname) : nullptr;
-                if (!draft && sdk && sdk != file) draft = sdk->getSpecDecl(dname);
+            for (auto& bound : bounds[idx]) {
+                SpecDeclNode* draft = file ? file->getSpecDecl(bound.name) : nullptr;
+                if (!draft && sdk && sdk != file) draft = sdk->getSpecDecl(bound.name);
                 if (!draft) continue;
                 for (auto& sig : draft->signatures()) {
                     if (!sig || sig->name().getText() != member) continue;
                     if (sig->retType()) {
-                        auto ret = sig->retType()->getType();
-                        return ret.substitute({{"Self", instRecv.peelAutoDeref()}});
+                        std::map<string, TypeInfo> subst;
+                        const auto& dParams = draft->typeParams();
+                        for (size_t pi = 0; pi < dParams.size() && pi < bound.typeArgs.size(); ++pi) {
+                            TypeInfo a = bound.typeArgs[pi];
+                            if (instSubst) a = a.substitute(*instSubst);
+                            subst[dParams[pi]] = std::move(a);
+                        }
+                        subst["Self"] = instRecv.peelAutoDeref();
+                        return sig->retType()->getType().substitute(subst);
                     }
                     return TypeInfo();
                 }
@@ -376,9 +384,9 @@ bool typeParamBoundHasMethod(FnNode* fn, FileNode* file, FileNode* sdk, const st
         }
     }
     if (idx == SIZE_MAX || idx >= bounds.size()) return false;
-    for (auto& dname : bounds[idx]) {
-        SpecDeclNode* draft = file ? file->getSpecDecl(dname) : nullptr;
-        if (!draft && sdk && sdk != file) draft = sdk->getSpecDecl(dname);
+    for (auto& bound : bounds[idx]) {
+        SpecDeclNode* draft = file ? file->getSpecDecl(bound.name) : nullptr;
+        if (!draft && sdk && sdk != file) draft = sdk->getSpecDecl(bound.name);
         if (!draft) continue;
         for (auto& sig : draft->signatures()) {
             if (sig && sig->name().getText() == member) return true;
@@ -401,13 +409,19 @@ std::optional<TypeInfo> typeParamBoundStaticFieldType(FnNode* fn, FileNode* file
         }
     }
     if (idx == SIZE_MAX || idx >= bounds.size()) return std::nullopt;
-    for (auto& dname : bounds[idx]) {
-        SpecDeclNode* spec = file ? file->getSpecDecl(dname) : nullptr;
-        if (!spec && sdk && sdk != file) spec = sdk->getSpecDecl(dname);
+    for (auto& bound : bounds[idx]) {
+        SpecDeclNode* spec = file ? file->getSpecDecl(bound.name) : nullptr;
+        if (!spec && sdk && sdk != file) spec = sdk->getSpecDecl(bound.name);
         if (!spec) continue;
         for (auto& sf : spec->staticFields()) {
             if (!sf || sf->name().getText() != field) continue;
-            return sf->getType().substitute({{"Self", TypeInfo(typeParam)}});
+            std::map<string, TypeInfo> subst;
+            const auto& dParams = spec->typeParams();
+            for (size_t pi = 0; pi < dParams.size() && pi < bound.typeArgs.size(); ++pi) {
+                subst[dParams[pi]] = bound.typeArgs[pi];
+            }
+            subst["Self"] = TypeInfo(typeParam);
+            return sf->getType().substitute(subst);
         }
     }
     return std::nullopt;

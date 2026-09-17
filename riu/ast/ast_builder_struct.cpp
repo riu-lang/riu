@@ -55,20 +55,32 @@ std::any ASTBuilder::visitStructDecl(riu::riuParser::StructDeclContext* ctx) {
             isSpec = true;
         } else if (name == "Impl") {
             SpecRef r;
-            r.name = arg;
-            // 解析 turbofish 类型实参（若有）
-            if (auto* aa = a->annoArg()) {
-                if (auto* gd = aa->genericDef()) {
-                    for (auto* pCtx : gd->params) {
-                        if (auto tn = dynamic_cast<riu::riuParser::TypeNormalContext*>(pCtx->type(0))) {
-                            r.typeArgs.emplace_back(typeNormalLastName(tn));
-                        }
-                        // 复杂泛型实参押后
-                    }
-                }
-            }
             r.line = line;
             r.col = col;
+            // 基名只取 ID；`To<i32>` 的实参走 genericDef / argType，不要把 `<…>` 拼进 name。
+            if (auto* aa = a->annoArg()) {
+                if (aa->arg) {
+                    r.name = aa->arg->getText();
+                    if (auto* gd = aa->genericDef()) {
+                        for (auto* pCtx : gd->params) {
+                            if (!pCtx->bounds.empty()) {
+                                auto* tk = pCtx->SymbolColon();
+                                throw RiuError(tk ? static_cast<int>(tk->getSymbol()->getLine()) : r.line,
+                                               tk ? static_cast<int>(tk->getSymbol()->getCharPositionInLine()) + 1
+                                                  : r.col,
+                                               ErrorCode::E2015);
+                            }
+                            r.typeArgs.push_back(typeArgFromTypeCtx(pCtx->type(0)));
+                        }
+                    }
+                } else if (aa->argType) {
+                    r = specBoundFromTypeCtx(aa->argType);
+                    r.line = line;
+                    r.col = col;
+                } else {
+                    r.name = arg;
+                }
+            }
             implRefs.push_back(std::move(r));
         }
         annos.names.push_back(std::move(name));

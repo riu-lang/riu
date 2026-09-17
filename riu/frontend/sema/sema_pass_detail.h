@@ -99,7 +99,8 @@ bool isMorphologicalGenericCode(const char* code);
 
 // 实例化后方法返回类型。nullopt = 方法不存在。
 std::optional<TypeInfo> instantiatedMethodRet(FnNode* fn, FileNode* file, FileNode* sdk, const TypeInfo& rawRecv,
-                                              const TypeInfo& instRecv, const string& member);
+                                              const TypeInfo& instRecv, const string& member,
+                                              const std::map<string, TypeInfo>* instSubst = nullptr);
 
 bool receiverHasMethod(const TypeInfo& recv, const string& member, FileNode* file, FileNode* sdk);
 
