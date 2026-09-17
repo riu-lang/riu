@@ -6,7 +6,7 @@
 // 与 riu 主二进制不同, 本工具:
 // - 0 LLVM 依赖, 只链 riu_frontend
 // - 不加载 SDK, 不解析 import 链, 不做 codegen
-// - 仅 parse → ASTBuilder → PassManager（Sema → fn checkers）→ 打印诊断
+// - 仅 parse → RdBuilder → PassManager（Sema → fn checkers）→ 打印诊断
 //
 // 设计意图: 日常写 demo / 改代码时快速跑诊断, 避免每次 xmake build 编 LLVM.
 // **报错不与 riu build 等价**: 仅检出 SemaPass 当前能接管的错误码; 漏的部分
@@ -31,15 +31,10 @@
 #include <windows.h>
 #endif
 
-#include "riu/riuLexer.h"
-#include "riu/riuParser.h"
-
-#include "ast/parse_program.h"
 #include "ast/riu.h"
 #include "pass/pass.h"
 #include "tools/diagnostic.h"
 #include "tools/sdk_loader.h"
-#include "tools/syntax_error_listener.h"
 
 #include <CLI/CLI.hpp>
 
@@ -59,11 +54,10 @@
 #include <utility>
 #include <vector>
 
-using namespace riu;
 using namespace std;
 
 // ============================================================================
-// "; check:" 注解解析 —— 读源文件文本行做字符串匹配, 不走 ANTLR token 通道
+// "; check:" 注解解析 —— 读源文件文本行做字符串匹配
 // ============================================================================
 
 // 从源文件文本中解析 "; check:" 行尾注解。
@@ -287,73 +281,9 @@ static CollectTestFilesResult collectTestFiles(const vector<string>& paths) {
 
 struct CheckResult {
     bool ok = true;               // false = 有错误 (semaError 或 otherError)
-    optional<RiuError> semaError; // 分析 Pass 抛出的 RiuError
-    string otherError;            // 非 RiuError 的错误信息 (parse / AST 阶段失败)
+    optional<RiuError> semaError; // parse / 分析 Pass 抛出的 RiuError
+    string otherError;            // 非 RiuError 的错误信息 (读文件等)
 };
-
-// 对单个 .ut 文件执行完整检查流水线。
-// sdkPath 为空时跳过 SDK 加载 (退化为 builtin 范围检查)。
-static CheckResult runSemaOnFile(const string& absPath, const string& sdkPath) {
-    CheckResult cr;
-
-    // 1. 词法 + 语法 (ANTLR)
-    antlr4::ANTLRFileStream stream;
-    try {
-        stream.loadFromFile(absPath);
-    } catch (const exception& e) {
-        cr.ok = false;
-        cr.otherError = string("cannot load file: ") + e.what();
-        return cr;
-    }
-
-    ostringstream syntaxErrStream;
-    SyntaxErrorListener errListener(absPath, syntaxErrStream);
-
-    riu::riuLexer lexer(&stream);
-    lexer.removeErrorListeners();
-    lexer.addErrorListener(&errListener);
-
-    antlr4::CommonTokenStream tokens(&lexer);
-    riu::riuParser parser(&tokens);
-    parser.removeErrorListeners();
-    parser.addErrorListener(&errListener);
-
-    auto* program = parseRiuProgram(parser, tokens, &errListener);
-    if (errListener.hasErrors() || parser.getNumberOfSyntaxErrors()) {
-        cr.ok = false;
-        cr.otherError = syntaxErrStream.str();
-        // 去除末尾换行, 保持输出整洁
-        if (!cr.otherError.empty() && cr.otherError.back() == '\n') {
-            cr.otherError.pop_back();
-        }
-        return cr;
-    }
-
-    // 2. AST 构建 + 分析表（Sema → fn checkers）
-    string moduleName = filesystem::path(absPath).stem().string();
-
-    Riu riu;
-    riu.initFileRoot(absPath);
-
-    try {
-        // 加载 SDK (找不到不致命)
-        if (!sdkPath.empty()) {
-            sdk_loader::parseSdkDir(sdkPath, riu);
-        }
-
-        auto file = riu.loadMainFile(absPath, moduleName);
-        riu.validateSpecImpls();
-        runAnalysisPasses(file, &riu);
-    } catch (const RiuError& e) {
-        cr.ok = false;
-        cr.semaError = e;
-    } catch (const runtime_error& e) {
-        cr.ok = false;
-        cr.otherError = e.what();
-    }
-
-    return cr;
-}
 
 // ============================================================================
 // test 子命令: 批量诊断测试
@@ -369,8 +299,7 @@ struct TestFileResult {
 };
 
 // 对单个 .ut 文件执行 sema 检查, 复用已有 Riu 实例 (SDK 已预加载).
-// 与 runSemaOnFile 的区别: 不创建新 Riu、不加载 SDK、不重复做 ANTLR 解析
-// (loadMainFile → _parseFile 内部已包含 lex/parse/syntax check).
+// loadMainFile → _parseFile 走 rd Scanner/Parser + RdBuilder.
 static CheckResult runSemaOnFileWithRiu(const string& absPath, Riu& riu) {
     CheckResult cr;
     string moduleName = filesystem::path(absPath).stem().string();
@@ -849,34 +778,6 @@ int main(int argc, char* argv[]) {
     }
 
     string absPath = filesystem::absolute(inputFile).string();
-
-    // 1. 词法 + 语法
-    antlr4::ANTLRFileStream stream;
-    try {
-        stream.loadFromFile(absPath);
-    } catch (const exception& e) {
-        cerr << "Error: cannot load file " << absPath << ": " << e.what() << '\n';
-        return 1;
-    }
-
-    riu::riuLexer lexer(&stream);
-    SyntaxErrorListener errListener(absPath, cerr);
-    lexer.removeErrorListeners();
-    lexer.addErrorListener(&errListener);
-
-    antlr4::CommonTokenStream tokens(&lexer);
-    riu::riuParser parser(&tokens);
-    parser.removeErrorListeners();
-    parser.addErrorListener(&errListener);
-
-    auto* program = parseRiuProgram(parser, tokens, &errListener);
-    if (errListener.hasErrors() || parser.getNumberOfSyntaxErrors()) {
-        return 1;
-    }
-
-    // 2. AST + 分析表. 单文件模式, 不加载 SDK / 不解析 import 链.
-    //    使用文件名 stem 作为 module name. 与 riu 主二进制行为不一致, 阶段 0
-    //    可接受 —— 后续阶段补 SDK / 模块依赖时再对齐.
     string moduleName = filesystem::path(absPath).stem().string();
 
     Riu riu;
@@ -893,8 +794,7 @@ int main(int argc, char* argv[]) {
             sdk_loader::parseSdkDir(sdkPath, riu);
         }
 
-        // loadMainFile 会触发 ASTBuilder.build, 含 import 解析.
-        // 若 import 失败 (找不到 SDK / 模块), 这里抛 RiuError, 直接报.
+        // loadMainFile → RdBuilder；语法错为 E1001/E1002。
         auto file = riu.loadMainFile(absPath, moduleName);
         riu.validateSpecImpls();
         runAnalysisPasses(file, &riu);

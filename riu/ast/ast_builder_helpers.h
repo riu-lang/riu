@@ -252,7 +252,12 @@ static void checkFallibleRetMismatch(FnHeaderNode* header) {
 inline std::pair<TypeNode*, TypeNode*> peelFallibleRetType(TypeNode* retType) {
     if (!retType) return {nullptr, nullptr};
     if (auto* f = dynamic_cast<TypeFallibleNode*>(retType)) {
-        return {f->baseType(), f->errType()};
+        TypeNode* base = f->baseType();
+        // `! E` / `() ! E`：unit 不是成功通道类型，与 g4 `SymbolExcl errType` 对齐。
+        if (auto* tup = dynamic_cast<TypeTupleNode*>(base)) {
+            if (tup->elementTypes().empty()) base = nullptr;
+        }
+        return {base, f->errType()};
     }
     return {retType, nullptr};
 }

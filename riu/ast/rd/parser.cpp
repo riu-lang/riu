@@ -58,7 +58,7 @@ void Parser::next() {
 }
 
 const Token& Parser::la(int n) {
-    while (static_cast<int>(peeked_.size()) < n)
+    while (std::cmp_less(peeked_.size(), n))
         peeked_.push_back(scanner_.next());
     return peeked_[static_cast<std::size_t>(n - 1)];
 }
@@ -418,7 +418,7 @@ NodeId Parser::parseLiteral() {
         return ast_.add(NodeKind::CodePoint, p, text);
     case Kind::STR_LINE_RAW:
         next();
-        return ast_.add(NodeKind::StringLit, p, text);
+        return ast_.add(NodeKind::StringLit, p, text, {}, Kind::STR_LINE_RAW);
     case Kind::DOT_NUM:
         next();
         return ast_.add(NodeKind::FloatLit, p, text);
@@ -448,7 +448,10 @@ NodeId Parser::parseStringTpl() {
             interp = true;
             next();
             NodeId e = parseExpr();
-            eat(Kind::BlockEnd);
+            if (!eat(Kind::BlockEnd)) {
+                errorExpected(Kind::BlockEnd);
+                break;
+            }
             std::vector<NodeId> kids;
             appendIf(kids, e);
             parts.push_back(ast_.add(NodeKind::TplInterp, tok_.pos, {}, kids));
@@ -457,7 +460,7 @@ NodeId Parser::parseStringTpl() {
         next();
     }
     const Pos end = tok_.pos;
-    eat(Kind::STR_TPL_CLOSE);
+    if (!eat(Kind::STR_TPL_CLOSE)) errorExpected(Kind::STR_TPL_CLOSE);
     if (!interp && parts.size() <= 1) {
         std::string_view v;
         if (parts.size() == 1) v = ast_.at(parts[0]).value;
@@ -511,11 +514,11 @@ NodeId Parser::parseTrailingLambda() {
     return ast_.add(NodeKind::Lambda, spanPos(start, end), {}, kids);
 }
 
-NodeId Parser::parseCall(NodeId left) {
+NodeId Parser::parseCall(NodeId left, bool allow_brace) {
     std::vector<NodeId> kids;
     kids.push_back(left);
     parseArgList(kids, Kind::ParEnd);
-    if (at(Kind::BlockStart)) appendIf(kids, parseTrailingLambda());
+    if (allow_brace && at(Kind::BlockStart)) appendIf(kids, parseTrailingLambda());
     NodeId call = ast_.add(NodeKind::Call, ast_.at(left).pos, {}, kids);
     if (eat(Kind::SymbolExcl)) ast_.setOp(call, Kind::SymbolExcl);
     return call;
@@ -577,14 +580,16 @@ NodeId Parser::parseStructLit() {
             if (!at(Kind::SymbolDot)) break;
             next();
             std::string_view fname;
+            Pos fp = tok_.pos;
             if (at(Kind::ID)) {
                 fname = tok_.text;
+                fp = tok_.pos;
                 next();
             }
             eat(Kind::SymbolEq);
             NodeId v = parseExpr();
             eat(Kind::LineEnd);
-            kids.push_back(ast_.add(NodeKind::FieldInit, tok_.pos, fname, std::vector<NodeId>{v}));
+            kids.push_back(ast_.add(NodeKind::FieldInit, fp, fname, std::vector<NodeId>{v}));
         }
     } else if (!at(Kind::BlockEnd)) {
         appendIf(kids, parseExpr());
@@ -823,7 +828,7 @@ NodeId Parser::parsePrefix(bool allow_brace) {
     return kEmptyNode;
 }
 
-NodeId Parser::parsePostfix(NodeId left) {
+NodeId Parser::parsePostfix(NodeId left, bool allow_brace) {
     if (at(Kind::SymbolColon) && peekIs(Kind::SymbolLt)) {
         const Mark m = mark();
         next();
@@ -833,12 +838,12 @@ NodeId Parser::parsePostfix(NodeId left) {
             kids.push_back(left);
             appendIf(kids, g);
             parseArgList(kids, Kind::ParEnd);
-            if (at(Kind::BlockStart)) appendIf(kids, parseTrailingLambda());
+            if (allow_brace && at(Kind::BlockStart)) appendIf(kids, parseTrailingLambda());
             NodeId call = ast_.add(NodeKind::Call, ast_.at(left).pos, {}, kids);
             if (eat(Kind::SymbolExcl)) ast_.setOp(call, Kind::SymbolExcl);
             return call;
         }
-        if (at(Kind::BlockStart)) {
+        if (allow_brace && at(Kind::BlockStart)) {
             std::vector<NodeId> kids;
             kids.push_back(left);
             appendIf(kids, g);
@@ -850,8 +855,8 @@ NodeId Parser::parsePostfix(NodeId left) {
         rewind(m);
         return left;
     }
-    if (at(Kind::ParStart)) return parseCall(left);
-    if (at(Kind::BlockStart)) {
+    if (at(Kind::ParStart)) return parseCall(left, allow_brace);
+    if (allow_brace && at(Kind::BlockStart)) {
         std::vector<NodeId> kids;
         kids.push_back(left);
         appendIf(kids, parseTrailingLambda());
@@ -918,7 +923,7 @@ NodeId Parser::parseExpr(int min_bp, bool allow_brace) {
         if (postfix) {
             if (kBpPostfix < min_bp) break;
             const Token before = tok_;
-            left = parsePostfix(left);
+            left = parsePostfix(left, allow_brace);
             if (tok_.kind == before.kind && tok_.pos.offset == before.pos.offset) break;
             continue;
         }
@@ -1410,7 +1415,8 @@ NodeId Parser::parseAlias() {
 }
 
 NodeId Parser::parseLet(std::vector<NodeId> annos, bool /*global*/) {
-    const Pos start = tok_.pos;
+    const Pos kw = tok_.pos;
+    const Pos start = annos.empty() ? kw : ast_.at(annos[0]).pos;
     next(); // Let
     if (eat(Kind::ParStart)) {
         std::vector<NodeId> kids = std::move(annos);
@@ -1427,7 +1433,12 @@ NodeId Parser::parseLet(std::vector<NodeId> annos, bool /*global*/) {
         eat(Kind::SymbolEq);
         appendIf(kids, parseExpr());
         eat(Kind::LineEnd);
-        return ast_.add(NodeKind::LetTuple, start, {}, kids);
+        Pos end = kw;
+        if (!kids.empty()) end = ast_.at(kids.back()).pos;
+        Pos span = spanPos(start, end);
+        span.line = kw.line;
+        span.column = kw.column;
+        return ast_.add(NodeKind::LetTuple, span, {}, kids);
     }
     std::string_view name;
     if (at(Kind::ID)) {
@@ -1441,11 +1452,17 @@ NodeId Parser::parseLet(std::vector<NodeId> annos, bool /*global*/) {
     if (looksLikeType()) appendIf(kids, parseType());
     if (eat(Kind::SymbolEq)) appendIf(kids, parseExpr());
     eat(Kind::LineEnd);
-    return ast_.add(NodeKind::Let, start, name, kids);
+    Pos end = kw;
+    if (!kids.empty()) end = ast_.at(kids.back()).pos;
+    Pos span = spanPos(start, end);
+    span.line = kw.line;
+    span.column = kw.column;
+    return ast_.add(NodeKind::Let, span, name, kids);
 }
 
 NodeId Parser::parseFn(std::vector<NodeId> annos) {
-    const Pos start = tok_.pos;
+    const Pos kw = tok_.pos;
+    const Pos start = annos.empty() ? kw : ast_.at(annos[0]).pos;
     next(); // Fn
     if (at(Kind::SymbolRev)) return parseFnClean();
     std::string_view name;
@@ -1464,7 +1481,12 @@ NodeId Parser::parseFn(std::vector<NodeId> annos) {
     eat(Kind::ParEnd);
     appendIf(kids, parseOptionalFnRet());
     appendIf(kids, parseFnBody());
-    return ast_.add(NodeKind::Fn, start, name, kids);
+    Pos end = kw;
+    if (!kids.empty()) end = ast_.at(kids.back()).pos;
+    Pos span = spanPos(start, end);
+    span.line = kw.line;
+    span.column = kw.column;
+    return ast_.add(NodeKind::Fn, span, name, kids);
 }
 
 NodeId Parser::parseFnClean() {
@@ -1498,9 +1520,10 @@ NodeId Parser::parseExtern(std::vector<NodeId> annos) {
         }
         errorUnknown();
     }
+    const Pos end = tok_.pos;
     eat(Kind::BlockEnd);
     eat(Kind::LineEnd);
-    return ast_.add(NodeKind::Extern, start, {}, kids);
+    return ast_.add(NodeKind::Extern, spanPos(start, end), {}, kids);
 }
 
 NodeId Parser::parseEnum() {
@@ -1535,8 +1558,9 @@ NodeId Parser::parseEnum() {
         eat(Kind::LineEnd);
         kids.push_back(ast_.add(NodeKind::EnumVariant, vp, vname, payloads));
     }
+    const Pos end = tok_.pos;
     eat(Kind::BlockEnd);
-    return ast_.add(NodeKind::Enum, start, name, kids);
+    return ast_.add(NodeKind::Enum, spanPos(start, end), name, kids);
 }
 
 NodeId Parser::parseField(std::vector<NodeId> annos) {
@@ -1552,7 +1576,8 @@ NodeId Parser::parseField(std::vector<NodeId> annos) {
 }
 
 NodeId Parser::parseStruct(std::vector<NodeId> annos) {
-    const Pos start = tok_.pos;
+    const Pos kw = tok_.pos;
+    const Pos start = annos.empty() ? kw : ast_.at(annos[0]).pos;
     next();
     std::string_view name;
     if (at(Kind::ID)) {
@@ -1605,8 +1630,12 @@ NodeId Parser::parseStruct(std::vector<NodeId> annos) {
         }
         errorUnknown();
     }
+    const Pos end = tok_.pos;
     eat(Kind::BlockEnd);
-    return ast_.add(NodeKind::Struct, start, name, kids);
+    Pos span = spanPos(start, end);
+    span.line = kw.line;
+    span.column = kw.column;
+    return ast_.add(NodeKind::Struct, span, name, kids);
 }
 
 NodeId Parser::parseItem() {
@@ -1647,7 +1676,7 @@ ParseResult Parser::parse() {
     file_pos.end = tok_.pos.end;
     const NodeId root = ast_.add(NodeKind::Program, file_pos, {}, items);
     ast_.setRoot(root);
-    return ParseResult{std::move(ast_), std::move(errors_)};
+    return ParseResult{.ast = std::move(ast_), .errors = std::move(errors_)};
 }
 
 ParseResult parseProgram(std::string_view src) {

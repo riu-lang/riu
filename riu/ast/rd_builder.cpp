@@ -116,6 +116,13 @@ string lastSeg(std::string_view dotted) {
     return string(dotted.substr(pos + 1));
 }
 
+string dottedJoin(const string& prefix, const string& name) {
+    string s = prefix;
+    s += '.';
+    s += name;
+    return s;
+}
+
 } // namespace
 
 RdBuilder::RdBuilder(Riu& riu, string src, string moduleName, bool isTestFile, string sourcePath)
@@ -158,8 +165,12 @@ size_t RdBuilder::tokenIndexAt(rd::i32 offset) const {
 
 Token RdBuilder::makeTok(std::string_view text, const rd::Pos& pos) const {
     const size_t stop = pos.end > 0 ? static_cast<size_t>(pos.end - 1) : 0;
-    return Token(string(text), static_cast<size_t>(pos.line), static_cast<size_t>(pos.column), tokenIndexAt(pos.offset),
-                 static_cast<size_t>(pos.offset), stop);
+    return {string(text),
+            static_cast<size_t>(pos.line),
+            static_cast<size_t>(pos.column),
+            tokenIndexAt(pos.offset),
+            static_cast<size_t>(pos.offset),
+            stop};
 }
 
 Token RdBuilder::makeTok(rd::NodeId id) const {
@@ -377,7 +388,26 @@ SpecRef RdBuilder::specRefFromType(rd::NodeId id) {
 string RdBuilder::annoArgText(rd::NodeId anno) const {
     const auto& n = at(anno);
     if (n.children_count <= 0) return {};
-    return srcSlice(at(child(anno, 0)).pos);
+    const rd::NodeId argId = child(anno, 0);
+    const auto& arg = at(argId);
+    // 字符串 / 数字用节点 value（StringLit 的 pos 含引号，不能 srcSlice）。
+    switch (arg.kind) {
+    case rd::NodeKind::StringLit:
+    case rd::NodeKind::IntLit:
+    case rd::NodeKind::FloatLit:
+    case rd::NodeKind::Ident:
+        return string(arg.value);
+    case rd::NodeKind::StringInterp: {
+        string t;
+        for (rd::i32 i = 0; i < arg.children_count; ++i) {
+            const auto& p = at(child(argId, i));
+            if (p.kind == rd::NodeKind::TplText) t += p.value;
+        }
+        return t;
+    }
+    default:
+        return srcSlice(arg.pos);
+    }
 }
 
 RdAnnoList RdBuilder::collectAnnos(rd::NodeId parent, rd::i32 from, rd::i32 to, bool nonFn, bool externFn) {
@@ -457,11 +487,11 @@ void RdBuilder::preloadPackageChildren(FileNode* file, const string& alias, cons
                                        const string& relPrefix, int errorLine) {
     auto childKey = [&](const string& name) -> string {
         if (relPrefix.empty()) return name;
-        return relPrefix + "." + name;
+        return dottedJoin(relPrefix, name);
     };
     if (_riu.hasPkgFile(pkgModName)) {
         for (const auto& item : _riu.visiblePkgItems(file, pkgModName)) {
-            string childMod = pkgModName + "." + item.name;
+            string childMod = dottedJoin(pkgModName, item.name);
             string key = childKey(pkgExportName(item));
             auto kind = _riu.modulePathKind(childMod);
             if (kind == Riu::ModulePathKind::File) {
@@ -474,19 +504,19 @@ void RdBuilder::preloadPackageChildren(FileNode* file, const string& alias, cons
         return;
     }
     for (auto& ch : _riu.listPackageRiuChildren(pkgModName)) {
-        string childMod = pkgModName + "." + ch;
+        string childMod = dottedJoin(pkgModName, ch);
         auto childFile = childMod == file->moduleName() ? file : _riu.loadModule(childMod, errorLine);
         file->addPackageChild(alias, childKey(ch), childFile);
     }
     for (auto& sub : _riu.listPackageSubdirs(pkgModName)) {
-        preloadPackageChildren(file, alias, pkgModName + "." + sub, childKey(sub), errorLine);
+        preloadPackageChildren(file, alias, dottedJoin(pkgModName, sub), childKey(sub), errorLine);
     }
 }
 
 void RdBuilder::expandPackageWildcard(FileNode* file, const string& pkgModName, int line) {
     if (_riu.hasPkgFile(pkgModName)) {
         for (const auto& exportItem : _riu.visiblePkgItems(file, pkgModName)) {
-            string childMod = pkgModName + "." + exportItem.name;
+            string childMod = dottedJoin(pkgModName, exportItem.name);
             if (childMod == file->moduleName()) continue;
             if (exportItem.wildcard) {
                 auto childKind = _riu.modulePathKind(childMod);
@@ -524,7 +554,7 @@ void RdBuilder::expandPackageWildcard(FileNode* file, const string& pkgModName, 
         return;
     }
     for (auto& ch : _riu.listPackageRiuChildren(pkgModName)) {
-        string childMod = pkgModName + "." + ch;
+        string childMod = dottedJoin(pkgModName, ch);
         bool alreadyWildcard = file->wildcardAliasSources(ch) != nullptr;
         auto existingSym = file->lookupSymbol(ch);
         bool canOverride =
@@ -540,7 +570,7 @@ void RdBuilder::expandPackageWildcard(FileNode* file, const string& pkgModName, 
         file->addWildcardAliasSource(ch, childMod);
     }
     for (auto& sub : _riu.listPackageSubdirs(pkgModName)) {
-        string subMod = pkgModName + "." + sub;
+        string subMod = dottedJoin(pkgModName, sub);
         bool alreadyWildcard = file->wildcardAliasSources(sub) != nullptr;
         if (!alreadyWildcard && file->hasSymbol(sub)) continue;
         if (!alreadyWildcard) {

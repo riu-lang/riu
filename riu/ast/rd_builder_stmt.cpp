@@ -95,15 +95,20 @@ StatementNode* RdBuilder::buildLet(rd::NodeId id, bool global) {
         vector<Token> names;
         TypeNode* type = nullptr;
         ExprNode* expr = nullptr;
-        while (i < n.children_count && at(child(id, i)).kind == rd::NodeKind::Ident) {
-            names.push_back(makeTok(child(id, i)));
-            ++i;
+        // 孩子顺序：Ident 名…、可选类型、表达式。RHS 也可能是 Ident，不能从前往后把 Ident 全当名字。
+        if (i < n.children_count) {
+            const rd::i32 last = n.children_count - 1;
+            expr = buildExpr(child(id, last));
+            rd::i32 nameEnd = last;
+            if (i < last && isTypeKindStmt(at(child(id, last - 1)).kind)) {
+                type = buildType(child(id, last - 1));
+                nameEnd = last - 1;
+            }
+            while (i < nameEnd && at(child(id, i)).kind == rd::NodeKind::Ident) {
+                names.push_back(makeTok(child(id, i)));
+                ++i;
+            }
         }
-        if (i < n.children_count && isTypeKindStmt(at(child(id, i)).kind)) {
-            type = buildType(child(id, i));
-            ++i;
-        }
-        if (i < n.children_count) expr = buildExpr(child(id, i));
         TypeInfo wholeType = type ? type->getType() : (expr ? expr->getType() : TypeInfo());
         if (auto* file = _scopeStack.empty() ? nullptr : dynamic_cast<FileNode*>(_scopeStack[0])) {
             std::set<std::string> visited;

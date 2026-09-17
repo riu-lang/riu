@@ -193,17 +193,19 @@ LiteralNode* RdBuilder::buildLiteral(rd::NodeId id) {
     case rd::NodeKind::CodePoint:
         return static_cast<LiteralNode*>(create<LiteralCodePointNode>(id, makeTok(id)));
     case rd::NodeKind::StringLit: {
-        bool raw = !n.value.empty() && n.value.size() >= 2 && n.value[0] == 'r';
+        // 普通 `"..."` 的 value 是去引号正文；仅 `r"..."` 的 token 以 r" 开头。
+        // 不能用 value[0]=='r'：`"riu"` 会被当成 raw，LiteralStringNode 剥 r 后无引号，变成空串。
+        const bool raw = n.op == rd::Kind::STR_LINE_RAW;
         if (!raw) {
             string decoded;
             decodeTplText(string(n.value), decoded, n.pos.line, n.pos.column + 1);
-            Token synTok("\"" + decoded + "\"", static_cast<size_t>(n.pos.line));
+            decoded.insert(decoded.begin(), '"');
+            decoded += '"';
+            Token synTok(std::move(decoded), static_cast<size_t>(n.pos.line));
             return static_cast<LiteralNode*>(create<LiteralStringNode>(id, synTok, true));
         }
         return static_cast<LiteralNode*>(create<LiteralStringNode>(id, makeTok(id), true));
     }
-    case rd::NodeKind::UnitLit:
-        return nullptr;
     default:
         return nullptr;
     }
@@ -331,7 +333,10 @@ ExprNode* RdBuilder::buildExpr(rd::NodeId id) {
         flush();
         if (interps.empty()) {
             const string& body = parts.empty() ? string() : parts[0];
-            Token synTok("\"" + body + "\"", static_cast<size_t>(n.pos.line));
+            string quoted = "\"";
+            quoted += body;
+            quoted += '"';
+            Token synTok(std::move(quoted), static_cast<size_t>(n.pos.line));
             return wrapLiteral(static_cast<LiteralNode*>(create<LiteralStringNode>(id, synTok, true)), id);
         }
         auto* tpl = static_cast<LiteralNode*>(

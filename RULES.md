@@ -80,7 +80,7 @@ Windows + Clang（无 MSVC 作编译器；仍需 VS 的 Windows SDK / STL）。`
 
 测试崩溃：DLL 无摘要行 → 在 `sdk/riu/` 下 `--verbose` → `--test-mod` → `riu build --test -d`。
 
-改完 C++ 立刻 `./format.ps1`；完成修改+测试通过后 `./lint.ps1` **0 warnings**。注释中文；`// ====` 分区；未完成 / 待验证写 `// TODO:`。新诊断码：`riu/include/error_code.h` 段内递增；用户能看到才按 spec-writeback 同步附录 D。
+改完 C++ 立刻 `./format.ps1`；完成修改+测试通过后 `./lint.ps1` **0 warnings** （无打印的warning）。注释中文；`// ====` 分区；未完成 / 待验证写 `// TODO:`。新诊断码：`riu/include/error_code.h` 段内递增；用户能看到才按 spec-writeback 同步附录 D。
 
 ## 加测试
 

@@ -3,6 +3,7 @@
 
 #include "rd_builder.h"
 
+#include "ast/syntax_diag.h"
 #include "ast_builder.h"
 #include "ast_builder_helpers.h"
 #include "node/alias_node.h"
@@ -33,6 +34,13 @@ bool isTypeKindDecl(rd::NodeKind k) {
     default:
         return false;
     }
+}
+
+string dottedJoin(const string& prefix, const string& name) {
+    string s = prefix;
+    s += '.';
+    s += name;
+    return s;
 }
 
 rd::i32 skipAnnos(const rd::FlatAst& ast, rd::NodeId id, rd::i32 i) {
@@ -381,6 +389,8 @@ void RdBuilder::addStruct(rd::NodeId id) {
     bool isSpec = false;
     vector<SpecRef> implRefs;
     RdAnnoList annos;
+    rd::Pos locPos = n.pos;
+    if (n.children_count > 0 && at(child(id, 0)).kind == rd::NodeKind::Anno) locPos = at(child(id, 0)).pos;
     rd::i32 i = 0;
     while (i < n.children_count && at(child(id, i)).kind == rd::NodeKind::Anno) {
         rd::NodeId a = child(id, i);
@@ -451,7 +461,7 @@ void RdBuilder::addStruct(rd::NodeId id) {
             throw RiuError(at(clean).pos.line, at(clean).pos.column + 1, ErrorCode::E2011,
                            std::string("destructor in #Spec body"));
         }
-        auto* draft = create<SpecDeclNode>(id, file, makeTok(id));
+        auto* draft = create<SpecDeclNode>(locPos, file, makeTok(id));
         draft->setAnnos(annos.names, annos.args);
         draft->setTypeParams(typeParams);
         draft->setSourceText(srcSlice(n.pos));
@@ -536,7 +546,7 @@ void RdBuilder::addStruct(rd::NodeId id) {
         return;
     }
 
-    auto* structDecl = create<StructDeclNode>(id, file, makeTok(id));
+    auto* structDecl = create<StructDeclNode>(locPos, file, makeTok(id));
     structDecl->setAnnos(annos.names, annos.args);
     structDecl->setSourceText(srcSlice(n.pos));
     structDecl->setTypeParams(typeParams);
@@ -614,7 +624,7 @@ void RdBuilder::addStruct(rd::NodeId id) {
     file->addStructDecl(structDecl);
 
     for (auto* field : structDecl->fields()) {
-        string methodKey = structName + "." + field->name().getText();
+        string methodKey = dottedJoin(structName, field->name().getText());
         SymbolInfo fieldSym(SymbolKind::Variable, field->name().getText(), field->getType());
         fieldSym.moduleName = moduleName;
         file->registerSymbol(methodKey, fieldSym);
@@ -622,7 +632,7 @@ void RdBuilder::addStruct(rd::NodeId id) {
 
     if (fns.empty() && clean == rd::kEmptyNode && implRefs.empty()) return;
 
-    auto* structImpl = create<StructImplNode>(id, file, makeTok(id));
+    auto* structImpl = create<StructImplNode>(locPos, file, makeTok(id));
     structImpl->setAnnos(annos.names, annos.args);
     structImpl->setTypeParams(typeParams);
     structImpl->setSpecRefs(std::move(implRefs));
@@ -654,7 +664,7 @@ void RdBuilder::addStruct(rd::NodeId id) {
 
     for (auto* method : structImpl->methods()) {
         string methodName = method->header()->name().getText();
-        string fullName = structName + "." + methodName;
+        string fullName = dottedJoin(structName, methodName);
         vector<TypeInfo> paramTypes;
         paramTypes.emplace_back(structName);
         for (auto* param : method->header()->params()) {
@@ -834,9 +844,22 @@ FileNode* RdBuilder::build() {
     _ast = std::move(parsed.ast);
     _errors = std::move(parsed.errors);
     indexDefaultTokens();
-    if (!_errors.empty()) {
-        const auto& e = _errors.front();
-        throw RiuError(e.pos.line, e.pos.column + 1, e.is_lexer ? ErrorCode::E1001 : ErrorCode::E1002, e.message);
+    for (const auto& e : _errors) {
+        SyntaxDiag d;
+        d.is_lexer = e.is_lexer;
+        d.file = _sourcePath;
+        d.line = e.pos.line;
+        d.col = e.pos.column + 1;
+        d.message = e.message;
+        d.offending = e.offending;
+        d.prev_text = e.prev_text;
+        Diagnostic diag;
+        if (!fillSyntaxDiagnostic(diag, d)) continue;
+        auto err = RiuError(e.pos.line, e.pos.column + 1, e.is_lexer ? ErrorCode::E1001 : ErrorCode::E1002, e.message);
+        if (!_sourcePath.empty()) err.withFile(_sourcePath);
+        for (const auto& h : diag.hints)
+            err.withHint(h);
+        throw err;
     }
 
     auto* file = _targetFile ? _targetFile : _riu.createFile(_moduleName);

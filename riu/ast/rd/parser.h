@@ -2,7 +2,7 @@
 // MPL-2.0
 //
 // 结构参考 V parser（MIT）。产生式跟 riuParser.g4，不搬 V 的 ASI / import。
-// rd.8 起 FileNode 主路走本栈；format / LSP / skeleton 仍 ANTLR。
+// rd.8 起 FileNode 主路走本栈；format / LSP 仍 ANTLR。
 
 #ifndef RIU_LANG_RD_PARSER_H
 #define RIU_LANG_RD_PARSER_H
@@ -89,10 +89,10 @@ private:
 
     [[nodiscard]] NodeId parseExpr(int min_bp = 0, bool allow_brace = true);
     [[nodiscard]] NodeId parsePrefix(bool allow_brace);
-    [[nodiscard]] NodeId parsePostfix(NodeId left);
+    [[nodiscard]] NodeId parsePostfix(NodeId left, bool allow_brace);
     [[nodiscard]] NodeId parseLiteral();
     [[nodiscard]] NodeId parseStringTpl();
-    [[nodiscard]] NodeId parseCall(NodeId left);
+    [[nodiscard]] NodeId parseCall(NodeId left, bool allow_brace);
     [[nodiscard]] NodeId parseGet(NodeId left);
     [[nodiscard]] NodeId parseTrailingLambda();
     [[nodiscard]] NodeId parseEnumCtor(NodeId lhs, bool lhs_is_self);

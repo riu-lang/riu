@@ -6,8 +6,6 @@
 
 #include "mod_decl.h"
 
-#include "ast/syntax_error_listener.h"
-#include "ast_builder.h"
 #include "node/alias_node.h"
 #include "node/enum_node.h"
 #include "node/file_node.h"
@@ -17,10 +15,8 @@
 #include "node/spec_node.h"
 #include "node/struct_node.h"
 #include "node/type_node.h"
-#include "parse_program.h"
+#include "rd_builder.h"
 #include "riu.h"
-#include "riu/riuLexer.h"
-#include "riu/riuParser.h"
 
 #include <algorithm>
 #include <array>
@@ -32,7 +28,6 @@
 #include <fstream>
 #include <iterator>
 #include <set>
-#include <sstream>
 #include <stdexcept>
 #include <utility>
 
@@ -506,30 +501,15 @@ FnNode* makeFn(NodeOwner& own, Node* parent, const HeaderData& d) {
 
 bool parseSkeletonInto(Riu& riu, FileNode* file, const string& src, const string& absPath) {
     if (src.empty() || onlyWs(src)) return true;
-    antlr4::ANTLRInputStream stream(src);
-    riu::riuLexer lexer(&stream);
-    std::ostringstream sink;
-    SyntaxErrorListener errListener(absPath, sink);
-    lexer.removeErrorListeners();
-    lexer.addErrorListener(&errListener);
-    antlr4::CommonTokenStream tokens(&lexer);
-    riu::riuParser parser(&tokens);
-    parser.removeErrorListeners();
-    parser.addErrorListener(&errListener);
-    auto* program = parseRiuProgram(parser, tokens, &errListener);
-    if (errListener.hasErrors() || parser.getNumberOfSyntaxErrors()) {
-        DEBUG_LOG_VAL("  .ud skeleton syntax fail", absPath << " " << sink.str());
-        return false;
-    }
-    auto builder = std::make_unique<ASTBuilder>(riu, file->moduleName(), false, absPath);
+    auto builder = std::make_unique<RdBuilder>(riu, src, file->moduleName(), false, absPath);
     builder->setTargetFile(file);
     try {
-        builder->build(program);
+        builder->build();
     } catch (const std::exception& e) {
         DEBUG_LOG_VAL("  .ud skeleton AST fail", absPath << " : " << e.what());
         return false;
     }
-    riu.keepBuilder(std::move(builder));
+    riu.keepRdBuilder(std::move(builder));
     return true;
 }
 
