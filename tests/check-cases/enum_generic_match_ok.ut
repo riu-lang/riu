@@ -1,0 +1,38 @@
+; 3.4: match 穷尽按 variant 名；绑定类型 = subst 后 payload
+enum Box<T> {
+  V(T)
+}
+
+enum Pair<T, U> {
+  Both(T, U)
+}
+
+fn as_i32(x Box<i32>) i32 {
+  ret match x {
+    Box::V(v) => v
+  }
+}
+
+; 形参名与 enum 形参不同，避免只靠 applyInstSubst 碰巧替换同名 T
+fn unwrap<U>(x Box<U>) U {
+  ret match x {
+    Box::V(v) => v
+  }
+}
+
+fn parts(x Pair<i32, bool>) i32 {
+  ret match x {
+    Pair::Both(a, b) => {
+      let t bool = b
+      a
+    }
+  }
+}
+
+fn main() {
+  as_i32(Box:<i32>::V(1))
+  unwrap(Box:<i32>::V(2))
+  unwrap(Box:<i64>::V(3))
+  parts(Pair:<i32, bool>::Both(1, true))
+  ret;
+}

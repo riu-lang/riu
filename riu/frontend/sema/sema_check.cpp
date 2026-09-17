@@ -266,27 +266,59 @@ void SemaPass::tryValidateFieldChain(const TypeInfo& start, const vector<string>
 
 void SemaPass::fillMatchArmBindingTypes(ExprMatchNode* n) {
     if (!n) return;
+
+    // 绑定类型跟 scrut 这一次的 enumType（含 genericArgs），不是声明 payload 原文。
+    TypeInfo enumType;
+    EnumDeclNode* scrutEnum = nullptr;
+    try {
+        if (auto* scrut = n->scrutinee()) {
+            enumType = scrut->hasResolvedType() ? scrut->resolvedType() : scrut->getType();
+            enumType = sema::resolveAlias(applyInstSubst(enumType), _file, _sdkFile);
+            auto peelIfEnum = [&](const TypeInfo& wrapped) {
+                TypeInfo in = sema::resolveAlias(applyInstSubst(wrapped), _file, _sdkFile);
+                if (_names.lookupEnum(in)) enumType = std::move(in);
+            };
+            if (enumType.isRc()) {
+                if (auto inner = enumType.rcElementType()) peelIfEnum(*inner);
+            } else if (enumType.isHeap()) {
+                if (auto inner = enumType.heapElementType()) peelIfEnum(*inner);
+            } else if (enumType.isRef()) {
+                if (auto inner = enumType.refElementType()) peelIfEnum(*inner);
+            }
+            scrutEnum = _names.lookupEnum(enumType);
+        }
+    } catch (const RiuError&) {
+        throw;
+    } catch (...) { // NOLINT(bugprone-empty-catch)
+        // 预扫时 getType 可能未就绪；visit match 会再填一次。
+    }
+
     for (auto* arm : n->arms()) {
         if (!arm) continue;
         auto* pat = arm->pattern();
         if (!pat || pat->isElse() || pat->binds().empty()) continue;
-        EnumDeclNode* enumDecl = nullptr;
-        try {
-            auto r = sema::resolveExprTypeLhs(_file, _riu, pat->enumPath(), pat->getLineNumber(), pat->getColumn());
-            enumDecl = r.enumDecl;
-            if (!enumDecl) enumDecl = _names.lookupEnum(r.type);
-        } catch (const RiuError&) {
-            throw;
-        } catch (...) { // NOLINT(bugprone-empty-catch)
-            continue;
+        EnumDeclNode* enumDecl = scrutEnum;
+        if (!enumDecl) {
+            try {
+                auto r = sema::resolveExprTypeLhs(_file, _riu, pat->enumPath(), pat->getLineNumber(), pat->getColumn());
+                enumDecl = r.enumDecl;
+                if (!enumDecl) enumDecl = _names.lookupEnum(r.type);
+            } catch (const RiuError&) {
+                throw;
+            } catch (...) { // NOLINT(bugprone-empty-catch)
+                continue;
+            }
         }
         EnumVariantNode* variant = enumDecl ? enumDecl->variant(pat->variantName().getText()) : nullptr;
+        auto subst = sema::enumInstSubst(enumDecl, enumType);
         for (size_t i = 0; i < pat->binds().size(); ++i) {
             const string& bn = pat->binds()[i].getText();
             TypeInfo bindType;
             if (variant && i < variant->payloadArity() && variant->payloadTypes()[i]) {
                 try {
-                    bindType = applyInstSubst(variant->payloadTypes()[i]->getType());
+                    bindType = variant->payloadTypes()[i]->getType();
+                    if (!subst.empty()) bindType = bindType.substitute(subst);
+                    bindType = applyInstSubst(bindType);
                 } catch (const RiuError&) {
                     throw;
                 } catch (...) { // NOLINT(bugprone-empty-catch)

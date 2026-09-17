@@ -1,0 +1,12 @@
+; 3.4: 绑定是 subst 后的 i32，不能当 bool
+enum Box<T> {
+  V(T)
+}
+
+fn main() {
+  let x Box<i32> = Box:<i32>::V(1)
+  let n bool = match x {  ; check: E3014
+    Box::V(v) => v
+  }
+  ret;
+}

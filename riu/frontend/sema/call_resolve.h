@@ -381,31 +381,35 @@ void validateFnSymbolVisibility(const FnSymbolInfo* fnSymbol, const string& curr
 //   - SemaPass.visitExpr ExprPathCallNode 分支调用
 void validateEnumCtorShape(FileNode* file, FileNode* sdkFile, ExprPathCallNode* node);
 
-// match 表达式 arm 静态校验 (Phase 3.4.b).
+// 泛型 enum 单态：形参 → enumType.genericArgs。非泛型或实参个数不对返回空 map。
+// match 绑定 / 穷尽诊断用带实参的 enumType，不能只拿声明 payload 原文。
+std::map<std::string, TypeInfo> enumInstSubst(EnumDeclNode* enumDecl, const TypeInfo& enumType);
+
+// match 表达式 arm 静态校验 (Phase 3.4.b / 泛型 enum 3.4).
 //
-// 在调用方已解析 scrutinee 的 enum 名 (含 rc-deref / alias) 并 lookup 到 enumDecl
-// 之后调用. helper 一次性覆盖以下错误码:
+// 在调用方已剥 Rc/Heap/Ref、别名解析并 lookup 到 enumDecl 之后调用。
+// `enumType` 须是该次 scrut 的完整类型（含 genericArgs），穷尽仍按 variant 名。
+//
+// helper 一次性覆盖以下错误码:
 //   - E2023: arms 空 (语法上 +, 防御性) / 不带 else 时穷尽性失败 (列缺失 variant)
 //   - E2025: else arm 不在末位
-//   - E2019: pattern 的 enum 名既不等于 enumName, 也不能经 file 上一步别名解析到 enumName
+//   - E2019: pattern 的 enum 名既不等于 enumType.name, 也不能经 file 上一步别名解析到该名
+//     （pattern 无 turbofish，只比裸名 / owner，不比 genericArgs）
 //   - E2020: variant 名不在 enumDecl 内
 //   - E2024: 同一 variant 在多个 arm 中重复
 //   - E2026: arm 绑定 arity 与 variant payload 声明 arity 不一致 (零参允许 0 binds)
 //   - E2027: 同一 arm 内绑定名重复
 //
 // 不覆盖:
-//   - E2022 (scrutinee 不是 enum / Rc<E> 仅借用语义) —— 调用方 (Compiler) 自身在
-//     lookupEnum 失败时抛, 涉及 rc-deref / alias / isFreshHandleExpr; SemaPass 暂跳过
+//   - E2022 (scrutinee 不是 enum / Rc<E> 仅借用语义) —— 调用方 lookupEnum 失败时抛
 //   - E3027 (arm body 结果类型不一致) —— 跨 arm body getType 计算, 可能因 lambda
 //     形参未推断而误判, 留 Compiler
 //   - E3091/E3096 —— SemaPass 已覆盖未知类型；codegen 走 throwSemaGap
+//   - 绑定类型填写 —— SemaPass::fillMatchArmBindingTypes 用 enumInstSubst 填槽
 //
-// 调用方:
-//   - Compiler::compileMatchExpr 在 enumDecl 取到后立即调用
-//   - SemaPass.visitExpr ExprMatchNode 分支主动调用 (scrutType 直接是 enum 名,
-//     非 Rc/非 alias 时才接入; 否则跳过, 由 Compiler 兜底)
+// 调用方: SemaPass::tryValidateMatchScrut（scrut 剥到 enum 后）。
 //
-// 纯 AST / 字符串, 无 LLVM 依赖.
+// 纯 AST / TypeInfo, 无 LLVM 依赖.
 void validateMatchArms(EnumDeclNode* enumDecl, const TypeInfo& enumType, ExprMatchNode* node, FileNode* file);
 
 // 私有字段可见性校验 (Phase 3.4.d.2).

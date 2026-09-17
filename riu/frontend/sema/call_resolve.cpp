@@ -1827,7 +1827,22 @@ void validateEnumCtorShape(FileNode* file, FileNode* sdkFile, ExprPathCallNode* 
     }
 }
 
-// ========== Phase 3.4.b: match arm 静态校验 ==========
+// ========== Phase 3.4.b / 泛型 enum 3.4: match arm 静态校验 ==========
+
+map<string, TypeInfo> enumInstSubst(EnumDeclNode* enumDecl, const TypeInfo& enumType) {
+    map<string, TypeInfo> subst;
+    if (!enumDecl) return subst;
+    const auto& tps = enumDecl->typeParams();
+    if (tps.empty() || enumType.genericArgs.size() != tps.size()) return subst;
+    for (size_t i = 0; i < tps.size(); ++i) {
+        if (!enumType.genericArgs[i] || enumType.genericArgs[i]->empty()) {
+            subst.clear();
+            return subst;
+        }
+        subst[tps[i]] = *enumType.genericArgs[i];
+    }
+    return subst;
+}
 
 void validateMatchArms(EnumDeclNode* enumDecl, const TypeInfo& enumType, ExprMatchNode* node, FileNode* file) {
     if (!enumDecl || !node) return;
@@ -1835,9 +1850,11 @@ void validateMatchArms(EnumDeclNode* enumDecl, const TypeInfo& enumType, ExprMat
     int line = node->getLineNumber();
     int col = node->getColumn();
     const string& enumName = enumType.name;
+    // 诊断用带实参的完整类型（`Box<i32>`）；穷尽仍按声明上的 variant 名。
+    const string shown = fmtTypeFriendly(enumType);
 
     if (arms.empty()) {
-        throw RiuError(line, col, ErrorCode::E2023, enumName, string("(none)"));
+        throw RiuError(line, col, ErrorCode::E2023, shown, string("(none)"));
     }
 
     set<string> seenVariants;
@@ -1869,17 +1886,17 @@ void validateMatchArms(EnumDeclNode* enumDecl, const TypeInfo& enumType, ExprMat
         string vName = pat->variantName().getText();
         auto* variant = enumDecl->variant(vName);
         if (!variant) {
-            throw RiuError(pat->getLineNumber(), pat->getColumn(), ErrorCode::E2020, enumName, vName);
+            throw RiuError(pat->getLineNumber(), pat->getColumn(), ErrorCode::E2020, shown, vName);
         }
         if (seenVariants.count(vName)) {
-            throw RiuError(pat->getLineNumber(), pat->getColumn(), ErrorCode::E2024, enumName, vName);
+            throw RiuError(pat->getLineNumber(), pat->getColumn(), ErrorCode::E2024, shown, vName);
         }
         seenVariants.insert(vName);
 
         size_t bindArity = pat->binds().size();
         size_t declArity = variant->payloadArity();
         if (bindArity != declArity && !(bindArity == 0 && declArity == 0)) {
-            throw RiuError(pat->getLineNumber(), pat->getColumn(), ErrorCode::E2026, enumName, vName, declArity,
+            throw RiuError(pat->getLineNumber(), pat->getColumn(), ErrorCode::E2026, shown, vName, declArity,
                            bindArity);
         }
 
@@ -1887,7 +1904,7 @@ void validateMatchArms(EnumDeclNode* enumDecl, const TypeInfo& enumType, ExprMat
         for (auto& tk : pat->binds()) {
             const string& bn = tk.getText();
             if (seenBinds.count(bn)) {
-                throw RiuError(pat->getLineNumber(), pat->getColumn(), ErrorCode::E2027, bn, enumName, vName);
+                throw RiuError(pat->getLineNumber(), pat->getColumn(), ErrorCode::E2027, bn, shown, vName);
             }
             seenBinds.insert(bn);
         }
@@ -1904,9 +1921,9 @@ void validateMatchArms(EnumDeclNode* enumDecl, const TypeInfo& enumType, ExprMat
             string s;
             for (size_t i = 0; i < missing.size(); ++i) {
                 if (i) s += ", ";
-                s += enumName + "::" + missing[i];
+                s += shown + "::" + missing[i];
             }
-            throw RiuError(line, col, ErrorCode::E2023, enumName, s);
+            throw RiuError(line, col, ErrorCode::E2023, shown, s);
         }
     }
 }

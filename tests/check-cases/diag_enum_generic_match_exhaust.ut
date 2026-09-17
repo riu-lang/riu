@@ -1,0 +1,13 @@
+; 3.4: 穷尽仍按 variant 名（与单态无关）
+enum Box<T> {
+  A
+  V(T)
+}
+
+fn main() {
+  let x Box<i32> = Box:<i32>::A
+  match x {  ; check: E2023
+    Box::A => 0
+  }
+  ret;
+}

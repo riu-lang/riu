@@ -1,0 +1,13 @@
+; 3.4: 未知 variant 仍 E2020
+enum Box<T> {
+  V(T)
+}
+
+fn main() {
+  let x Box<i32> = Box:<i32>::V(1)
+  match x {
+    Box::Nope => 0  ; check: E2020
+    else => 1
+  }
+  ret;
+}
