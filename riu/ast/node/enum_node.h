@@ -12,13 +12,14 @@
 // - 零参 variant 是 "tuple payload 元素数为 0" 的退化形式，构造侧
 //   E::V 与 E::V() 等价；AST 上零参 variant 的 _payloadTypes 为空
 // - enum 是封闭的，所有 variant 在声明处一次列全
-// - v1 不支持泛型 enum / 独立 impl 块 / draft 实现 / discriminant 显式赋值
+// - 类型形参走 genericDef（#3）；独立 impl / discriminant 显式赋值仍不做
 
 #ifndef RIU_LANG_ENUM_NODE_H
 #define RIU_LANG_ENUM_NODE_H
 
 #include "node.h"
 
+#include "spec_ref.h"
 #include "type_node.h"
 #include <utility>
 
@@ -43,6 +44,9 @@ public:
 class EnumDeclNode : public ScopeNode, public Named, public Annotated {
     vector<EnumVariantNode*> _variants;
     map<string, size_t> _variantIndices;
+    vector<string> _typeParams;
+    // 与 _typeParams 等长；头上 `<T : D>` 原样进 AST，语义拒在 3.2。
+    vector<vector<SpecRef>> _typeParamBounds;
     bool _isPrivate;
 
 public:
@@ -74,6 +78,13 @@ public:
     }
 
     [[nodiscard]] bool isPrivate() const { return _isPrivate; }
+
+    void setTypeParams(vector<string> params) { _typeParams = std::move(params); }
+    [[nodiscard]] const vector<string>& typeParams() const { return _typeParams; }
+    [[nodiscard]] bool isGeneric() const { return !_typeParams.empty(); }
+
+    void setTypeParamBounds(vector<vector<SpecRef>> bounds) { _typeParamBounds = std::move(bounds); }
+    [[nodiscard]] const vector<vector<SpecRef>>& typeParamBounds() const { return _typeParamBounds; }
 };
 
 #endif // RIU_LANG_ENUM_NODE_H

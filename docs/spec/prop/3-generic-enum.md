@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| 状态 | 提议 |
+| 状态 | 实施中 |
 | 开 | 2026-09-13 |
 | 旧档 | [DRAFT-枚举.md](../draft/DRAFT-枚举.md)（非泛型 enum + match 已落地，勿改） |
 
@@ -21,7 +21,7 @@
 
 本条其余（后切片，不挡 #2）：enum 上方法 / `#Impl` / struct-style payload / 显式 discriminant。
 
-**改 g4**（待拍板）：`enumDecl` 现为 `'enum' ID '{'`（`riuParser.g4`）。简单切片要 `enum ID genericDef? BlockStart`。未拍板不改 g4、不改 spec 正文。
+**改 g4**：`enumDecl` 为 `enum ID genericDef? BlockStart`（复用 `genericDef`，不另开产生式）。spec 正文等简单切片完成再回写。
 
 ## 评估
 
@@ -35,13 +35,13 @@
 
 ## 决定
 
-- 日期：
-- 结论：实施 / 关闭
-- 理由：
+- 日期：2026-09-17
+- 结论：实施
+- 理由：简单切片先落地；g4 复用 `genericDef`；头上边界语义拒。
 
 ## 规范要点
 
-简单切片待拍板 g4 并待实施后回写 §3.10.2.6 / §3.10.1.1 / 附录 B。后切片另写，不提前改那些条。
+简单切片完成后回写 §3.10.2.6 / §3.10.1.1 / 附录 B。后切片另写，不提前改那些条。
 
 ### 语法
 
@@ -77,4 +77,4 @@ enum IterErr<E> {
 
 ## 落地
 
-- （未开始。须先拍板 g4。建议切片：`enumDecl` + AST/`.ud` 形参 → subst + match/拷贝/析构 → `T ! E` 的 E 改为 `TypeInfo` → SDK `End` / `IterErr<E>` 最小用例。方法 / spec / struct-style 不在本切片。）
+- 3.1：`enumDecl` + `genericDef?`；`EnumDeclNode` 形参 / 头上 `: D` 进 AST。`.ud` / 语义 / codegen 仍后切片。

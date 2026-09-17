@@ -1,0 +1,12 @@
+; 3.1: enum 头 genericDef 进 AST。未用形参与 struct 同档；零参 variant 避开 payload 布局。
+enum Box<T> {
+  A
+}
+
+enum Pair<T, U> {
+  V
+}
+
+fn main() {
+  ret;
+}

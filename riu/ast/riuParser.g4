@@ -226,9 +226,10 @@ genericDefWithRef:
 //   V2(T1, T2)
 //   ...
 // }
-// variant 一行一个，行尾不写 `,`；空 enum 由语义层拒绝
+// enum E<T> { V(T) } / enum E<T, U> { ... }：genericDef 与 fn / alias 同槽。
+// 头上 `<T : D>` 语法收下、语义拒（#3 简单切片）。variant 一行一个，行尾不写 `,`；空 enum 由语义层拒绝
 enumDecl:
-    Enum name=ID BlockStart
+    Enum name=ID genericDef? BlockStart
     (
           LineEnd
         | variants+=enumVariant

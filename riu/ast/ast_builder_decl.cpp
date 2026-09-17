@@ -604,15 +604,38 @@ std::any ASTBuilder::visitAliasDecl(riu::riuParser::AliasDeclContext* ctx) {
 
 // 顶层 enum 声明：构造 EnumDeclNode，逐个添加 variant，登记到当前 FileNode
 // variant 名重复触发 E2018；零参 variant 的 payloadTypes 为空向量
+// genericDef 形参写入 _typeParams；头上 `: D` 写入 _typeParamBounds，语义拒在 3.2
 std::any ASTBuilder::visitEnumDecl(riu::riuParser::EnumDeclContext* ctx) {
     auto file = any_cast_p<FileNode>(stack.back());
     auto enumDecl = createWithLine<EnumDeclNode>(ctx, file, ctx->name);
     enumDecl->setParentScope(file);
 
+    if (auto gd = ctx->genericDef()) {
+        vector<string> typeParams;
+        vector<vector<SpecRef>> typeParamBounds;
+        for (auto pCtx : gd->params) {
+            typeParams.push_back(requireBareTypeParamName(pCtx->type(0)));
+            vector<SpecRef> bounds;
+            bounds.reserve(pCtx->bounds.size());
+            for (auto bCtx : pCtx->bounds)
+                bounds.push_back(specBoundFromTypeCtx(bCtx));
+            typeParamBounds.push_back(std::move(bounds));
+        }
+        enumDecl->setTypeParams(typeParams);
+        enumDecl->setTypeParamBounds(typeParamBounds);
+        for (const auto& i : enumDecl->typeParams()) {
+            DEBUG_LOG_VAL("    TypeParam", i);
+        }
+    }
+
     DEBUG_LOG_VAL("Visit: EnumDecl", ctx->name->getText());
 
     stack.emplace_back(enumDecl);
     _scopeStack.push_back(enumDecl);
+
+    for (auto& tp : enumDecl->typeParams()) {
+        enumDecl->registerSymbol(tp, {SymbolKind::TypeParam, tp, TypeInfo(tp)});
+    }
 
     for (auto* vCtx : ctx->variants) {
         auto variant = any_cast_p<EnumVariantNode>(visit(vCtx));
