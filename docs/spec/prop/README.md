@@ -20,7 +20,7 @@
 | # | 标题 | 状态 | 文件 |
 |---|------|------|------|
 | 1 | 错误模型 v2 | 提议 | [1-error-v2.md](1-error-v2.md) |
-| 2 | `Iter<T, E>` / 泛型 for-in | 提议 | [2-iter.md](2-iter.md) |
+| 2 | `Iter<T, E>` / 泛型 for-in | 待实施 | [2-iter.md](2-iter.md) |
 | 3 | 泛型 enum | 已落地 | [3-generic-enum.md](3-generic-enum.md) |
 | 4 | 反射补全 | 提议 | [4-reflect.md](4-reflect.md) |
 | 5 | `format` 类 printf | 提议 | [5-format.md](5-format.md) |
@@ -35,3 +35,4 @@
 | 14 | 性能 / layout | 提议 | [14-perf.md](14-perf.md) |
 | 15 | 泛型 spec | 已落地 | [15-spec-generic.md](15-spec-generic.md) |
 | 16 | 分离 impl | 提议 | [16-impl-split.md](16-impl-split.md) |
+| 17 | 类型别名 `type` / 块作用域 | 待实施 | [17-type-alias.md](17-type-alias.md) |
