@@ -6,7 +6,7 @@
 | 开 | 2026-09-13 |
 | 旧档 | 无。现 `for-in` 只 lower Array / `[T*N]`（§5.5.4）。草案 `#Spec struct Iter<T> { fn next() T? }` 见 [DRAFT-spec-unify.md](../draft/DRAFT-spec-unify.md) §3.1 / [#1.R]；**本条不用那份签名**。 |
 
-前置：[15 泛型 spec](15-spec-generic.md)（已落地）；[3 泛型 enum](3-generic-enum.md) **简单切片**（类型参数 + 单态 + match；改 g4 待拍板）。本条不发明关联类型。
+前置：[15 泛型 spec](15-spec-generic.md)（已落地）；[3 泛型 enum](3-generic-enum.md) **简单切片**（已落地）。本条不发明关联类型。
 
 ## 提议
 
@@ -38,7 +38,7 @@ Iter 走已有失败通道 `T ! E`，不用 `T?` 当结束（#15 不限制 `T` �
   - 急切 `filter`/`map` 已有测试与 §9.2.3.5；惰性本条不做。
 - 反对：
   - 两套 spec，用户要分清 `T&` 与 `T`。
-  - 依赖 #3 简单切片；`enumDecl` 要加 `genericDef?`（**改 g4，待拍板**）。
+  - 依赖 #3 简单切片（已落地）。
   - 现 `fallibleErrType` 多处按 **名字字符串** 存（E7008 / 透传）。`! IterErr<E>` 落地必须改成完整 `TypeInfo`，否则 `IterErr<NetErr>` 与 `IterErr<ParseErr>` 分不开。
   - #15 单 Impl：同一类型对 `Iter` 只能一条 `#Impl(Iter<…>)`。
 - 未决：

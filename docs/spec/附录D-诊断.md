@@ -112,6 +112,7 @@ N | <源码行原文>
 | E2034 | `extern fn \`{}\` cannot use type \`{}\` in {} (not C ABI; spec §6.6.2)` |
 | E2035 | `struct \`{}\` cannot appear in extern signature: field \`{}\` has type \`{}\` (not C-layout; spec §7.5.3)` |
 | E2036 | `extern C symbol \`{}\` has incompatible signatures (spec §6.6.1)` |
+| E2037 | `enum \`{}\` type parameter \`{}\` cannot have spec bound (\`: D\`)` |
 
 ### D.3.3 E3xxx — 类型
 
@@ -363,6 +364,8 @@ for-in（E3160；§5.5.4）：
 | E6017 | `Unknown #Builtin function '{}'` |
 | E6018 | `Cannot determine type argument for size_of` |
 | E6019 | `Cannot determine LLVM type for '{}'` |
+
+`E6011` 亦用于泛型 enum 类型位与构造 `E:<T>::V` 的实参个数（§3.10.1.4 / §3.10.7.1）；消息模板仍写 `struct`。
 
 builtin 调用 / 类型实参数量（E6020..E6029）：
 

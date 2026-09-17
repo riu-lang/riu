@@ -66,7 +66,7 @@ draftBound        ::= modulePath? ID genericDef?     # 例：ToString / pkg.Disp
 约束：
 
 - `type` 尾部可选 `&`。持有位（字段 / 别名 / 全局 / enum payload）的裸 `T&` / `Array<T&>` / `[T& * N]` 报 **E4039**。`Function<i32&, ()>` 是 owned，可作字段。
-- `typeParam` 的 spec 边界仅出现在**声明位**（`fn` / `struct` / `#Spec struct` 头部的 `genericDef` 槽位）；调用点 turbofish 走 `genericDefWithRef`，不得写边界（§6.4.4.3）。声明头 `fn f<T&>` 本轮不支持。
+- `typeParam` 的 spec 边界仅出现在**声明位**（`fn` / `struct` / `#Spec struct` 头部的 `genericDef` 槽位）；调用点 turbofish 走 `genericDefWithRef`，不得写边界（§6.4.4.3）。声明头 `fn f<T&>` 本轮不支持。enum 头复用同一 `genericDef`，`<T : D>` 语法收下、语义拒 **E2037**（§3.10.1.4）。
 - `Rc<T&>` / 用户 `Foo<T&>` / 用户 fn `f:<i32&>` 由语义层拒（E4037）。`Array<T&>` 仅临时位合法。`Dyn<D&>` 出现在 owned 位报 E4038。
 
 > 上述边界产生式 spec-unify v1 已落地 `riu/ast/riu.g4`；`draftBound` 产生式名沿用历史 token 名，语义为"spec 边界"（§12）。
@@ -158,7 +158,7 @@ staticFieldDecl ::= buildAnno* ID type '=' expr LineEnd
 ## B.5b 枚举（v0.x）
 
 ```
-enumDecl       ::= 'enum' ID '{'
+enumDecl       ::= 'enum' ID genericDef? '{'
                        ( enumVariant | comment | codeLineEnd )*
                    '}'
 
@@ -168,7 +168,8 @@ enumVariant    ::= ID ( '(' type (',' type)* ')' )?
 - variant 一行一个、行尾**不写** `,`（§3.10.2.2）。
 - payload 类型用 `type`；持有位裸 `T&` / `Array<T&>` / `[T& * N]` 报 E4039（§3.10.3.2）。零参 variant 不写括号。
 - 空 enum（无 variant）由语义层拒绝（§3.10.2.5）。
-- enum 值的读取仅经 `match`（B.6 `exprMatch`）；构造仅经 B.6 `exprEnumCtor`。
+- `genericDef` 与 fn / struct 头同槽；使用点实参个数不对报 E6011。头上 `<T : D>` 语义拒 E2037（§3.10.1.4）。
+- enum 值的读取仅经 `match`（B.6 `exprMatch`）；构造仅经 B.6 `exprEnumCtor`。泛型构造须 turbofish：`E:<T>::V` / `E:<T>::V(args)`。
 
 ## B.5a spec（v0.5+）
 
@@ -274,7 +275,7 @@ enumPattern    ::= ID '::' ID ( '(' ID (',' ID)* ')' )?          # patternEnum
 - `f(a){ (x) => body }!` 与 `f { () => body }!` 合法（trailing lambda 与 `!` 槽并存于产生式末尾），详见 DRAFT-错误.md §4.4。
 - `!` 与 `=` / `==` 之间需空白或换行（避免被吞为 `SymbolExclEq`）。
 
-- `exprEnumCtor`：`E::V` 与 `E::V()` 等价；类型别名 `C = E` 后 `C::V` 在解析期归一为 `E::V`；同一产生式分流为 `Type::static_fn(...)` 时允许尾随 `!`。
+- `exprEnumCtor`：`E::V` 与 `E::V()` 等价；类型别名 `C = E` 后 `C::V` 在解析期归一为 `E::V`；同一产生式分流为 `Type::static_fn(...)` 时允许尾随 `!`。泛型 enum 构造走 LHS turbofish：`E:<T>::V` / `E:<T>::V(args)`（§3.10.7.1）。
 - `exprMatch`：arm 体为 `=> expr` 或 `=> { stmts }`（块可单行，值规则同 §5.4.4）；arm 顺序对穷尽语义无影响，仅 `else` **应当**为最后一条；穷尽性 / binding arity / 重复 variant 由语义层校验。
 - `enumPattern` 的 binding 位仅接受 ID（不可变值绑定）；不支持 `_` 通配、字面量、嵌套、多模式合并 `|`、守卫 `if`、`@` 绑定（§3.10 / 草案 §5.3）。
 

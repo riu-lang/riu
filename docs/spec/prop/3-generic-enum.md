@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| 状态 | 实施中 |
+| 状态 | 已落地 |
 | 开 | 2026-09-13 |
 | 旧档 | [DRAFT-枚举.md](../draft/DRAFT-枚举.md)（非泛型 enum + match 已落地，勿改） |
 
@@ -41,7 +41,7 @@
 
 ## 规范要点
 
-简单切片完成后回写 §3.10.2.6 / §3.10.1.1 / 附录 B。后切片另写，不提前改那些条。
+简单切片完成后回写 §3.10.2.6 / §3.10.1.1 / 附录 B。后切片（方法 / `#Impl` / struct-style / 显式 discriminant）另写，不提前改那些条。
 
 ### 语法
 
@@ -84,3 +84,4 @@ enum IterErr<E> {
 - 3.5（2026-09-17）：每单态一份 LLVM 类型（`generic::EnumInstance`）；拷贝 / 析构 tag dispatch 走 subst 后 payload。
 - 3.6（2026-09-17）：`T ! E` 的 E 存完整类型（getFullName）；E7008 / 透传 / mangle / wrapFallibleRetType 按完整类型。
 - 3.7（2026-09-17）：`.ud` v4 二进制 enum 写入 typeParams（不走 skeleton）；跨文件 `use` 后 `E<T>` lookup 仍裸名。formatter 印 `enum E<T>`。
+- 3.8（2026-09-17）：简单切片回写 §3.10 / §3.4.1.1 / §6.7.1.1 / 附录 B / D；回归三套。方法 / `#Impl` / struct-style / 显式 discriminant 仍后切片，不挡 #2。
