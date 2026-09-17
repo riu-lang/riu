@@ -54,6 +54,11 @@ void resolveMethodOverload(FileNode* file, FileNode* sdkFile, const string& base
 //   - 调用方需自行确认 callee 已识别为泛型 fn / 泛型 struct.
 void validateGenericTypeArgsArity(const string& fnName, size_t expectedCount, size_t actualCount, int line, int col);
 
+// 类型位置上的用户泛型 struct / enum：形参数与写出的实参数须一致（E6011）。
+// 递归走进 Rc / 元组 / 字段包装的 genericArgs。lookup 仍按裸名。
+void validateGenericNamedTypeArity(const TypeInfo& t, const NameResolver& nr, int line, int col,
+                                   const string& currentStructName = {});
+
 // 泛型 fn 的 typeArgs 边界校验 (Phase 3.3.3.c, E3032 / E1106).
 //
 // `<T : D>` / `<T : D<A>>`：对每个 typeParam[i] 解析 bound，用 boundSatisfied 校验

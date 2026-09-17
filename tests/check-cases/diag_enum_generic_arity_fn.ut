@@ -1,0 +1,12 @@
+; 3.2: 形参位置缺实参 → E6011
+enum Box<T> {
+  A
+}
+
+fn take(x Box) {  ; check: E6011
+  ret;
+}
+
+fn main() {
+  ret;
+}

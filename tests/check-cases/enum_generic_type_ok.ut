@@ -1,0 +1,18 @@
+; 3.2: 使用点带齐实参；lookup 按裸名。未用形参与 struct 同档。
+enum Box<T> {
+  A
+}
+
+enum Pair<T, U> {
+  V
+}
+
+fn take(x Box<i32>, y Pair<i32, i64>) {
+  ret;
+}
+
+fn main() {
+  #Mut let a Box<i32>
+  #Mut let b Pair<i32, i64>
+  ret;
+}

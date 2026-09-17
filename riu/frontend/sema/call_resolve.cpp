@@ -524,6 +524,56 @@ void validateGenericTypeArgsArity(const string& fnName, size_t expectedCount, si
                               std::string(expectedCount == 1 ? "T" : "T1, T2, ..."), expectedCount));
 }
 
+static void throwGenericNamedArity(const string& name, size_t want, size_t got, int line, int col) {
+    throw RiuError(line, col, ErrorCode::E6011, name, want, got)
+        .withHint(std::format("实例化时的类型实参个数需与声明匹配；改写为 `{}<{}>` 形式补齐 {} 个类型", name,
+                              std::string(want == 1 ? "T" : "T1, T2, ..."), want));
+}
+
+void validateGenericNamedTypeArity(const TypeInfo& raw, const NameResolver& nr, int line, int col,
+                                   const string& currentStructName) {
+    auto rec = [&](auto&& self, const TypeInfo& t) -> void {
+        TypeInfo t0 = t;
+        try {
+            t0 = resolveAlias(t, nr.file, nr.sdkFile);
+        } catch (const RiuError&) {
+            throw;
+        } catch (...) { // NOLINT(bugprone-empty-catch)
+            return;
+        }
+        if (t0.empty()) return;
+
+        // Ref / Fn / 元组的 genericArgs 不是用户类型实参；先查具名 struct·enum 再下钻。
+        // 泛型 impl 里 `Self` / 裸名即当前单态，不要求写出实参。
+        const bool currentInst =
+            t0.isSelf() || (!currentStructName.empty() && t0.name == currentStructName && t0.genericArgs.empty());
+        if (!currentInst && !t0.isRef() && !t0.isFn() && !t0.isTuple() && !t0.name.empty()) {
+            if (auto* sd = nr.lookupStruct(t0, true)) {
+                size_t want = sd->typeParams().size();
+                size_t got = t0.genericArgs.size();
+                if (want > 0 && want != got) throwGenericNamedArity(t0.name, want, got, line, col);
+            } else if (auto* ed = nr.lookupEnum(t0)) {
+                size_t want = ed->typeParams().size();
+                size_t got = t0.genericArgs.size();
+                if (want > 0 && want != got) throwGenericNamedArity(t0.name, want, got, line, col);
+            }
+        }
+
+        if (t0.isFn()) {
+            for (auto& p : t0.fnParamTypes()) {
+                if (p) self(self, *p);
+            }
+            if (auto r = t0.fnReturnType()) self(self, *r);
+            return;
+        }
+        if (t0.isArray() && t0.elementType) self(self, *t0.elementType);
+        for (auto& a : t0.genericArgs) {
+            if (a) self(self, *a);
+        }
+    };
+    rec(rec, raw);
+}
+
 // ==================== Dyn 方法静态形态校验 (Phase 3.3 前置.3f) ====================
 // 原位于 `compiler/compiler_call.cpp::compileDynMethodCall` 第 2 / 3 / 4 步:
 // 按名查 sig (E6016) → arity (E6012) → 形参类型 (E6015). 纯 AST + TypeInfo,
@@ -1346,6 +1396,23 @@ bool typeHasLlvmLayout(const TypeInfo& raw, FileNode* file, FileNode* sdkFile,
         }
         auto* ed = nr.lookupEnum(t);
         if (ed) {
+            if (ed->isGeneric()) {
+                // 缺参 / 错元留给 E6011；与泛型 struct 同档，不在这里报 E3096。
+                if (t.genericArgs.size() != ed->typeParams().size()) return finish(true);
+                map<string, TypeInfo> subst;
+                for (size_t i = 0; i < ed->typeParams().size(); ++i) {
+                    if (!t.genericArgs[i] || t.genericArgs[i]->empty()) return finish(true);
+                    subst[ed->typeParams()[i]] = *t.genericArgs[i];
+                }
+                for (auto* v : ed->variants()) {
+                    if (!v || !v->hasPayload()) continue;
+                    for (auto* pt : v->payloadTypes()) {
+                        if (!pt) continue;
+                        if (!rec(pt->getType().substitute(subst))) return finish(false);
+                    }
+                }
+                return finish(true);
+            }
             for (auto* v : ed->variants()) {
                 if (!v || !v->hasPayload()) continue;
                 for (auto* pt : v->payloadTypes()) {

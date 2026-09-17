@@ -604,7 +604,7 @@ std::any ASTBuilder::visitAliasDecl(riu::riuParser::AliasDeclContext* ctx) {
 
 // 顶层 enum 声明：构造 EnumDeclNode，逐个添加 variant，登记到当前 FileNode
 // variant 名重复触发 E2018；零参 variant 的 payloadTypes 为空向量
-// genericDef 形参写入 _typeParams；头上 `: D` 写入 _typeParamBounds，语义拒在 3.2
+// genericDef 形参写入 _typeParams；头上 `: D` 写入 _typeParamBounds，Sema 报 E2037
 std::any ASTBuilder::visitEnumDecl(riu::riuParser::EnumDeclContext* ctx) {
     auto file = any_cast_p<FileNode>(stack.back());
     auto enumDecl = createWithLine<EnumDeclNode>(ctx, file, ctx->name);

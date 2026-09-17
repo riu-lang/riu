@@ -45,7 +45,7 @@ class EnumDeclNode : public ScopeNode, public Named, public Annotated {
     vector<EnumVariantNode*> _variants;
     map<string, size_t> _variantIndices;
     vector<string> _typeParams;
-    // 与 _typeParams 等长；头上 `<T : D>` 原样进 AST，语义拒在 3.2。
+    // 与 _typeParams 等长；头上 `<T : D>` 原样进 AST，Sema 报 E2037。
     vector<vector<SpecRef>> _typeParamBounds;
     bool _isPrivate;
 

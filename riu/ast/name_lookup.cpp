@@ -245,6 +245,7 @@ StructDeclNode* NameResolver::lookupStruct(const TypeInfo& t, bool includeBuilti
 }
 
 EnumDeclNode* NameResolver::lookupEnum(const TypeInfo& t, FileNode** outOwner) const {
+    // 按裸名查找；genericArgs 不参与 lookup（IterErr<NetErr> 与 IterErr<ParseErr> 同一份 decl）。
     if (!t.ownerModule.empty()) {
         if (auto* f = fileForOwner(t.ownerModule)) {
             if (auto* d = f->localEnumDecl(t.baseStructName())) {

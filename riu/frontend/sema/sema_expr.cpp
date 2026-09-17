@@ -1707,8 +1707,8 @@ void SemaPass::visitLambda(LambdaExprNode& node) {
     for (auto& slot : n->params()) {
         if (!slot.type) continue;
         try {
-            validateContainerBansAt(slot.type->getType(), slot.type, static_cast<int>(slot.name.getLine()),
-                                    static_cast<int>(slot.name.getCharPositionInLine()), true);
+            checkTypeAnn(slot.type->getType(), slot.type, static_cast<int>(slot.name.getLine()),
+                         static_cast<int>(slot.name.getCharPositionInLine()), true);
         } catch (const RiuError&) {
             throw;
         } catch (...) { // NOLINT(bugprone-empty-catch)
@@ -1716,7 +1716,7 @@ void SemaPass::visitLambda(LambdaExprNode& node) {
     }
     if (n->retType()) {
         try {
-            validateContainerBansAt(n->retType()->getType(), n->retType(), n->getLineNumber(), n->getColumn(), true);
+            checkTypeAnn(n->retType()->getType(), n->retType(), n->getLineNumber(), n->getColumn(), true);
             validateReturnTypeBorrowPolicy(n->retType()->getType(), n->getLineNumber(), n->getColumn());
         } catch (const RiuError&) {
             throw;

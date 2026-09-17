@@ -1,0 +1,8 @@
+; 3.2: enum 头 `<T : D>` 语义拒
+enum E<T : Foo> {  ; check: E2037
+  A
+}
+
+fn main() {
+  ret;
+}

@@ -1,8 +1,0 @@
-; 3.1: 头上 `<T : D>` 原样进 AST；语义拒在 3.2。
-enum E<T : Foo> {
-  A
-}
-
-fn main() {
-  ret;
-}

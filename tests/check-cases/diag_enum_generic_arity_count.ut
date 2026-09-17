@@ -1,0 +1,9 @@
+; 3.2: 泛型 enum 实参个数不对 → E6011
+enum Pair<T, U> {
+  V
+}
+
+fn main() {
+  #Mut let x Pair<i32>  ; check: E6011
+  ret;
+}

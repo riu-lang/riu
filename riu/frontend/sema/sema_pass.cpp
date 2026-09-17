@@ -165,6 +165,13 @@ SemaPass::SemaPass(FileNode* file, Riu* riu)
     : _file(file), _riu(riu), _sdkFile(riu ? riu->sdkFile() : nullptr),
       _sourcePath((riu && file) ? riu->modulePath(file->moduleName()) : ""), _names(_file, _sdkFile) {}
 
+void SemaPass::checkTypeAnn(const TypeInfo& t, TypeNode* tn, int fallbackLine, int fallbackCol, bool allowDynBorrow) {
+    validateContainerBansAt(t, tn, fallbackLine, fallbackCol, allowDynBorrow);
+    int line = (tn && tn->getLineNumber() > 0) ? tn->getLineNumber() : fallbackLine;
+    int col = (tn && tn->getColumn() >= 0) ? tn->getColumn() : fallbackCol;
+    sema::validateGenericNamedTypeArity(t, _names, line, col, _currentStructName);
+}
+
 void SemaPass::run() {
     if (!_file) return;
     // §12 spec/impl：Riu::validateSpecImpls 幂等。Compiler / riu-check 会先调一次；
@@ -184,10 +191,11 @@ void SemaPass::run() {
             if (!f || !f->type()) continue;
             try {
                 auto ft = f->type()->getType();
-                validateContainerBansAt(ft, f->type(), f->getLineNumber(), f->getColumn(), false);
+                checkTypeAnn(ft, f->type(), f->getLineNumber(), f->getColumn(), false);
                 if (!typeStillTemplate(ft) && !sema::typeHasLlvmLayout(ft, _file, _sdkFile, _currentTypeParams)) {
                     auto* fieldSd = _names.lookupStruct(ft);
-                    if (!(fieldSd && fieldSd->isGeneric())) {
+                    auto* fieldEd = _names.lookupEnum(ft);
+                    if (!(fieldSd && fieldSd->isGeneric()) && !(fieldEd && fieldEd->isGeneric())) {
                         if (sd->isGeneric()) {
                             throw RiuError(static_cast<int>(f->name().getLine()), ErrorCode::E3098, ft.getFullName(),
                                            f->name().getText(), sd->name().getText());
@@ -205,7 +213,7 @@ void SemaPass::run() {
             if (!sf.type) continue;
             try {
                 auto sft = sf.type->getType();
-                validateContainerBansAt(sft, sf.type, sf.type->getLineNumber(), sf.type->getColumn(), false);
+                checkTypeAnn(sft, sf.type, sf.type->getLineNumber(), sf.type->getColumn(), false);
                 noteConcreteGenericType(sft);
                 if (sf.init) {
                     visitExpr(sf.init, &sft);
@@ -226,7 +234,7 @@ void SemaPass::run() {
         if (!gc) continue;
         try {
             if (gc->typeNode()) {
-                validateContainerBansAt(gc->getType(), gc->typeNode(), gc->getLineNumber(), gc->getColumn(), false);
+                checkTypeAnn(gc->getType(), gc->typeNode(), gc->getLineNumber(), gc->getColumn(), false);
             }
             noteConcreteGenericType(gc->getType());
             if (gc->value()) {
@@ -251,7 +259,7 @@ void SemaPass::run() {
         if (!gv) continue;
         try {
             if (gv->typeNode()) {
-                validateContainerBansAt(gv->getType(), gv->typeNode(), gv->getLineNumber(), gv->getColumn(), false);
+                checkTypeAnn(gv->getType(), gv->typeNode(), gv->getLineNumber(), gv->getColumn(), false);
             }
             noteConcreteGenericType(gv->getType());
             if (gv->value()) {
@@ -270,18 +278,34 @@ void SemaPass::run() {
     }
     for (auto& ed : _file->getEnumDecls()) {
         if (!ed) continue;
+        // 简单切片：头上 `<T : D>` 语义拒（g4 复用 genericDef 会收下）。
+        const auto& bounds = ed->typeParamBounds();
+        const auto& tps = ed->typeParams();
+        for (size_t i = 0; i < bounds.size(); ++i) {
+            if (bounds[i].empty()) continue;
+            const auto& b = bounds[i][0];
+            int line = b.line > 0 ? b.line : ed->getLineNumber();
+            int col = b.col > 0 ? b.col : ed->getColumn();
+            string tp = i < tps.size() ? tps[i] : string("?");
+            throw RiuError(line, col, ErrorCode::E2037, ed->name().getText(), tp)
+                .withHint("简单切片 enum 头只写 `<T>` / `<T, U>`；边界是后切片");
+        }
+        auto savedEnumParams = _currentTypeParams;
+        for (const auto& tp : tps)
+            _currentTypeParams.insert(tp);
         for (auto& v : ed->variants()) {
             if (!v) continue;
             for (auto* pt : v->payloadTypes()) {
                 if (!pt) continue;
                 try {
-                    validateContainerBansAt(pt->getType(), pt, v->getLineNumber(), v->getColumn(), false);
+                    checkTypeAnn(pt->getType(), pt, v->getLineNumber(), v->getColumn(), false);
                 } catch (const RiuError&) {
                     throw;
                 } catch (...) { // NOLINT(bugprone-empty-catch)
                 }
             }
         }
+        _currentTypeParams = std::move(savedEnumParams);
     }
     for (auto& fn : _file->getFunctions()) {
         // #Builtin 无真实体，仍跳过。Phase C：泛型模板体要走 SemaPass
@@ -416,8 +440,8 @@ void SemaPass::visitFn(FnNode* fn) {
             if (!param || !param->type()) continue;
             try {
                 auto pt = param->type()->getType();
-                validateContainerBansAt(pt, param->type(), static_cast<int>(param->name().getLine()),
-                                        static_cast<int>(param->name().getCharPositionInLine()), true);
+                checkTypeAnn(pt, param->type(), static_cast<int>(param->name().getLine()),
+                             static_cast<int>(param->name().getCharPositionInLine()), true);
                 noteConcreteGenericType(pt);
             } catch (const RiuError&) {
                 throw;
@@ -427,7 +451,7 @@ void SemaPass::visitFn(FnNode* fn) {
         if (auto rt = hdr->retType()) {
             try {
                 auto rtt = rt->getType();
-                validateContainerBansAt(rtt, rt, fn->getLineNumber(), fn->getColumn(), true);
+                checkTypeAnn(rtt, rt, fn->getLineNumber(), fn->getColumn(), true);
                 validateReturnTypeBorrowPolicy(rtt, fn->getLineNumber(), fn->getColumn());
                 noteConcreteGenericType(rtt);
             } catch (const RiuError&) {

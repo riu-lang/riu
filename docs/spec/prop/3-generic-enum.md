@@ -78,3 +78,4 @@ enum IterErr<E> {
 ## 落地
 
 - 3.1：`enumDecl` + `genericDef?`；`EnumDeclNode` 形参 / 头上 `: D` 进 AST。`.ud` / 语义 / codegen 仍后切片。
+- 3.2（2026-09-17）：使用点实参个数 E6011；头上 `<T : D>` → E2037；`E<T>` = 名义名 + `genericArgs`，lookup 仍裸名。

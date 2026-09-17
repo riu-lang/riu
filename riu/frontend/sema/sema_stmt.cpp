@@ -97,8 +97,8 @@ void SemaPass::visitLoop(StatementLoopNode& node) {
         const TypeInfo* tp = nullptr;
         if (loop->initType()) {
             try {
-                validateContainerBansAt(loop->initType()->getType(), loop->initType(), loop->getLineNumber(),
-                                        loop->getColumn(), true);
+                checkTypeAnn(loop->initType()->getType(), loop->initType(), loop->getLineNumber(), loop->getColumn(),
+                             true);
                 texp = sema::resolveAlias(applyInstSubst(loop->initType()->getType()), _file, _sdkFile);
                 tp = &texp;
             } catch (const RiuError&) {
@@ -269,30 +269,20 @@ void SemaPass::visitRetVoid(StatementRetVoidNode& node) {
 void SemaPass::visitDeclare(StatementDeclareNode& node) {
     auto* d = &node;
 
-    // Bucket 4 起步 (CURRENT-check.md): E6011 (泛型 struct arity).
-    // 无 init 形态 (`let p Pair<i32>`), 仅 varType, 同款检查.
+    // Bucket 4 起步 (CURRENT-check.md): E6011 (泛型 struct / enum arity).
+    // 无 init 形态 (`let p Pair<i32>` / `let x Box`), 仅 varType, 同款检查.
     if (d->varType()) {
         try {
             auto vt = d->varType()->getType();
+            sema::validateGenericNamedTypeArity(vt, _names, d->getLineNumber(), d->getColumn(), _currentStructName);
             if (!typeStillTemplate(vt) && !sema::typeHasLlvmLayout(vt, _file, _sdkFile, _currentTypeParams)) {
                 auto* sd = _names.lookupStruct(vt);
-                if (!(sd && sd->isGeneric())) {
+                auto* ed = _names.lookupEnum(vt);
+                if (!(sd && sd->isGeneric()) && !(ed && ed->isGeneric())) {
                     throw RiuError(d->getLineNumber(), d->getColumn(), ErrorCode::E3096, vt.getFullName());
                 }
             }
             noteConcreteGenericType(vt);
-            if (!vt.name.empty() && !isBuiltinType(vt.name) && !vt.isRef() && !vt.isFn() && !vt.isTuple()) {
-                if (auto* sd = _names.lookupStruct(vt.name, true)) {
-                    size_t want = sd->typeParams().size();
-                    size_t got = vt.genericArgs.size();
-                    if (want > 0 && want != got) {
-                        throw RiuError(d->getLineNumber(), d->getColumn(), ErrorCode::E6011, vt.name, want, got)
-                            .withHint(
-                                std::format("实例化时的类型实参个数需与声明匹配；改写为 `{}<{}>` 形式补齐 {} 个类型",
-                                            vt.name, std::string(want == 1 ? "T" : "T1, T2, ..."), want));
-                    }
-                }
-            }
         } catch (const RiuError&) {
             throw;
         } catch (...) { // NOLINT(bugprone-empty-catch)
@@ -643,26 +633,12 @@ void SemaPass::visitDeclareAssign(StatementDeclareAssignNode& node) {
 
     // T& 局部初始化：ID copy-bind E3018、`&expr` 内层 E3014、其余非法形态 E3019.
     // lambda 体 sema 不下钻 — 这里检查 _currentFn 非空再做.
-    // Bucket 4 起步 (CURRENT-check.md): E6011 (泛型 struct arity 不匹配).
-    // 不依赖 expr / _currentFn, 仅 varType 形态. varType.name 命中已知 struct decl,
-    // decl.isGeneric() 且 typeParams.size() != genericArgs.size() → 抛 E6011.
-    // 镜像 compiler_types.cpp:241 与 :597 两条路径. Builtin / Ref / Fn / Tuple 跳过.
+    // Bucket 4 起步 (CURRENT-check.md): E6011 (泛型 struct / enum arity 不匹配).
+    // 不依赖 expr / _currentFn, 仅 varType 形态.
     if (da->varType()) {
         try {
             auto vt = da->varType()->getType();
-            validateContainerBansAt(vt, da->varType(), da->getLineNumber(), da->getColumn(), true);
-            if (!vt.name.empty() && !isBuiltinType(vt.name) && !vt.isRef() && !vt.isFn() && !vt.isTuple()) {
-                if (auto* sd = _names.lookupStruct(vt.name, true)) {
-                    size_t want = sd->typeParams().size();
-                    size_t got = vt.genericArgs.size();
-                    if (want > 0 && want != got) {
-                        throw RiuError(da->getLineNumber(), da->getColumn(), ErrorCode::E6011, vt.name, want, got)
-                            .withHint(
-                                std::format("实例化时的类型实参个数需与声明匹配；改写为 `{}<{}>` 形式补齐 {} 个类型",
-                                            vt.name, std::string(want == 1 ? "T" : "T1, T2, ..."), want));
-                    }
-                }
-            }
+            checkTypeAnn(vt, da->varType(), da->getLineNumber(), da->getColumn(), true);
         } catch (const RiuError&) {
             throw;
         } catch (...) { // NOLINT(bugprone-empty-catch)
@@ -677,7 +653,8 @@ void SemaPass::visitDeclareAssign(StatementDeclareAssignNode& node) {
             if (!typeStillTemplate(daExpected) &&
                 !sema::typeHasLlvmLayout(daExpected, _file, _sdkFile, _currentTypeParams)) {
                 auto* sd = _names.lookupStruct(daExpected);
-                if (!(sd && sd->isGeneric())) {
+                auto* ed = _names.lookupEnum(daExpected);
+                if (!(sd && sd->isGeneric()) && !(ed && ed->isGeneric())) {
                     throw RiuError(da->getLineNumber(), da->getColumn(), ErrorCode::E3096, daExpected.getFullName());
                 }
             }
@@ -837,8 +814,8 @@ void SemaPass::visitDeclareAssign(StatementDeclareAssignNode& node) {
                 // 跳过泛型形参 / 未解析类型（如 T, U 等）：此时尚未实例化，比较无意义
                 auto isKnownType = [&](const TypeInfo& t) -> bool {
                     if (isBuiltinType(t.name)) return true;
-                    if (_file && _file->getStructDecl(t.name)) return true;
-                    if (_sdkFile && _sdkFile->getStructDecl(t.name)) return true;
+                    if (_file && (_file->getStructDecl(t.name) || _file->getEnumDecl(t.name))) return true;
+                    if (_sdkFile && (_sdkFile->getStructDecl(t.name) || _sdkFile->getEnumDecl(t.name))) return true;
                     return false;
                 };
                 if (!varType.name.empty() && !exprType.name.empty() && !varType.isSelf() && !exprType.isSelf() &&
@@ -867,6 +844,9 @@ void SemaPass::visitDeclareAssign(StatementDeclareAssignNode& node) {
         if (handleTy.isRc() || handleTy.isWeak() || handleTy.isArrayGeneric()) {
             checkDeclareHandleRhs(da->expr(), handleTy, da->getLineNumber(), da->getColumn(), _file, _sdkFile,
                                   _currentTypeParams, currentInstSubst());
+        } else if (_names.lookupEnum(handleTy)) {
+            checkAssignRhs(da->expr(), handleTy, da->getLineNumber(), da->getColumn(), _file, _sdkFile,
+                           _currentTypeParams, currentInstSubst());
         }
     }
     // v0.16 闭包捕获: lambda 字面量直接作 var/val 初始化值且含 T& 捕获 → E4022

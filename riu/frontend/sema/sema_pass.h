@@ -17,6 +17,7 @@
 class ExprNode;
 class StatementNode;
 class StatementBlockNode;
+class TypeNode;
 class Riu;
 
 // SemaPass —— Sema/Codegen 拆分骨架（Phase 3.1）
@@ -192,6 +193,8 @@ public:
     [[nodiscard]] bool typeStillTemplate(const TypeInfo& t) const;
     // Phase C：把当前实例化替换应用到类型；无替换时原样返回。
     [[nodiscard]] TypeInfo applyInstSubst(const TypeInfo& t) const;
+    // 类型注解：容器禁令 + 泛型 struct/enum 实参个数（E6011）。
+    void checkTypeAnn(const TypeInfo& t, TypeNode* tn, int fallbackLine, int fallbackCol, bool allowDynBorrow);
     // 源码写出的具体 `S<Concrete>`：复查该泛型 struct 方法体（形参 / 返回 / 字段 / let）。
     void noteConcreteGenericType(const TypeInfo& t);
     // 调用点 typeArgs 已知后复查泛型 fn 体（ret / 赋值）。

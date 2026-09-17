@@ -1,0 +1,9 @@
+; 3.2: 泛型 enum 使用点缺实参 → E6011
+enum Box<T> {
+  A
+}
+
+fn main() {
+  #Mut let x Box  ; check: E6011
+  ret;
+}

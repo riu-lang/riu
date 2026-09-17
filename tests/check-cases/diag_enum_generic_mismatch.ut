@@ -1,0 +1,10 @@
+; 3.2: IterErr<NetErr> ≠ IterErr<ParseErr>（名义名 + genericArgs）
+enum Box<T> {
+  A
+}
+
+fn main() {
+  #Mut let a Box<i32>
+  let b Box<i64> = a  ; check: E3014
+  ret;
+}
