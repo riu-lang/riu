@@ -136,6 +136,7 @@ RdBuilder::~RdBuilder() {
 
 void RdBuilder::indexDefaultTokens() {
     rd::Scanner sc(_src);
+    _defaultToks.reserve(_src.size() / 4);
     for (;;) {
         rd::Token t = sc.next();
         if (t.kind == rd::Kind::Eof) break;
@@ -144,23 +145,27 @@ void RdBuilder::indexDefaultTokens() {
 }
 
 std::pair<int, int> RdBuilder::tokenRange(const rd::Pos& pos) const {
-    int start = -1;
-    int stop = -1;
-    for (const auto& t : _defaultToks) {
-        if (t.pos.end <= pos.offset) continue;
-        if (t.pos.offset >= pos.end && pos.end > pos.offset) break;
-        if (start < 0) start = t.index;
-        stop = t.index;
+    if (_defaultToks.empty()) return {-1, -1};
+    // 按 offset 升序；找第一个不完全落在 pos.offset 之前的 token。
+    auto first = std::lower_bound(_defaultToks.begin(), _defaultToks.end(), pos.offset,
+                                  [](const rd::Token& t, rd::i32 off) { return t.pos.end <= off; });
+    if (first == _defaultToks.end()) return {-1, -1};
+    auto last = first;
+    if (pos.end > pos.offset) {
+        last = std::lower_bound(first, _defaultToks.end(), pos.end,
+                                [](const rd::Token& t, rd::i32 off) { return t.pos.offset < off; });
+        if (last == first) return {-1, -1};
+        --last;
     }
-    return {start, stop};
+    return {first->index, last->index};
 }
 
 size_t RdBuilder::tokenIndexAt(rd::i32 offset) const {
-    for (const auto& t : _defaultToks) {
-        if (t.pos.offset <= offset && offset < t.pos.end) return static_cast<size_t>(t.index);
-        if (t.pos.offset >= offset) return static_cast<size_t>(t.index);
-    }
-    return _defaultToks.empty() ? 0 : static_cast<size_t>(_defaultToks.back().index);
+    if (_defaultToks.empty()) return 0;
+    auto it = std::lower_bound(_defaultToks.begin(), _defaultToks.end(), offset,
+                               [](const rd::Token& t, rd::i32 off) { return t.pos.end <= off; });
+    if (it == _defaultToks.end()) return static_cast<size_t>(_defaultToks.back().index);
+    return static_cast<size_t>(it->index);
 }
 
 Token RdBuilder::makeTok(std::string_view text, const rd::Pos& pos) const {
