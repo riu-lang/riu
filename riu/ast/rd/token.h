@@ -125,6 +125,16 @@ struct Token {
     std::string_view text; // 指向 Scanner 持有的源；Eof 为空
 };
 
+// 一条词法（E1001）或文法（E1002）错误。message 是错误码模板 `{}` 的实参。
+// pos.column 0-based；主路渲染时 +1。
+struct ParseError {
+    bool is_lexer = false;
+    Pos pos;
+    std::string message;
+    std::string offending;
+    std::string prev_text;
+};
+
 [[nodiscard]] std::string_view kindName(Kind k);
 [[nodiscard]] Kind kindFromAntlrName(std::string_view name);
 

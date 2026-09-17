@@ -29,6 +29,7 @@ static_library("riu_ast") {
     "name_lookup.cpp",
     "parse_program.cpp",
     "riu.cpp",
+    "syntax_diag.cpp",
     "syntax_error_listener.cpp",
     "type_path.cpp",
     "node/ast_visitor.cpp",

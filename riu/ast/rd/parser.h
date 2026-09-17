@@ -11,17 +11,23 @@
 #include "ast/rd/scanner.h"
 #include "ast/rd/token.h"
 
+#include <string>
 #include <string_view>
 #include <vector>
 
 namespace rd {
+
+struct ParseResult {
+    FlatAst ast;
+    std::vector<ParseError> errors;
+};
 
 class Parser {
 public:
     explicit Parser(std::string_view src);
 
     // Node.value 指向 src；调用方须在 dump / 使用树期间保持源存活。
-    [[nodiscard]] FlatAst parse();
+    [[nodiscard]] ParseResult parse();
 
 private:
     struct Mark {
@@ -37,6 +43,9 @@ private:
     bool eat(Kind k);
     void skipLineEnds();
     void skipToLineEnd();
+    void errorSyntax(std::string message);
+    void errorExpected(Kind k);
+    void errorUnknown();
     [[nodiscard]] Mark mark() const;
     void rewind(const Mark& m);
 
@@ -95,14 +104,16 @@ private:
     [[nodiscard]] NodeId parseParenLambdaOrTuple();
     void parseArgList(std::vector<NodeId>& args, Kind closer);
 
+    std::vector<ParseError> errors_;
+    std::string prev_text_;
     Scanner scanner_;
     Token tok_{};
     std::vector<Token> peeked_;
     FlatAst ast_;
 };
 
-// 解析 program：前导空行、use、顶层声明、EOF。
-[[nodiscard]] FlatAst parseProgram(std::string_view src);
+// 解析 program：前导空行、use、顶层声明、EOF。错误表可空。
+[[nodiscard]] ParseResult parseProgram(std::string_view src);
 
 } // namespace rd
 

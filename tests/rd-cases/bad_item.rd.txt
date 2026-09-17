@@ -1,0 +1,3 @@
+Program
+  Fn "main"
+    Block

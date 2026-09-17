@@ -39,6 +39,8 @@
 #include <windows.h>
 #endif
 
+#include "ast/syntax_diag.h"
+
 namespace {
 
 int writeOut(const std::string& outputFile, const std::string& body) {
@@ -98,21 +100,23 @@ std::string dumpAntlrTokens(riu::riuLexer& lexer, antlr4::CommonTokenStream& tok
     return out;
 }
 
-std::string collectRdTokens(std::string_view src) {
-    rd::Scanner scanner(src);
-    std::string out;
-    for (;;) {
-        rd::Token t = scanner.next();
-        out += rd::formatTokenLine(t);
-        if (t.kind == rd::Kind::Eof) break;
-    }
-    return out;
-}
-
 void drainRdTokens(std::string_view src) {
     rd::Scanner scanner(src);
     for (;;) {
         if (scanner.next().kind == rd::Kind::Eof) break;
+    }
+}
+
+void writeRdErrors(const std::vector<rd::ParseError>& errs) {
+    for (const auto& e : errs) {
+        SyntaxDiag d;
+        d.is_lexer = e.is_lexer;
+        d.line = e.pos.line;
+        d.col = e.pos.column + 1;
+        d.message = e.message;
+        d.offending = e.offending;
+        d.prev_text = e.prev_text;
+        std::cerr << formatSyntaxDiagCompact(d);
     }
 }
 
@@ -176,9 +180,10 @@ int main(int argc, char* argv[]) { // NOLINT(bugprone-exception-escape)
             std::cerr << "Error: cannot load file " << inputFile << ": " << e.what() << '\n';
             return 1;
         }
-        rd::FlatAst ast = rd::parseProgram(src);
+        rd::ParseResult parsed = rd::parseProgram(src);
+        if (!quiet) writeRdErrors(parsed.errors);
         if (quiet) return 0;
-        return writeOut(outputFile, rd::dumpTree(ast));
+        return writeOut(outputFile, rd::dumpTree(parsed.ast));
     }
 
     if (dumpRdTokens) {
@@ -193,7 +198,15 @@ int main(int argc, char* argv[]) { // NOLINT(bugprone-exception-escape)
             drainRdTokens(src);
             return 0;
         }
-        return writeOut(outputFile, collectRdTokens(src));
+        rd::Scanner scanner(src);
+        std::string out;
+        for (;;) {
+            rd::Token t = scanner.next();
+            out += rd::formatTokenLine(t);
+            if (t.kind == rd::Kind::Eof) break;
+        }
+        writeRdErrors(scanner.errors());
+        return writeOut(outputFile, out);
     }
 
     // 加载源文件 (UTF-8). ANTLRFileStream 自带 BOM 处理.

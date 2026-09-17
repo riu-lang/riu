@@ -3,6 +3,7 @@
 
 #include "ast/rd/parser.h"
 
+#include <string>
 #include <utility>
 
 namespace rd {
@@ -42,9 +43,12 @@ void appendIf(std::vector<NodeId>& v, NodeId id) {
 
 } // namespace
 
-Parser::Parser(std::string_view src) : scanner_(src) {}
+Parser::Parser(std::string_view src) : scanner_(src, &errors_) {}
 
 void Parser::next() {
+    if (tok_.kind != Kind::Invalid && tok_.kind != Kind::Eof && !tok_.text.empty() && tok_.text != "<EOF>") {
+        prev_text_ = std::string(tok_.text);
+    }
     if (!peeked_.empty()) {
         tok_ = peeked_.front();
         peeked_.erase(peeked_.begin());
@@ -78,6 +82,33 @@ void Parser::skipToLineEnd() {
     while (!at(Kind::LineEnd) && !at(Kind::Eof))
         next();
     eat(Kind::LineEnd);
+}
+
+void Parser::errorSyntax(std::string message) {
+    ParseError e;
+    e.is_lexer = false;
+    e.pos = tok_.pos;
+    e.message = std::move(message);
+    e.offending = std::string(tok_.text);
+    e.prev_text = prev_text_;
+    errors_.push_back(std::move(e));
+}
+
+void Parser::errorExpected(Kind k) {
+    std::string msg = "mismatched input '";
+    msg += tok_.text;
+    msg += "' expecting ";
+    msg += kindName(k);
+    errorSyntax(std::move(msg));
+    skipToLineEnd();
+}
+
+void Parser::errorUnknown() {
+    std::string msg = "no viable alternative at input '";
+    msg += tok_.text;
+    msg += "'";
+    errorSyntax(std::move(msg));
+    skipToLineEnd();
 }
 
 Parser::Mark Parser::mark() const {
@@ -471,7 +502,7 @@ NodeId Parser::parseTrailingLambda() {
         if (s != kEmptyNode)
             stmts.push_back(s);
         else if (!at(Kind::BlockEnd) && !at(Kind::Eof))
-            skipToLineEnd();
+            errorUnknown();
     }
     const Pos end = tok_.pos;
     eat(Kind::BlockEnd);
@@ -975,7 +1006,13 @@ void Parser::parseFnParam(std::vector<NodeId>& out) {
         annos.push_back(ast_.add(NodeKind::Anno, start, name));
     }
     std::vector<Token> names;
-    if (!at(Kind::ID)) return;
+    if (!at(Kind::ID)) {
+        if (!at(Kind::ParEnd) && !at(Kind::SymbolComma) && !at(Kind::LineEnd) && !at(Kind::Eof) &&
+            !at(Kind::BlockStart)) {
+            errorExpected(Kind::ID);
+        }
+        return;
+    }
     names.push_back(tok_);
     next();
     while (at(Kind::SymbolComma) && peekIs(Kind::ID)) {
@@ -1031,7 +1068,7 @@ NodeId Parser::parseBlock() {
         if (s != kEmptyNode)
             stmts.push_back(s);
         else if (!at(Kind::BlockEnd) && !at(Kind::Eof))
-            skipToLineEnd();
+            errorUnknown();
     }
     const Pos end = tok_.pos;
     eat(Kind::BlockEnd);
@@ -1292,7 +1329,7 @@ NodeId Parser::parseAnno() {
     const Pos start = tok_.pos;
     next(); // #
     if (!at(Kind::ID)) {
-        skipToLineEnd();
+        errorExpected(Kind::ID);
         return ast_.add(NodeKind::Anno, start);
     }
     const std::string_view name = tok_.text;
@@ -1321,7 +1358,7 @@ NodeId Parser::parseUse() {
     next(); // Use
 
     if (!at(Kind::ID)) {
-        skipToLineEnd();
+        errorExpected(Kind::ID);
         return ast_.add(NodeKind::Use, start);
     }
 
@@ -1341,7 +1378,7 @@ NodeId Parser::parseUse() {
 
     const std::string_view value = sliceTokens(first, last);
     if (!at(Kind::LineEnd) && !at(Kind::Eof))
-        skipToLineEnd();
+        errorUnknown();
     else
         eat(Kind::LineEnd);
 
@@ -1389,7 +1426,7 @@ NodeId Parser::parseLet(std::vector<NodeId> annos, bool /*global*/) {
         name = tok_.text;
         next();
     } else {
-        skipToLineEnd();
+        errorExpected(Kind::ID);
         return ast_.add(NodeKind::Let, start, {}, annos);
     }
     std::vector<NodeId> kids = std::move(annos);
@@ -1408,7 +1445,7 @@ NodeId Parser::parseFn(std::vector<NodeId> annos) {
         name = tok_.text;
         next();
     } else {
-        skipToLineEnd();
+        errorExpected(Kind::ID);
         return ast_.add(NodeKind::Fn, start, {}, annos);
     }
     std::vector<NodeId> kids = std::move(annos);
@@ -1451,7 +1488,7 @@ NodeId Parser::parseExtern(std::vector<NodeId> annos) {
             eat(Kind::LineEnd);
             continue;
         }
-        skipToLineEnd();
+        errorUnknown();
     }
     eat(Kind::BlockEnd);
     eat(Kind::LineEnd);
@@ -1472,7 +1509,7 @@ NodeId Parser::parseEnum() {
     while (!at(Kind::BlockEnd) && !at(Kind::Eof)) {
         if (eat(Kind::LineEnd)) continue;
         if (!at(Kind::ID)) {
-            skipToLineEnd();
+            errorExpected(Kind::ID);
             continue;
         }
         const std::string_view vname = tok_.text;
@@ -1548,7 +1585,7 @@ NodeId Parser::parseStruct(std::vector<NodeId> annos) {
             eat(Kind::LineEnd);
             continue;
         }
-        skipToLineEnd();
+        errorUnknown();
     }
     eat(Kind::BlockEnd);
     return ast_.add(NodeKind::Struct, start, name, kids);
@@ -1569,7 +1606,7 @@ NodeId Parser::parseItem() {
     return kEmptyNode;
 }
 
-FlatAst Parser::parse() {
+ParseResult Parser::parse() {
     next();
     skipLineEnds();
 
@@ -1585,17 +1622,17 @@ FlatAst Parser::parse() {
             items.push_back(n);
             continue;
         }
-        skipToLineEnd();
+        errorUnknown();
     }
 
     Pos file_pos;
     file_pos.end = tok_.pos.end;
     const NodeId root = ast_.add(NodeKind::Program, file_pos, {}, items);
     ast_.setRoot(root);
-    return ast_;
+    return ParseResult{std::move(ast_), std::move(errors_)};
 }
 
-FlatAst parseProgram(std::string_view src) {
+ParseResult parseProgram(std::string_view src) {
     Parser p(src);
     return p.parse();
 }

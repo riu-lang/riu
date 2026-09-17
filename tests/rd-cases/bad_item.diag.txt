@@ -1,0 +1,2 @@
+E1002 4:0  syntax error: no viable alternative at input '1'
+  = help: 检查空格规则：关键字后、二元运算符两侧、`,` 后必须有空格；`()` `[]` 内部不留空格

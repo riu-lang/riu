@@ -17,12 +17,16 @@ namespace rd {
 
 class Scanner {
 public:
-    explicit Scanner(std::string_view src);
+    // errors 非空时词法错误写入该表（parser 试探回退会按 Snapshot 截断）。
+    explicit Scanner(std::string_view src, std::vector<ParseError>* errors = nullptr);
 
     // 下一 default 通道 token（跳过 Space / LineComment / LineEndComment）。
     [[nodiscard]] Token next();
 
     [[nodiscard]] std::string_view src() const { return src_; }
+    [[nodiscard]] const std::vector<ParseError>& errors() const { return *diags_; }
+
+    void setErrors(std::vector<ParseError>* errors);
 
     // 词法位置快照，给 parser 试探 lambda / 结构体字面量失败时回退。
     struct Snapshot {
@@ -33,6 +37,7 @@ public:
         std::uint8_t mode = 0;
         std::vector<std::uint8_t> mode_stack;
         std::vector<int> interp_brace_depth;
+        size_t diag_count = 0;
     };
     [[nodiscard]] Snapshot snapshot() const;
     void restore(const Snapshot& s);
@@ -67,7 +72,11 @@ private:
     void pushMode(Mode m);
     void popMode();
     void applySideEffects(Kind kind);
+    void pushLexerError(i32 line, i32 col, std::string_view text);
+    [[nodiscard]] Token skipIllegal(size_t start_byte, i32 start_line, i32 start_col);
 
+    std::vector<ParseError> owned_diags_;
+    std::vector<ParseError>* diags_ = &owned_diags_;
     std::string_view src_;
     size_t byte_pos_ = 0;
     i32 line_ = 1;

@@ -1,0 +1,1 @@
+E1001 4:0  lexer error: token recognition error at: '^'

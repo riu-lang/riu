@@ -86,7 +86,7 @@ inline const DiagSeverity* lookupDefaultSeverity(const std::string& code) {
 // ── 占位 ──────────────────────────────────────────────────────────────
 DEF_ERR(0000, "")
 
-// ── E1xxx 词法 / 文法（ANTLR 报告） ───────────────────────────────────
+// ── E1xxx 词法 / 文法（ANTLR SyntaxErrorListener / rd Scanner·Parser） ─
 DEF_ERR(1001, "lexer error: {}")
 DEF_ERR(1002, "syntax error: {}")
 

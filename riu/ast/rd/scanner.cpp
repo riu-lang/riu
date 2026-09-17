@@ -4,6 +4,7 @@
 #include "ast/rd/scanner.h"
 
 #include <array>
+#include <string>
 
 namespace rd {
 namespace {
@@ -100,7 +101,13 @@ bool isTrivia(Kind k) {
 
 } // namespace
 
-Scanner::Scanner(std::string_view src) : src_(src) {}
+Scanner::Scanner(std::string_view src, std::vector<ParseError>* errors) : src_(src) {
+    if (errors) diags_ = errors;
+}
+
+void Scanner::setErrors(std::vector<ParseError>* errors) {
+    diags_ = errors ? errors : &owned_diags_;
+}
 
 Scanner::Snapshot Scanner::snapshot() const {
     Snapshot s;
@@ -113,6 +120,7 @@ Scanner::Snapshot Scanner::snapshot() const {
     for (Mode m : mode_stack_)
         s.mode_stack.push_back(static_cast<std::uint8_t>(m));
     s.interp_brace_depth = interp_brace_depth_;
+    s.diag_count = diags_->size();
     return s;
 }
 
@@ -127,6 +135,7 @@ void Scanner::restore(const Snapshot& s) {
     for (std::uint8_t m : s.mode_stack)
         mode_stack_.push_back(static_cast<Mode>(m));
     interp_brace_depth_ = s.interp_brace_depth;
+    if (diags_->size() > s.diag_count) diags_->resize(s.diag_count);
 }
 
 unsigned char Scanner::ch() const {
@@ -189,6 +198,59 @@ void Scanner::applySideEffects(Kind kind) {
     default:
         break;
     }
+}
+
+void Scanner::pushLexerError(i32 line, i32 col, std::string_view text) {
+    ParseError e;
+    e.is_lexer = true;
+    e.pos.line = line;
+    e.pos.column = col;
+    e.pos.offset = static_cast<i32>(byte_pos_);
+    e.pos.end = static_cast<i32>(byte_pos_ + text.size());
+    e.offending = std::string(text);
+    std::string at;
+    at.reserve(text.size());
+    for (unsigned char c : text) {
+        switch (c) {
+        case '\n':
+            at += "\\n";
+            break;
+        case '\r':
+            at += "\\r";
+            break;
+        case '\t':
+            at += "\\t";
+            break;
+        default:
+            at.push_back(static_cast<char>(c));
+            break;
+        }
+    }
+    e.message = "token recognition error at: '" + at + "'";
+    diags_->push_back(std::move(e));
+}
+
+Token Scanner::skipIllegal(size_t start_byte, i32 start_line, i32 start_col) {
+    const auto d = decodeAt(src_, byte_pos_);
+    const size_t n = d.n == 0 ? 1 : d.n;
+    const std::string_view text = src_.substr(start_byte, n);
+    bool ws = !text.empty();
+    for (unsigned char c : text) {
+        if (c != ' ' && c != '\t' && c != '\n' && c != '\r') {
+            ws = false;
+            break;
+        }
+    }
+    if (!ws) pushLexerError(start_line, start_col, text);
+    adv(n);
+    Token skip;
+    skip.kind = Kind::Invalid;
+    skip.pos = Pos{.offset = static_cast<i32>(start_byte),
+                   .end = static_cast<i32>(byte_pos_),
+                   .line = start_line,
+                   .column = start_col};
+    skip.text = text;
+    return skip;
 }
 
 Token Scanner::makeEof() const {
@@ -484,10 +546,7 @@ Token Scanner::scanStrTpl() {
         any = true;
     }
     if (!any) {
-        adv(1); // 无法成 token 的一字节
-        Token skip;
-        skip.kind = Kind::Invalid;
-        return skip;
+        return skipIllegal(start_byte, start_line, start_col);
     }
     return emit(Kind::STR_TPL_TEXT, start_byte, start_line, start_col);
 }
@@ -684,11 +743,7 @@ Token Scanner::scanOne() {
         break;
     }
 
-    const auto d = decodeAt(src_, byte_pos_);
-    adv(d.n == 0 ? 1 : d.n);
-    Token skip;
-    skip.kind = Kind::Invalid;
-    return skip;
+    return skipIllegal(start_byte, start_line, start_col);
 }
 
 Token Scanner::next() {

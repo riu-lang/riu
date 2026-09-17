@@ -1,0 +1,6 @@
+E1002 1:5  syntax error: mismatched input 'let' expecting ID
+  = help: `let` 是 riu 关键字，不能用作标识符；换一个名字（如 `let_`）
+E1002 2:2  syntax error: no viable alternative at input 'ret'
+  = help: 空返回 `ret;` 必须带 `;`（void 返回）；如需返回值，使用 `ret 表达式`
+E1002 3:0  syntax error: no viable alternative at input '}'
+  = help: 检查空格规则：关键字后、二元运算符两侧、`,` 后必须有空格；`()` `[]` 内部不留空格
