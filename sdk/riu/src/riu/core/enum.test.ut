@@ -32,7 +32,7 @@ enum Tagged {
   Pair(i32, String)
 }
 
-ColorAlias = Color
+type ColorAlias = Color
 
 ; ==================== 基本枚举测试 ====================
 

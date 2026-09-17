@@ -1871,7 +1871,7 @@ void validateMatchArms(EnumDeclNode* enumDecl, const TypeInfo& enumType, ExprMat
         }
         TypeInfo patTy;
         if (!pat->enumPath().empty()) {
-            auto r = resolveExprTypeLhs(file, nullptr, pat->enumPath(), pat->getLineNumber(), pat->getColumn());
+            auto r = resolveExprTypeLhs(pat, file, nullptr, pat->enumPath(), pat->getLineNumber(), pat->getColumn());
             patTy = r.type;
             if (!r.resolved || patTy.name != enumName || !patTy.sameOwner(enumType)) {
                 string patShown = pat->enumPath().dotted();

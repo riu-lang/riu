@@ -196,6 +196,7 @@ public:
     void visitForIn(StatementForInNode&) override;
     void visitStaticFieldSet(StatementStaticFieldSetNode&) override;
     void visitSet(StatementSetNode&) override;
+    void visitAlias(AliasDeclNode&) override;
 
     // ==================== 构造函数 ====================
     // @param context   LLVM 上下文

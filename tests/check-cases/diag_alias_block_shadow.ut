@@ -1,0 +1,8 @@
+; 块内 type 可遮蔽文件顶层同名别名
+type A = i64
+
+fn main() {
+  type A = i32
+  #Mut let x A = 1
+  ret;
+}

@@ -1,4 +1,4 @@
-; DRAFT-spec-reflect Phase 4: 实例形访问 `c.type` → E1138.
+; DRAFT-spec-reflect Phase 4: 实例形访问 `c.type_info` → E1138.
 ; 草案 §5 / [#1.AB]: 静态字段只能通过 <Type>::field 访问, 不能从实例上.
 
 struct Counter {
@@ -14,6 +14,6 @@ struct Counter {
 
 fn main() {
   let c = Counter::make(1)
-  let t Type = c.type  ; check: E1138
+  let t Type = c.type_info  ; check: E1138
   println(t.name)
 }

@@ -5,8 +5,10 @@
 
 #include "ast/node/alias_node.h"
 #include "ast/node/enum_node.h"
+#include "ast/node/file_node.h"
 #include "ast/node/struct_node.h"
 #include "ast/riu.h"
+#include "error_code.h"
 #include "types.h"
 #include <map>
 #include <set>
@@ -320,6 +322,71 @@ TypePathResult resolveExprTypeLhs(FileNode* file, Riu* riu, const TypePath& path
     auto r = ::resolveTypePath(file, riu, path, line, col);
     FileNode* sdk = riu ? riu->sdkFile() : parentFileOf(file);
     return realizeTypePathResult(std::move(r), file, sdk);
+}
+
+thread_local vector<const AliasDeclNode*> gScopedAliasExpandStack;
+
+AliasDeclNode* lookupScopedAlias(const Node* from, const string& name) {
+    if (!from || name.empty()) return nullptr;
+    for (const Node* n = from; n; n = n->parent()) {
+        if (dynamic_cast<const FileNode*>(n)) break;
+        if (auto* scope = dynamic_cast<const ScopeNode*>(n)) {
+            if (auto* a = scope->localAlias(name)) return a;
+        }
+        if (auto* impl = dynamic_cast<const StructImplNode*>(n)) {
+            if (auto* file = n->enclosingFile()) {
+                if (auto* decl = file->localStructDecl(impl->structName(), /*includeBuiltin=*/true)) {
+                    if (auto* a = decl->localAlias(name)) return a;
+                }
+            }
+        }
+    }
+    return nullptr;
+}
+
+TypeInfo expandScopedAlias(const AliasDeclNode* alias) {
+    if (!alias || !alias->target()) return {};
+    for (auto* x : gScopedAliasExpandStack) {
+        if (x == alias) {
+            throw RiuError(static_cast<int>(alias->name().getLine()),
+                           static_cast<int>(alias->name().getCharPositionInLine()) + 1, ErrorCode::E2016,
+                           alias->name().getText());
+        }
+    }
+    gScopedAliasExpandStack.push_back(alias);
+    TypeInfo t;
+    try {
+        t = alias->target()->getType();
+    } catch (...) {
+        gScopedAliasExpandStack.pop_back();
+        throw;
+    }
+    gScopedAliasExpandStack.pop_back();
+    return t;
+}
+
+TypePathResult resolveExprTypeLhs(const Node* from, FileNode* file, Riu* riu, const TypePath& path, int line, int col) {
+    if (from && path.isBare()) {
+        if (auto* a = lookupScopedAlias(from, path.lastName())) {
+            TypeInfo t = expandScopedAlias(a);
+            TypePathResult r;
+            r.type = t;
+            r.aliasDecl = const_cast<AliasDeclNode*>(a);
+            r.resolved = true;
+            FileNode* sdk = riu ? riu->sdkFile() : parentFileOf(file);
+            NameResolver nr(file, sdk);
+            FileNode* owner = nullptr;
+            r.structDecl = nr.lookupStruct(t, true, &owner);
+            if (owner) r.owner = owner;
+            if (!r.structDecl) {
+                owner = nullptr;
+                r.enumDecl = nr.lookupEnum(t, &owner);
+                if (owner) r.owner = owner;
+            }
+            return r;
+        }
+    }
+    return resolveExprTypeLhs(file, riu, path, line, col);
 }
 
 } // namespace sema

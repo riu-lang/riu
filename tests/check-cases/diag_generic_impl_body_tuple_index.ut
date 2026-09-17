@@ -1,5 +1,5 @@
 ; 泛型 impl 体：写出 Slot<IPair> 后 $.val.2 越界 → E3100（Phase C）
-IPair = (i32, i32)
+type IPair = (i32, i32)
 
 struct Slot<T> {
   val T

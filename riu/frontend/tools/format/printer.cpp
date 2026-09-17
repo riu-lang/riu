@@ -37,6 +37,7 @@
 
 #include "antlr4-runtime.h"
 #include "ast/ast_builder.h"
+#include "ast/node/alias_node.h"
 #include "ast/node/ast_visitor.h"
 #include "ast/node/expr_node.h"
 #include "ast/node/literal_node.h"
@@ -126,6 +127,7 @@ public:
     void visitForIn(StatementForInNode&) override;
     void visitStaticFieldSet(StatementStaticFieldSetNode&) override;
     void visitSet(StatementSetNode&) override;
+    void visitAlias(AliasDeclNode&) override;
 
 private:
     antlr4::CommonTokenStream& tokens_;
@@ -257,10 +259,8 @@ Doc Printer::letGlobalDoc(riuParser::LetGlobalContext* ctx) {
 
 Doc Printer::aliasDeclDoc(riuParser::AliasDeclContext* ctx) {
     std::vector<Doc> parts;
-    parts.push_back(text(ctx->ID()->getText()));
-    if (ctx->genericDef() != nullptr) {
-        parts.push_back(genericDefDoc(ctx->genericDef()));
-    }
+    parts.push_back(text("type "));
+    parts.push_back(text(ctx->name->getText()));
     parts.push_back(text(" = "));
     parts.push_back(typeDoc(ctx->type()));
     return concat(std::move(parts));
@@ -870,6 +870,14 @@ void Printer::visitSet(StatementSetNode& node) {
     }
     parts.push_back(text("] = "));
     parts.push_back(formatExpr(node.valueExpr()));
+    _doc = concat(std::move(parts));
+}
+void Printer::visitAlias(AliasDeclNode& node) {
+    std::vector<Doc> parts;
+    parts.push_back(text("type "));
+    parts.push_back(text(node.name().getText()));
+    parts.push_back(text(" = "));
+    parts.push_back(typeDocAst(node.target()));
     _doc = concat(std::move(parts));
 }
 void Printer::visitLoop(StatementLoopNode& node) {

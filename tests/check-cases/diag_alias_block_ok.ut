@@ -1,0 +1,6 @@
+; 块内 type 与 let 同作用域：进块可见
+fn main() {
+  type A = i32
+  #Mut let x A = 1
+  ret;
+}

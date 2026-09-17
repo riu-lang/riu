@@ -50,26 +50,24 @@ fn test_generic_identity_string() {
   assert_eq(t, "hello")
 }
 
-; ==================== 泛型类型别名 ====================
+; ==================== 元组类型 + 泛型函数 ====================
 
-MyPair<T> = (T, T)
+fn pair_first<T>(p (T, T)) T = p.0
 
-fn pair_first<T>(p MyPair<T>) T = p.0
-
-fn pair_second<T>(p MyPair<T>) T = p.1
+fn pair_second<T>(p (T, T)) T = p.1
 
 #Test
 fn test_generic_alias_i32() {
-  ; 验证：泛型别名 + 泛型函数
-  let p MyPair<i32> = (10, 20)
-  assert_eq(pair_first(p), 10)
-  assert_eq(pair_second(p), 20)
+  ; 验证：元组形参 + turbofish
+  let p (i32, i32) = (10, 20)
+  assert_eq(pair_first:<i32>(p), 10)
+  assert_eq(pair_second:<i32>(p), 20)
 }
 
 #Test
 fn test_generic_alias_string() {
-  ; 验证：泛型别名对 String
-  let p MyPair<String> = ("hello", "world")
-  assert_eq(pair_first(p), "hello")
-  assert_eq(pair_second(p), "world")
+  ; 验证：元组形参对 String + turbofish
+  let p (String, String) = ("hello", "world")
+  assert_eq(pair_first:<String>(p), "hello")
+  assert_eq(pair_second:<String>(p), "world")
 }

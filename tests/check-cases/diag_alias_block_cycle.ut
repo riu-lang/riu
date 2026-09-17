@@ -1,0 +1,6 @@
+; 块内 type 成环 → E2016
+fn main() {
+  type A = B
+  type B = A  ; check: E2016
+  ret;
+}

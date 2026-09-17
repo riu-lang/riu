@@ -3,7 +3,7 @@ struct Foo {
   x i32
 }
 
-Foo = i32  ; check: E2017
+type Foo = i32  ; check: E2017
 
 fn main() {
   ret;

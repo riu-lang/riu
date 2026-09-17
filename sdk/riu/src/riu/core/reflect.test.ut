@@ -67,12 +67,12 @@ fn test_reflect_type_basic() {
   assert_eq(f1.name, "total")
 }
 
-; ==================== 静态路径访问 Type::type / ::fields ====================
+; ==================== 静态路径访问 Type::type_info / ::fields ====================
 
 ; 验证：静态路径访问 Type 的 name 和 fields
 #Test
 fn test_reflect_static_access() {
-  let t Type = Counter::type
+  let t Type = Counter::type_info
   assert_eq(t.name, "Counter")
   let fs [Field& * 2]& = Counter::fields
   let f0 Field& = fs[0]
@@ -121,6 +121,6 @@ fn test_reflect_field_value_write() {
 ; 验证：Reflect 模块中的 DCE 注解是否有效
 #Test
 fn test_reflect_dce_annotated() {
-  let t Type = Tagged::type
+  let t Type = Tagged::type_info
   assert_eq(t.name, "Tagged")
 }

@@ -2380,7 +2380,7 @@ TypeInfo ExprPathCallNode::resolvedLhsType() const {
         if (auto* f = enclosingFile()) t.ownerModule = f->moduleName();
         return t;
     }
-    auto r = sema::resolveExprTypeLhs(enclosingFile(), nullptr, _lhsPath, getLineNumber(), getColumn());
+    auto r = sema::resolveExprTypeLhs(this, enclosingFile(), nullptr, _lhsPath, getLineNumber(), getColumn());
     return r.type;
 }
 
@@ -2415,13 +2415,13 @@ TypeInfo ExprPathCallNode::structuralType() const {
         }
     }
 
-    // DRAFT-spec-reflect Phase 4: `<Struct>::type` / `<Struct>::fields` 走 reflect
+    // DRAFT-spec-reflect Phase 4: `<Struct>::type_info` / `<Struct>::fields` 走 reflect
     // 静态路径; getType 返回对应 SDK 类型供下游 (assignment / call) 推断.
     // LHS 必须是 struct (有 StructDecl), 才能区分于 enum::variant.
     string rhs = _variantName.getText();
-    if (_args.empty() && (rhs == "type" || rhs == "fields" || rhs == "methods" || rhs == "variants")) {
+    if (_args.empty() && (rhs == "type_info" || rhs == "fields" || rhs == "methods" || rhs == "variants")) {
         if (auto* sd = nr.lookupStruct(lhs)) {
-            if (rhs == "type") return TypeInfo("Type");
+            if (rhs == "type_info") return TypeInfo("Type");
             // fields / methods / variants → [T& * N]&
             auto withArrayRef = [&](const string& elemTypeName) -> TypeInfo {
                 auto elemType = std::make_shared<TypeInfo>(elemTypeName);

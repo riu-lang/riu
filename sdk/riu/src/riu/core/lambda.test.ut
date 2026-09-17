@@ -13,9 +13,11 @@
 
 ; ==================== 类型别名 ====================
 
-Callback = Function<String, bool>
-Pred<T> = Function<T, bool>
-Op2<A, B> = Function<A, B, A>
+type Callback = Function<String, bool>
+type PredI32 = Function<i32, bool>
+type PredStr = Function<String, bool>
+type Op2II = Function<i32, i32, i32>
+type PredFn = Function<Function<i32>, bool>
 
 ; ==================== 辅助函数 ====================
 
@@ -363,10 +365,10 @@ fn test_fn_type_decl() {
 #Test
 fn test_fn_type_alias() {
   #Mut let c Callback
-  #Mut let pi Pred<i32>
-  #Mut let ps Pred<String>
-  #Mut let op Op2<i32, i32>
-  #Mut let nested Pred<Function<i32>>
+  #Mut let pi PredI32
+  #Mut let ps PredStr
+  #Mut let op Op2II
+  #Mut let nested PredFn
 
   assert_true(true)
 }

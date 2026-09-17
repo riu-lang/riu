@@ -35,4 +35,4 @@
 | 14 | 性能 / layout | 提议 | [14-perf.md](14-perf.md) |
 | 15 | 泛型 spec | 已落地 | [15-spec-generic.md](15-spec-generic.md) |
 | 16 | 分离 impl | 提议 | [16-impl-split.md](16-impl-split.md) |
-| 17 | 类型别名 `type` / 块作用域 | 待实施 | [17-type-alias.md](17-type-alias.md) |
+| 17 | 类型别名 `type` / 块作用域 | 已落地 | [17-type-alias.md](17-type-alias.md) |

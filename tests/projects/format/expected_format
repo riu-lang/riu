@@ -83,3 +83,12 @@ enum Box<T, U> {
   V(T, U)
   Z
 }
+
+; ====== format_type_alias: type Name = T 顶层与块内 ======
+type IPair = (i32, i32)
+
+fn use_alias() i32 {
+  type A = i32
+  #Mut let x A = 1
+  x
+}

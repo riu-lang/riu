@@ -244,7 +244,7 @@ private:
                 return rootFromRefInit(arrExpr, line);
             }
         }
-        // 静态路径返回 T&: Counter::fields / Counter::type → rodata reference
+        // 静态路径返回 T&: Counter::fields / Counter::type_info → rodata reference
         if (auto path = dynamic_cast<ExprPathCallNode*>(expr)) {
             if (path->getType().isRef()) {
                 return "$rodata";

@@ -20,7 +20,7 @@ riu 把"函数"视作一等值：
 println(f(41)) ; 42
 
 ; 类型别名（透明 alias）
-Predicate = Function<String, bool>
+type Predicate = Function<String, bool>
 
 fn first_match(arr Array<String>, p Predicate) String {
   ; ...
@@ -38,7 +38,7 @@ fn first_match(arr Array<String>, p Predicate) String {
 
 ```riu
 Function<i32, i32, i32>            ; (i32, i32) -> i32
-Callback = Function<String, bool>  ; 别名即文档
+type Callback = Function<String, bool>  ; 别名即文档
 ```
 
 ## Lambda 字面量

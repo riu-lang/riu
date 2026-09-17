@@ -8,6 +8,8 @@
 
 #include "ast_builder.h"
 #include "ast_builder_helpers.h"
+#include "error_code.h"
+#include "node/alias_node.h"
 #include "node/expr_node.h"
 #include "node/global_var_node.h"
 #include "node/literal_node.h"
@@ -564,42 +566,33 @@ std::any ASTBuilder::visitImports(riu::riuParser::ImportsContext* ctx) {
     return nullptr;
 }
 
-// 顶层透明类型别名 `A = T` / `Pair<T> = (T, T)`
-// 注册到 FileNode，目标类型节点保留原貌；透明替换在 Phase 2b 解析层接入
+// 透明类型别名 `type Name = T`
+// 顶层登记到 FileNode；块 / struct 登记到当前 ScopeNode::_localAliases
 std::any ASTBuilder::visitAliasDecl(riu::riuParser::AliasDeclContext* ctx) {
-    auto file = any_cast_p<FileNode>(stack.back());
-    auto nameTok = ctx->ID()->getSymbol();
+    auto* scope = currentScope();
+    auto nameTok = ctx->name;
+    string name = nameTok->getText();
+    int line = static_cast<int>(nameTok->getLine());
+    int col = static_cast<int>(nameTok->getCharPositionInLine()) + 1;
 
-    vector<string> typeParams;
-    if (auto gd = ctx->genericDef()) {
-        for (auto pCtx : gd->params) {
-            if (!pCtx->bounds.empty()) {
-                auto* tk = pCtx->SymbolColon();
-                throw RiuError(tk ? static_cast<int>(tk->getSymbol()->getLine()) : 0,
-                               tk ? static_cast<int>(tk->getSymbol()->getCharPositionInLine()) + 1 : 0,
-                               ErrorCode::E2015);
-            }
-            typeParams.push_back(requireBareTypeParamName(pCtx->type(0)));
-        }
-    }
-
-    auto aliasDecl = createWithLine<AliasDeclNode>(ctx, file, nameTok, static_cast<TypeNode*>(nullptr));
-    aliasDecl->setTypeParams(typeParams);
-
-    // 类型形参纳入别名作用域，使 `Pair<T> = (T, T)` 的目标类型解析能识别 T
-    stack.emplace_back(aliasDecl);
-    _scopeStack.push_back(aliasDecl);
-    for (auto& tp : typeParams) {
-        aliasDecl->registerSymbol(tp, {SymbolKind::TypeParam, tp, TypeInfo(tp)});
-    }
+    auto aliasDecl = createWithLine<AliasDeclNode>(ctx, scope, nameTok, static_cast<TypeNode*>(nullptr));
     auto target = any_cast_p<TypeNode>(visit(ctx->type()));
-    _scopeStack.pop_back();
-    stack.pop_back();
-
     aliasDecl->setTarget(target);
-    DEBUG_LOG_VAL("Visit: AliasDecl", nameTok->getText() << " -> " << (target ? target->getType().name : string("?")));
-    file->addAliasDecl(aliasDecl);
-    return aliasDecl;
+    DEBUG_LOG_VAL("Visit: AliasDecl", name << " -> " << (target ? target->getType().name : string("?")));
+
+    if (auto* file = dynamic_cast<FileNode*>(scope)) {
+        file->addAliasDecl(aliasDecl);
+    } else if (scope) {
+        if (scope->localAlias(name)) {
+            throw RiuError(line, col, ErrorCode::E2017, name, string("type alias"), name);
+        }
+        auto it = scope->localSymbols().find(name);
+        if (it != scope->localSymbols().end() && it->second.kind == SymbolKind::TypeParam) {
+            throw RiuError(line, col, ErrorCode::E2017, name, string("type param"), name);
+        }
+        scope->addLocalAlias(aliasDecl);
+    }
+    return static_cast<StatementNode*>(aliasDecl);
 }
 
 // 顶层 enum 声明：构造 EnumDeclNode，逐个添加 variant，登记到当前 FileNode

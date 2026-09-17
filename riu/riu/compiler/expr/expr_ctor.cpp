@@ -130,18 +130,19 @@ llvm::Value* Compiler::compileEnumCtorExpr(ExprPathCallNode* node) {
 
     string lhsOwnerMod = lhsTy.ownerModule;
 
-    // DRAFT-spec-reflect Phase 4: `<Struct>::type` / `<Struct>::fields` /
+    // DRAFT-spec-reflect Phase 4: `<Struct>::type_info` / `<Struct>::fields` /
     // `<Struct>::methods` / `<Struct>::variants`
-    //   * type     → 整个 reflect Type 全局值 (by-value 拷贝)
-    //   * fields   → Type 的第 1 槽 ([Field& * N]& = ptr to [N x ptr])
-    //   * methods  → Type 的第 2 槽 ([Method& * 0]&, 当前 null)
-    //   * variants → Type 的第 3 槽 ([Variant& * 0]&, 当前 null)
+    //   * type_info → 整个 reflect Type 全局值 (by-value 拷贝)
+    //   * fields    → Type 的第 1 槽 ([Field& * N]& = ptr to [N x ptr])
+    //   * methods   → Type 的第 2 槽 ([Method& * 0]&, 当前 null)
+    //   * variants  → Type 的第 3 槽 ([Variant& * 0]&, 当前 null)
+    // LLVM 全局 `__riu_reflect_*__type` 仍用内部名 type，不随源码字段改名。
     // sema 已校验 LHS 是已知 struct, 这里直接 emit load.
     {
         const string& lhsRaw = lookupLhs;
         string rhsName = node->variantName().getText();
         if (node->args().empty() &&
-            (rhsName == "type" || rhsName == "fields" || rhsName == "methods" || rhsName == "variants")) {
+            (rhsName == "type_info" || rhsName == "fields" || rhsName == "methods" || rhsName == "variants")) {
             FileNode* sdkF = _riu ? _riu->sdkFile() : nullptr;
             auto* sd = names().lookupStruct(lhsTy);
             if (!sd && sdkF && sdkF != _file) sd = sdkF->getStructDecl(lhsRaw);
@@ -157,7 +158,7 @@ llvm::Value* Compiler::compileEnumCtorExpr(ExprPathCallNode* node) {
                 if (!gv) {
                     throwSemaGap(line, col);
                 }
-                if (rhsName == "type") {
+                if (rhsName == "type_info") {
                     auto typeStructTy = getLLVMType(TypeInfo("Type"));
                     return _builder.CreateLoad(typeStructTy, gv, "reflect.type");
                 }

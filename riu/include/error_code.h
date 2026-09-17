@@ -339,7 +339,7 @@ DEF_ERR(3133, "`Field.value` requires a compile-time-known Field reference (e.g.
 DEF_ERR(3134, "`Field.value` has no receiver to bind to; use `.value` inside a method body where `$` is available "
               "(DRAFT-spec-reflect §6)")
 DEF_ERR(3135, "`variants` is only accessible on enum types; `{}` is not an enum (DRAFT-spec-reflect §2)")
-DEF_ERR(3136, "Cannot take `{}::type` by value; use a reference or pointer to the rodata singleton "
+DEF_ERR(3136, "Cannot take `{}::type_info` by value; use a reference or pointer to the rodata singleton "
               "(DRAFT-spec-reflect §8)")
 
 // ── E4xxx 所有权 / 借用 ───────────────────────────────────────────────

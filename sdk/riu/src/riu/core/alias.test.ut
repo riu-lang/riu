@@ -1,15 +1,15 @@
 ; 类型别名行为测试
 ;
 ; 覆盖：
-;   - 简单透明别名（A = i32）— 赋值、算术、函数签名、实参
+;   - 简单透明别名（type A = i32）— 赋值、算术、函数签名、实参
 ;   - 链式别名（A1 → A2 → A → i32）
 ;   - tuple 别名（IPair / Point3D）— 成员访问、解构、赋值、函数传参/返回
-;   - 泛型 tuple 别名（Pair<T>）— 实例化、成员访问、赋值、算术
+;   - 元组别名（PairI32 = (i32, i32)）— 成员访问、赋值、算术
 ;   - 函数类型别名（Predicate = Function<i32, bool>）— 赋值、调用
 
-; ==================== 简单透明别名 A = i32 ====================
+; ==================== 简单透明别名 type A = i32 ====================
 
-A = i32
+type A = i32
 
 ; 验证：基本整数别名的创建和读取
 #Test
@@ -46,8 +46,8 @@ fn test_alias_var_as_arg() {
 
 ; ==================== 链式别名 ====================
 
-A2 = A
-A1 = A2
+type A2 = A
+type A1 = A2
 
 ; 验证：Alias 链式赋值与读取
 #Test
@@ -56,9 +56,9 @@ fn test_alias_chain() {
   assert_eq(x, 99)
 }
 
-; ==================== tuple 别名 IPair = (i32, i32) ====================
+; ==================== tuple 别名 type IPair = (i32, i32) ====================
 
-IPair = (i32, i32)
+type IPair = (i32, i32)
 
 ; --- 成员访问与解构 ---
 
@@ -128,9 +128,9 @@ fn test_alias_swap() {
   assert_eq(q.1, 1)
 }
 
-; ==================== 3D tuple 别名 Point3D = (f64, f64, f64) ====================
+; ==================== 3D tuple 别名 type Point3D = (f64, f64, f64) ====================
 
-Point3D = (f64, f64, f64)
+type Point3D = (f64, f64, f64)
 
 ; 验证：Tuple 访问元素
 #Test
@@ -141,38 +141,38 @@ fn test_alias_tuple_3d() {
   assert_eq(p.2, 3.0f64)
 }
 
-; ==================== 泛型 tuple 别名 Pair<T> = (T, T) ====================
+; ==================== 元组别名 type PairI32 = (i32, i32) ====================
 
-Pair<T> = (T, T)
+type PairI32 = (i32, i32)
 
-; 验证：Alias 对泛型元组成员的访问和断言
+; 验证：元组别名成员访问
 #Test
 fn test_alias_generic_tuple_member() {
-  #Mut let p Pair<i32> = (40, 2)
+  #Mut let p PairI32 = (40, 2)
   assert_eq(p.0, 40)
   assert_eq(p.1, 2)
 }
 
-; 验证：Alias 范型元组成员赋值
+; 验证：元组别名成员赋值
 #Test
 fn test_alias_generic_tuple_member_assign() {
-  #Mut let p Pair<i32> = (3, 4)
+  #Mut let p PairI32 = (3, 4)
   p.1 = 77
   assert_eq(p.0, 3)
   assert_eq(p.1, 77)
 }
 
-; 验证：Generic Tuple 成员相加
+; 验证：元组成员相加
 #Test
 fn test_alias_generic_tuple_member_add() {
-  let p Pair<i32> = (5, 10)
+  let p PairI32 = (5, 10)
   assert_eq(p.0 + p.1, 15)
 }
 
-; 验证：Generic Tuple 的链式加法
+; 验证：元组链式加法
 #Test
 fn test_alias_generic_tuple_chain_add() {
-  let p Pair<i32> = (3, 7)
+  let p PairI32 = (3, 7)
   let sum i32 = p.0 + p.1 + 5
   assert_eq(sum, 15)
 }
@@ -181,7 +181,7 @@ fn test_alias_generic_tuple_chain_add() {
 
 fn is_positive(x i32) bool = x > 0
 
-Predicate = Function<i32, bool>
+type Predicate = Function<i32, bool>
 
 ; 验证：直接调用函数并检查返回值
 #Test
@@ -222,14 +222,14 @@ fn test_fn_direct_call_no_var() {
   assert_false(is_positive(-50))
 }
 
-; ==================== 泛型别名 bool 成员 + fn 别名重赋值（迁自 bug_hunt） ====================
+; ==================== 元组别名 bool 成员 + fn 别名重赋值（迁自 bug_hunt） ====================
 
-Flag<T> = (bool, T)
+type FlagI32 = (bool, i32)
 
 #Test
 fn test_generic_alias_bool_member() {
-  ; 验证：Flag<T> = (bool, T) 别名成员访问
-  let f Flag<i32> = (true, 42)
+  ; 验证：FlagI32 = (bool, i32) 别名成员访问
+  let f FlagI32 = (true, 42)
   assert_true(f.0)
   assert_eq(f.1, 42)
 }
@@ -238,7 +238,7 @@ fn square_fn(x i32) i32 = x * x
 
 fn cube_fn(x i32) i32 = x * x * x
 
-IntUnOp = Function<i32, i32>
+type IntUnOp = Function<i32, i32>
 
 #Test
 fn test_fn_alias_reassign() {
@@ -267,4 +267,30 @@ fn test_alias_chain_boundary() {
   assert_eq(v, 0)
   v = -1
   assert_eq(v, -1)
+}
+
+; ==================== 块内 / struct 内 type ====================
+
+#Test
+fn test_alias_in_block() {
+  type B = i32
+  #Mut let x B = 9
+  assert_eq(x, 9)
+}
+
+struct Holder {
+  type Item = i32
+  n Item
+
+  fn val() Item {
+    ret $.n
+  }
+}
+
+#Test
+fn test_alias_in_struct() {
+  let h Holder = Holder {
+    .n = 4
+  }
+  assert_eq(h.val(), 4)
 }

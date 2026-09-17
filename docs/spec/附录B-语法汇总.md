@@ -31,7 +31,7 @@ globalConst    ::= buildAnno* 'let' ID type? '=' expr codeLineEnd
                    ; 三者互斥（E3115）；缺 init→E3154（val/#Mut）或 E3114（#Cval）
                    ; RHS expr 语义按档位分流（#Cval→常量表达式，val/#Mut→任意 expr，§5.1.4）
 
-aliasDecl      ::= ID genericDef? '=' type codeLineEnd
+aliasDecl      ::= 'type' ID '=' type codeLineEnd
 
 buildAnno      ::= '#' ID ( '(' annoArg ')' )? codeLineEnd
 annoArg        ::= ID ('<' typeParam (',' typeParam)* '>')?
@@ -137,7 +137,7 @@ spec-unify v1（2026-05-19）将 struct 声明与方法块合一为单一 `struc
 ```
 structDecl     ::= buildAnno*                              ; 顶行可含 #Spec / #Impl(D) / #Builtin 等
                    'struct' ID ('<' type (',' type)* '>')? '{'
-                       ( filedDecl | staticFieldDecl | LineEnd )*
+                       ( filedDecl | aliasDecl | staticFieldDecl | LineEnd )*
                        fnClean?
                        ( fn LineEnd | LineEnd )*
                    '}'
@@ -152,7 +152,7 @@ staticFieldDecl ::= buildAnno* ID type '=' expr LineEnd
 约束（语义层）：
 
 - `#Spec` 形态下 body 内只允许 `fn` 签名（无 body），不允许 `filedDecl` / `fnClean`（§12.1.1.1 / §11.4.1）。
-- 非 spec 形态可含字段（实例 `filedDecl` + 静态 `staticFieldDecl`）、`fnClean`（析构 `fn ~()`，居于字段之后、其它 `fn` 之前）、实例方法 / 静态工厂（`#Static fn`）；构造函数形态已删除（§7.3.1.1），构造唯一通道为 `#Static fn` + `Self { ... }` 字段字面量。
+- 非 spec 形态可含字段（实例 `filedDecl` + `aliasDecl` + 静态 `staticFieldDecl`）、`fnClean`（析构 `fn ~()`，居于字段之后、其它 `fn` 之前）、实例方法 / 静态工厂（`#Static fn`）；构造函数形态已删除（§7.3.1.1），构造唯一通道为 `#Static fn` + `Self { ... }` 字段字面量。
 - `#Impl(D)` 接受单参数糖 `(ID genericDef?)`，可重复出现，宣告该 struct 实现 D。
 
 ## B.5b 枚举（v0.x）
@@ -297,6 +297,7 @@ statement ::=
   | 'ret' ';' codeLineEnd?                                      # statementRetVoid
   | 'break' ('@' ID)? ';' codeLineEnd?                          # statementBreak
   | 'continue' ('@' ID)? ';' codeLineEnd?                       # statementContinue
+  | aliasDecl                                                   # statementAlias
 
 statementBlock ::= '{' LineEnd*
                        (statement | comment | codeLineEnd)*

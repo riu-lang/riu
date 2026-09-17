@@ -1387,14 +1387,14 @@ void SemaPass::visitDot(ExprDotNode& node) {
     visitExpr(n->baseExpr());
     _inDotBase = savedDotBase;
 
-    // DRAFT-spec-reflect Phase 4: 实例形访问 `c.type` / `c.fields` / `c.methods` /
-    // `c.variants` / `$.type` / `$.fields` 拦截 (草案 §5 / [#1.AB]);
+    // DRAFT-spec-reflect Phase 4: 实例形访问 `c.type_info` / `c.fields` / `c.methods` /
+    // `c.variants` / `$.type_info` / `$.fields` 拦截 (草案 §5 / [#1.AB]);
     // 提示用 `<Type>::field` / `Self::field`.
     // 仅当 base 是已知 struct 且不含同名 instance 字段时触发 (用户若自己声明
-    // `type` 字段, 走常规字段访问).
+    // `type_info` 字段, 走常规字段访问).
     {
         string mem = n->member();
-        if (mem == "type" || mem == "fields" || mem == "methods" || mem == "variants") {
+        if (mem == "type_info" || mem == "fields" || mem == "methods" || mem == "variants") {
             TypeInfo bt;
             try {
                 bt = n->baseExpr()->getType();
@@ -1980,13 +1980,13 @@ void SemaPass::visitPathCall(ExprPathCallNode& node) {
         sema::validateArrayWithCapacity(n);
     }
 
-    // DRAFT-spec-reflect Phase 4: `<Struct>::type` / `<Struct>::fields` /
+    // DRAFT-spec-reflect Phase 4: `<Struct>::type_info` / `<Struct>::fields` /
     // `<Struct>::methods` / `<Struct>::variants` reflect 静态访问.
     // 优先于 impl-method / enum-ctor 分流 (struct 无需 impl 也能取反射元数据).
     {
         string rhsName = n->variantName().getText();
         if (n->args().empty() &&
-            (rhsName == "type" || rhsName == "fields" || rhsName == "methods" || rhsName == "variants")) {
+            (rhsName == "type_info" || rhsName == "fields" || rhsName == "methods" || rhsName == "variants")) {
             auto* sd = _names.lookupStruct(lhsTy);
             if (sd) {
                 // DRAFT-spec-reflect §2：variants 仅 enum；struct 上访问 → E3135。

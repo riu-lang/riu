@@ -300,7 +300,8 @@ void SemaPass::fillMatchArmBindingTypes(ExprMatchNode* n) {
         EnumDeclNode* enumDecl = scrutEnum;
         if (!enumDecl) {
             try {
-                auto r = sema::resolveExprTypeLhs(_file, _riu, pat->enumPath(), pat->getLineNumber(), pat->getColumn());
+                auto r =
+                    sema::resolveExprTypeLhs(pat, _file, _riu, pat->enumPath(), pat->getLineNumber(), pat->getColumn());
                 enumDecl = r.enumDecl;
                 if (!enumDecl) enumDecl = _names.lookupEnum(r.type);
             } catch (const RiuError&) {

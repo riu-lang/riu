@@ -104,6 +104,7 @@ public:
     std::any visitFnClean(riu::riuParser::FnCleanContext* ctx) override;
 
     std::any visitAliasDecl(riu::riuParser::AliasDeclContext* ctx) override;
+    std::any visitStatementAlias(riu::riuParser::StatementAliasContext* ctx) override;
     // spec-unify v1：声明合一 — 字段段 + fnClean? + fn 段（含 #Spec / #Impl 注解分支）
     std::any visitStructDecl(riu::riuParser::StructDeclContext* ctx) override;
     std::any visitFiledDecl(riu::riuParser::FiledDeclContext* ctx) override;

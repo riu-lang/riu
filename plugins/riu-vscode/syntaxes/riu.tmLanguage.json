@@ -122,7 +122,7 @@
         },
         {
           "name": "keyword.declaration.riu",
-          "match": "\\b(fn|let)\\b"
+          "match": "\\b(fn|let|type)\\b"
         },
         {
           "name": "keyword.other.struct.riu",

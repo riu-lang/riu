@@ -24,6 +24,7 @@
 #include "analyzer/spec_impl_checker.h"
 #include "analyzer/spec_registry.h"
 #include "analyzer/symbol_suggest.h"
+#include "ast/node/alias_node.h"
 #include "ast/node/enum_node.h"
 #include "ast/node/expr_node.h"
 #include "ast/node/file_node.h"
@@ -801,6 +802,7 @@ void SemaPass::visitDeclareAssign(StatementDeclareAssignNode& node) {
         auto isAliasName = [&](const string& n) -> bool {
             if (_file && _file->getAliasDecl(n)) return true;
             if (_sdkFile && _sdkFile->getAliasDecl(n)) return true;
+            if (sema::lookupScopedAlias(da, n)) return true;
             return false;
         };
         // 跳过 ExprPathCallNode（如 `Label::COUNT` / `P::get_x()`）—
@@ -914,4 +916,13 @@ void SemaPass::visitStaticFieldSet(StatementStaticFieldSetNode& node) {
                        currentInstSubst());
     }
     return;
+}
+
+void SemaPass::visitAlias(AliasDeclNode& n) {
+    if (!n.target()) return;
+    int line = n.getLineNumber();
+    int col = n.getColumn();
+    TypeInfo t = n.target()->getType();
+    validateTypeArgRefPolicy(t, line, col, false);
+    checkTypeAnn(t, n.target(), line, col, false);
 }

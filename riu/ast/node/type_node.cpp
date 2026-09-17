@@ -3,6 +3,7 @@
 
 #include "type_node.h"
 
+#include "ast/name_lookup.h"
 #include "ast/type_path.h"
 #include "file_node.h"
 
@@ -22,6 +23,12 @@ TypeInfo TypeSelfNode::getType() const {
 }
 
 TypeInfo TypeNormalNode::getType() const {
+    // 块 / struct 内 `type` 立即展开；文件顶层别名仍走 resolveTypePath + resolveAlias。
+    if (_path.isBare()) {
+        if (auto* a = sema::lookupScopedAlias(this, _path.lastName())) {
+            return sema::expandScopedAlias(a);
+        }
+    }
     // 不 loadModule：resolveTypePath 只走已 use/load 的别名与 packageChild
     auto r = resolveTypePath(enclosingFile(), nullptr, _path, getLineNumber(), getColumn());
     return r.type;

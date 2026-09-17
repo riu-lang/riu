@@ -1,0 +1,10 @@
+; struct 内 type 不是 Foo::Item，出 struct 也不可见
+struct Foo {
+  type Item = i32
+  x Item
+}
+
+fn main() {
+  #Mut let x Item = 1  ; check: E3096
+  ret;
+}

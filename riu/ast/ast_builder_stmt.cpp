@@ -293,6 +293,7 @@ std::any ASTBuilder::visitStatementLoop(riu::riuParser::StatementLoopContext* ct
     for (auto& [name, sym] : block->localSymbols()) {
         filled->registerSymbol(name, sym);
     }
+    filled->copyLocalAliasesFrom(block);
 
     DEBUG_LOG("  Statement: Loop" << (ctx->loopInit() ? " (with init)" : "")
                                   << (ctx->ID() ? " (label: " + label.getText() + ")" : ""));
@@ -377,6 +378,7 @@ std::any ASTBuilder::visitStatementForIn(riu::riuParser::StatementForInContext* 
     for (auto& [name, sym] : block->localSymbols()) {
         filled->registerSymbol(name, sym);
     }
+    filled->copyLocalAliasesFrom(block);
 
     DEBUG_LOG("  Statement: ForIn item=" << item.getText()
                                          << (label.getText().empty() ? "" : " label=" + label.getText()));
@@ -411,6 +413,10 @@ std::any ASTBuilder::visitStatementStaticFieldSet(riu::riuParser::StatementStati
     DEBUG_LOG_VAL("  Statement: StaticFieldSet", typePath.dotted() << "::" << fieldName.getText() << " = ...");
     return static_cast<StatementNode*>(
         createWithLine<StatementStaticFieldSetNode>(ctx, scope, std::move(typePath), fieldName, valueExpr));
+}
+
+std::any ASTBuilder::visitStatementAlias(riu::riuParser::StatementAliasContext* ctx) {
+    return visit(ctx->aliasDecl());
 }
 
 std::any ASTBuilder::visitStatementBlock(riu::riuParser::StatementBlockContext* ctx) {
@@ -448,5 +454,6 @@ std::any ASTBuilder::visitStatementBlock(riu::riuParser::StatementBlockContext* 
     for (auto& [name, sym] : block->localSymbols()) {
         filled->registerSymbol(name, sym);
     }
+    filled->copyLocalAliasesFrom(block);
     return filled;
 }

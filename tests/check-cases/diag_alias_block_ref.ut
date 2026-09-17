@@ -1,0 +1,5 @@
+; 块内 type 右侧根裸 & → E4039
+fn main() {
+  type A = i32&  ; check: E4039
+  ret;
+}

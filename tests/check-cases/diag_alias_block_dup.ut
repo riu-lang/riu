@@ -1,0 +1,6 @@
+; 同一块重复 type 名 → E2017
+fn main() {
+  type A = i32
+  type A = i64  ; check: E2017
+  ret;
+}

@@ -83,9 +83,9 @@ letAnno:
     SymbolHash name=ID LineEnd?
     ;
 
-// Arr<T> = type
+// type Name = T（左侧无 genericDef；右侧 type 仍可写 Pair<A, B> / T?）
 aliasDecl:
-    ID genericDef?
+    TypeKw name=ID
     SymbolEq
     type
     LineEnd
@@ -386,7 +386,7 @@ structDecl:
     (buildAnnos+=buildAnno)*
     Struct structType
     BlockStart LineEnd
-        (filedDecl|LineEnd)*
+        (filedDecl|aliasDecl|LineEnd)*
         fnClean?
         (fn LineEnd | LineEnd)*
     BlockEnd
@@ -668,6 +668,7 @@ statement:
     // break; 强制尾随;不返回任何值
     | Break (SymbolAt ID)? SymbolSemicolon LineEnd?     # statementBreak
     | Continue (SymbolAt ID)? SymbolSemicolon LineEnd?  # statementContinue
+    | aliasDecl                                         # statementAlias
     ;
 
 // `{` 后 / 语句后 / `}` 前换行均可省：`fn f() { ret 1 }`、`if c { a } else { b }` 合法。

@@ -1,6 +1,6 @@
 ; 别名返回：展开后带靶向类型推断灵活整数（Phase C）
-L = i64
-IPair = (i32, i32)
+type L = i64
+type IPair = (i32, i32)
 
 fn as_l() L {
   ret 1

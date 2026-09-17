@@ -125,8 +125,14 @@ std::any ASTBuilder::visitStructDecl(riu::riuParser::StructDeclContext* ctx) {
         }
 
         // DRAFT-spec-reflect Phase 1: spec body 内仅允许 `#Static` 字段段 (type-bound 契约,
-        // [#1.Q] 例外 / [#1.Z]); instance 字段段仍拒 (E2011)。
-        for (auto* fieldCtx : ctx->filedDecl()) {
+        // [#1.Q] 例外 / [#1.Z]); instance 字段段仍拒 (E2011)。`type` 别名允许。
+        for (auto* child : ctx->children) {
+            if (auto* aliasCtx = dynamic_cast<riu::riuParser::AliasDeclContext*>(child)) {
+                visit(aliasCtx);
+                continue;
+            }
+            auto* fieldCtx = dynamic_cast<riu::riuParser::FiledDeclContext*>(child);
+            if (!fieldCtx) continue;
             auto field = any_cast_p<StructFieldNode>(visit(fieldCtx));
             if (!field->isStatic()) {
                 throw RiuError(static_cast<int>(fieldCtx->getStart()->getLine()),
@@ -224,7 +230,13 @@ std::any ASTBuilder::visitStructDecl(riu::riuParser::StructDeclContext* ctx) {
         structDecl->registerSymbol(tp, {SymbolKind::TypeParam, tp, TypeInfo(tp)});
     }
 
-    for (auto fieldCtx : ctx->filedDecl()) {
+    for (auto* child : ctx->children) {
+        if (auto* aliasCtx = dynamic_cast<riu::riuParser::AliasDeclContext*>(child)) {
+            visit(aliasCtx);
+            continue;
+        }
+        auto* fieldCtx = dynamic_cast<riu::riuParser::FiledDeclContext*>(child);
+        if (!fieldCtx) continue;
         // DRAFT-static-vars Phase 4: 检测 #Static 注解，分流静态 / 实例字段
         // #Cval 隐含 #Static 语义（编译期常量不可能是实例字段）
         bool isStatic = false;
@@ -338,6 +350,7 @@ std::any ASTBuilder::visitStructDecl(riu::riuParser::StructDeclContext* ctx) {
     for (auto& tp : structImpl->typeParams()) {
         structImpl->registerSymbol(tp, {SymbolKind::TypeParam, tp, TypeInfo(tp)});
     }
+    structImpl->copyLocalAliasesFrom(structDecl);
 
     if (ctx->fnClean()) {
         auto destructor = any_cast_p<FnNode>(visitFnClean(ctx->fnClean()));

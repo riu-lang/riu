@@ -12,6 +12,7 @@
 // - 数组元素赋值语句
 
 #include "ast/mangler.h"
+#include "ast/node/alias_node.h"
 #include "ast/node/enum_node.h"
 #include "ast/node/expr_node.h"
 #include "ast/node/statement_node.h"
@@ -2059,4 +2060,7 @@ void Compiler::visitStaticFieldSet(StatementStaticFieldSetNode& node) {
 }
 void Compiler::visitSet(StatementSetNode& node) {
     compileArraySetStatement(&node);
+}
+void Compiler::visitAlias(AliasDeclNode&) {
+    // `type` 无运行时效果
 }

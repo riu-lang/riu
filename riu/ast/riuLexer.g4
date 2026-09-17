@@ -48,6 +48,7 @@ SelfType : 'Self';
 Struct : 'struct';
 True : 'true';
 Try: 'try';
+TypeKw: 'type';
 Use : 'use';
 
 SymbolAdd: '+';

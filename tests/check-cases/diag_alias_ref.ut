@@ -1,5 +1,5 @@
 ; 别名不得持有裸 T& → E4039
-A = i32&  ; check: E4039
+type A = i32&  ; check: E4039
 
 fn main() {
   ret;

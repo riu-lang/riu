@@ -10,6 +10,8 @@
 class AliasDeclNode;
 class EnumDeclNode;
 class StructDeclNode;
+class StructImplNode;
+class Node;
 class Riu;
 struct FnSymbolInfo;
 struct TypeInfo;
@@ -63,6 +65,14 @@ using ::TypePathResult;
 // 表达式 LHS：resolveTypePath 后再展开别名，填 structDecl / enumDecl。
 // Self 由调用方处理，不要把 "Self" 丢进来当路径。
 TypePathResult resolveExprTypeLhs(FileNode* file, Riu* riu, const TypePath& path, int line = 0, int col = 0);
+// from 非空时，裸名先查块 / struct 内 `type`（可遮蔽文件顶层）。
+TypePathResult resolveExprTypeLhs(const Node* from, FileNode* file, Riu* riu, const TypePath& path, int line = 0,
+                                  int col = 0);
+
+// 沿 parent 链查块 / struct 局部别名；跳过 FileNode（顶层走 _aliasMap / resolveAlias）。
+[[nodiscard]] AliasDeclNode* lookupScopedAlias(const Node* from, const string& name);
+// 展开局部别名目标；成环抛 E2016。
+[[nodiscard]] TypeInfo expandScopedAlias(const AliasDeclNode* alias);
 
 } // namespace sema
 

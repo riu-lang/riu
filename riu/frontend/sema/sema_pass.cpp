@@ -224,6 +224,15 @@ void SemaPass::run() {
             } catch (...) { // NOLINT(bugprone-empty-catch)
             }
         }
+        for (auto& [an, a] : sd->localAliases()) {
+            (void)an;
+            if (!a || !a->target()) continue;
+            int aline = a->getLineNumber();
+            int acol = a->getColumn();
+            auto at = a->target()->getType();
+            validateTypeArgRefPolicy(at, aline, acol, false);
+            checkTypeAnn(at, a->target(), aline, acol, false);
+        }
         _currentTypeParams = std::move(savedFieldParams);
     }
     // 全局 #Cval / #Mut / val init：builder 只建节点；此处求值。

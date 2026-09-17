@@ -930,9 +930,6 @@ FileNode* tryLoad(Riu& riu, const std::string& declPath, const std::string& srcA
                                                   typeNodeFromInfo(*owner, nullptr, tgt, line));
             al->setLocation(line, 1);
             al->setTypeParams(tps);
-            for (auto& tp : tps) {
-                al->registerSymbol(tp, {SymbolKind::TypeParam, tp, TypeInfo(tp)});
-            }
             file->addAliasDecl(al);
         }
 

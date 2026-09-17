@@ -15,6 +15,12 @@
 
 ---
 
+## 2026-09-17 —— 类型别名 `type` 关键字 / 块作用域（#17）
+
+- **修改 §3.9 / §3.8.6 / §3.11.5 / §7.1.1 / 附录 A / 附录 B**：一律 `type Name = T`；`type` 升关键字；可出现在 `statementBlock` 与 struct 字段段（作用域与 `let` 同；struct 内不是 `Foo::Item`）。左侧无 `<T>`。右侧根裸 `&` 仍 **E4039**。
+- **修改 §13**：Reflect 静态字段 `type` → `type_info`（`Counter::type_info`；实例形 `c.type_info` → E1138）。LLVM `__riu_reflect_*__type` 不动。
+- **冲突 / 兼容**：破坏。旧顶层 `A = T` 须写成 `type A = T`；`Pair<T> = (T, T)` 本切片不收；`T::type` 改 `T::type_info`。
+
 ## 2026-09-17 —— 泛型 enum 简单切片（#3）
 
 - **修改 §3.10.1.1 / §3.10.1.4 / §3.10.2.6 / §3.10.3.1 / §3.10.6 / §3.10.7 / §3.4.1.1 / §2.2.2 / §6.7.1.1 / §6.5.6.8 / §7.9.2**：`enum E<T>`；使用点带齐实参（E6011）；头上 `<T : D>` → **E2037**；每个单态一份；构造 `E:<T>::V`；match 绑定 subst payload；`T ! E` 按完整类型比较。方法 / `#Impl` / struct-style payload / 显式 discriminant 仍后切片。

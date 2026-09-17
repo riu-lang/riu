@@ -120,6 +120,8 @@ class ScopeNode;
 
 class FileNode;
 
+class AliasDeclNode;
+
 class Node {
 protected:
     Node* _parent;
@@ -246,6 +248,7 @@ class ScopeNode : public Node {
 protected:
     map<string, SymbolInfo> _symbols;
     map<string, vector<FnSymbolInfo>> _fnSymbols;
+    map<string, AliasDeclNode*> _localAliases;
     ScopeNode* _parentScope = nullptr;
 
     // 参数匹配辅助：检查 fnInfo.params 是否与 paramTypes 兼容
@@ -277,6 +280,12 @@ public:
     [[nodiscard]] const map<string, SymbolInfo>& localSymbols() const;
     [[nodiscard]] const map<string, vector<FnSymbolInfo>>& localFnSymbols() const;
     [[nodiscard]] ScopeNode* parentScope() const;
+
+    // 块 / struct 内 `type Name = T`（文件顶层仍走 FileNode::_aliasMap）
+    void addLocalAlias(AliasDeclNode* alias);
+    [[nodiscard]] AliasDeclNode* localAlias(const string& name) const;
+    [[nodiscard]] const map<string, AliasDeclNode*>& localAliases() const { return _localAliases; }
+    void copyLocalAliasesFrom(const ScopeNode* from);
 
     // 用 resolver 把每个 fn 符号的 params / retType 透明替换（v0.6 类型别名落地）
     template <typename Resolver>

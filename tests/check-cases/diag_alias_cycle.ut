@@ -1,6 +1,6 @@
 ; 类型别名直接 / 间接成环：A → B → A 应触发 E2016
-A = B  ; check: E2016
-B = A
+type A = B  ; check: E2016
+type B = A
 
 fn main() {
   #Mut let x A = 0i32

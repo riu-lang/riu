@@ -2,6 +2,7 @@
 // MPL-2.0
 
 #include "node.h"
+#include "alias_node.h"
 #include "file_node.h"
 
 string Node::getLocation() const {
@@ -134,6 +135,23 @@ const map<string, vector<FnSymbolInfo>>& ScopeNode::localFnSymbols() const {
 
 ScopeNode* ScopeNode::parentScope() const {
     return _parentScope;
+}
+
+void ScopeNode::addLocalAlias(AliasDeclNode* alias) {
+    if (!alias) return;
+    _localAliases[alias->name().getText()] = alias;
+}
+
+AliasDeclNode* ScopeNode::localAlias(const string& name) const {
+    auto it = _localAliases.find(name);
+    return it != _localAliases.end() ? it->second : nullptr;
+}
+
+void ScopeNode::copyLocalAliasesFrom(const ScopeNode* from) {
+    if (!from || from == this) return;
+    for (auto& [name, a] : from->_localAliases) {
+        _localAliases[name] = a;
+    }
 }
 
 ScopeNode* Node::findNearestScope() const {

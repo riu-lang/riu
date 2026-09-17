@@ -47,6 +47,7 @@ class StatementContinueNode;
 class StatementForInNode;
 class StatementStaticFieldSetNode;
 class StatementSetNode;
+class AliasDeclNode;
 
 class AstVisitor {
 public:
@@ -92,6 +93,7 @@ public:
     virtual void visitForIn(StatementForInNode&) = 0;
     virtual void visitStaticFieldSet(StatementStaticFieldSetNode&) = 0;
     virtual void visitSet(StatementSetNode&) = 0;
+    virtual void visitAlias(AliasDeclNode&) = 0;
 };
 
 #endif // RIU_LANG_AST_VISITOR_H

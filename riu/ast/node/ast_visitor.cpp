@@ -3,6 +3,7 @@
 
 #include "ast_visitor.h"
 
+#include "alias_node.h"
 #include "expr_node.h"
 #include "statement_node.h"
 
@@ -121,4 +122,7 @@ void StatementStaticFieldSetNode::accept(AstVisitor& v) {
 }
 void StatementSetNode::accept(AstVisitor& v) {
     v.visitSet(*this);
+}
+void AliasDeclNode::accept(AstVisitor& v) {
+    v.visitAlias(*this);
 }

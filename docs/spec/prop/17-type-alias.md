@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| 状态 | 待实施 |
+| 状态 | 已落地 |
 | 开 | 2026-09-17 |
 | 旧档 | 无。现 §3.9 / g4 `aliasDecl`：顶层 `Name = type` / `Name<T> = type`，**无** `type` 关键字；不在 struct / 函数体。附录 A.6.2：`type` v1 不引入，可作 `ID`。 |
 
@@ -81,4 +81,4 @@ SDK **没有** `#Spec struct Reflect` 源文件；四个名字是编译器魔串
 
 ## 落地
 
-- （未开始。切片见 CURRENT。）
+- 17.1–17.5（2026-09-17）：Reflect `type_info`；`TypeKw` + `type Name = T`（无左侧泛型）；块 / struct 作用域；formatter / tmLanguage / LSP；回写 §3.9 / §13 / 附录 A/B。

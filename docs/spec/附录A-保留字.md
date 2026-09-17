@@ -29,6 +29,7 @@
 | `struct` | `Struct` | 结构体声明 | §7.1 |
 | `true` | `True` | 布尔字面量 | §1.6.4 |
 | `try` | `Try` | 错误路由块开始（草案） | DRAFT-错误.md §5 |
+| `type` | `TypeKw` | 透明类型别名 | §3.9 |
 | `use` | `Use` | 模块导入 | §10.2 |
 
 §A.1.1 `let` 是局部 / 全局变量声明的唯一引入符（[DRAFT-let-unify](draft/DRAFT-let-unify.md)）；可变性 / 编译期常量 / 深不可变档位由 inline 注解 `#Mut` / `#Cval` / `#Frozen` 修饰，详见 §5.1。旧 `var` / `val` / `cval` 关键字已在 let-unify 落地时从 lexer 移除；字段段保留独立形态（不在 let-unify 范围）。
@@ -150,6 +151,6 @@
 - `case`：v1 `match` 用 `=>` + `else` 兜底，无 `case` 关键字（§3.10）；
 - `async` / `await`：v1 无并发原语；
 - `while` / `do`：v1 循环用 `loop` 与 `for-in`（§5.5）；
-- `return` / `type`：v1 不引入。
+- `return`：v1 不引入（返回用 `ret`）。
 
 §A.6.3 上述名称未来如引入**应当**升格为关键字并同步更新本附录与 `riu.g4`。

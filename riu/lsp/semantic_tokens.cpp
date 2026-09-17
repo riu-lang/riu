@@ -69,6 +69,7 @@ int classify(size_t type) {
     case L::Struct:
     case L::True:
     case L::Try:
+    case L::TypeKw:
     case L::Use:
         return static_cast<int>(TT::Keyword);
 
@@ -229,8 +230,8 @@ void collectOverrides(antlr4::tree::ParseTree* node, CollectState& state) {
         // TypeNullable / TypeArray / TypeTuple 本身不持有顶层 ID
         // Function<...> 走 TypeGeneric
     } else if (auto* c = dynamic_cast<P::AliasDeclContext*>(node)) {
-        // 类型别名 `Name = T` / `Pair<T> = (T, T)`：左侧名字按用户类型染色
-        if (auto* term = c->ID()) put(out, term->getSymbol(), TT::Class, MOD_DECLARATION);
+        // 类型别名 `type Name = T`：左侧名字按用户类型染色
+        if (auto* term = c->name) put(out, term, TT::Class, MOD_DECLARATION);
     } else if (auto* c = dynamic_cast<P::EnumDeclContext*>(node)) {
         // enum E { ... } 的 E 染成枚举名
         if (c->name) put(out, c->name, TT::Enum, MOD_DECLARATION);

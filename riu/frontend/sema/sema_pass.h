@@ -182,6 +182,7 @@ public:
     void visitForIn(StatementForInNode&) override;
     void visitStaticFieldSet(StatementStaticFieldSetNode&) override;
     void visitSet(StatementSetNode&) override;
+    void visitAlias(AliasDeclNode&) override;
     // 实参列表：expected 非空且下标有具体类型时带靶向类型下钻。
     void visitExprList(const vector<ExprNode*>& args, const vector<TypeInfo>* expected = nullptr);
     // T& 捕获 lambda 不可写入变量 / 字段 / 容器 / 返回值（E4022）。须在 visitExpr 该节点之后调用。

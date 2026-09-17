@@ -1,0 +1,13 @@
+; struct 字段段 type：仅 struct 内可见（字段与方法）
+struct Foo {
+  type Item = i32
+  x Item
+
+  fn get() Item {
+    ret $.x
+  }
+}
+
+fn main() {
+  ret;
+}

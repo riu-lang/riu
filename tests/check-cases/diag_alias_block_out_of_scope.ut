@@ -1,0 +1,8 @@
+; 块内 type 出块不可见
+fn main() {
+  if true {
+    type A = i32
+  }
+  #Mut let x A = 1  ; check: E3096
+  ret;
+}

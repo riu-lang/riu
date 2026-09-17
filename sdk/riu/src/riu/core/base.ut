@@ -44,7 +44,7 @@ fn size_of<T>() u64
 ; DRAFT-spec-reflect Phase 3a (捷径 A): 反射 Type 节点拿取 intrinsic.
 ; 调用站 `__riu_reflect_type:<Counter>()` 由编译器特例化 lower 到
 ; `load %Type, ptr __riu_reflect_<mod>_<typename>__type` (linkonce_odr rodata).
-; 草案 §2 的 `Counter::type` path 形态留 Phase 4 接入完整 spec 链, 这里走 fn 形态过渡.
+; 草案 §2 的 `Counter::type_info` path 形态留 Phase 4 接入完整 spec 链, 这里走 fn 形态过渡.
 #Builtin
 fn __riu_reflect_type<T>() Type
 

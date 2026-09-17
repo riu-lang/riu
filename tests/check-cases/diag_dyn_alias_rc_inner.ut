@@ -4,7 +4,7 @@ struct Greet {
   fn hi()
 }
 
-D = Dyn<Greet>
+type D = Dyn<Greet>
 
 fn take(x Rc<D>) {  ; check: E1132
   ret;
