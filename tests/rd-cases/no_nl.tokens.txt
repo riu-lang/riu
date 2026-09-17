@@ -1,0 +1,7 @@
+Fn                     1:0  0-2  "fn"
+ID                     1:3  3-7  "main"
+ParStart               1:7  7-8  "("
+ParEnd                 1:8  8-9  ")"
+BlockStart             1:10  10-11  "{"
+BlockEnd               1:11  11-12  "}"
+EOF                    1:12  12-12  ""

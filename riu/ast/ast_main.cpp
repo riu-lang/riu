@@ -13,7 +13,7 @@
 //   riu-ast <input.ut> -o <file>   ; 写入文件
 //   riu-ast <input.ut> --oneline   ; 单行输出 (默认多行 pretty)
 //   riu-ast <input.ut> --tokens    ; ANTLR default 通道 token
-//   riu-ast <input.ut> --rd-tokens ; rd Scanner token（rd.1 骨架只吐 Eof）
+//   riu-ast <input.ut> --rd-tokens ; rd Scanner default 通道 token
 
 #include "riu/riuLexer.h"
 #include "riu/riuParser.h"

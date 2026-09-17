@@ -1,0 +1,4 @@
+; line comment
+fn x() ; tail
+  ; indent still LineComment
+; top

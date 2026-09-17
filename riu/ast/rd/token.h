@@ -110,7 +110,8 @@ enum class Kind : std::uint8_t {
 #undef RD_KIND_ENUM
 };
 
-// 半开区间 [offset, end)，offset 为文件内字节。line 1-based；column 0-based（与 ANTLR charPositionInLine 对齐）。
+// 半开区间 [offset, end)。offset / end 是 Unicode code point 下标（对 ANTLR CharStream index）。
+// line 1-based；column 0-based（对 ANTLR charPositionInLine）。Token.text 仍是源上的 UTF-8 切片。
 struct Pos {
     i32 offset = 0;
     i32 end = 0;
@@ -131,6 +132,7 @@ struct Token {
 [[nodiscard]] Kind keywordKind(std::string_view ident);
 
 // dump 一行：KIND  line:col  offset-end  "escaped"\n
+// offset 与 ANTLR start/stop+1 对齐（code point，非字节）。
 [[nodiscard]] std::string formatTokenLine(std::string_view kind, Pos pos, std::string_view text);
 [[nodiscard]] std::string formatTokenLine(const Token& tok);
 
