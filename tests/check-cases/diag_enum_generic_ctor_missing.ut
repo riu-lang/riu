@@ -1,0 +1,9 @@
+; 3.3: 泛型 enum 构造缺 turbofish → E6011
+enum Box<T> {
+  A
+}
+
+fn main() {
+  let x Box<i32> = Box::A  ; check: E6011
+  ret;
+}

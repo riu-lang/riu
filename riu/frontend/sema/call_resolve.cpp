@@ -1742,6 +1742,15 @@ string fmtTypeFriendly(const TypeInfo& t) {
     }
     return t.name;
 }
+
+void throwEnumCtorTypeArity(const string& name, size_t want, size_t got, int line, int col) {
+    auto err = RiuError(line, col, ErrorCode::E6011, name, want, got);
+    if (want == 0) {
+        throw err.withHint(std::format("非泛型 enum `{}` 不能写 `:<...>` turbofish，去掉类型实参", name));
+    }
+    throw err.withHint(std::format("泛型 enum 构造须写 turbofish；改写为 `{}:<{}>::V` 形式补齐 {} 个类型", name,
+                                   std::string(want == 1 ? "T" : "T1, T2, ..."), want));
+}
 } // namespace
 
 void validateEnumCtorShape(FileNode* file, FileNode* sdkFile, ExprPathCallNode* node) {
@@ -1758,6 +1767,33 @@ void validateEnumCtorShape(FileNode* file, FileNode* sdkFile, ExprPathCallNode* 
         throw RiuError(line, col, ErrorCode::E2019, enumNameRaw, enumNameRaw, variantName);
     }
 
+    const auto& tps = enumDecl->typeParams();
+    const auto& lhsTArgs = node->lhsTypeArgs();
+    if (tps.empty()) {
+        if (!lhsTArgs.empty()) throwEnumCtorTypeArity(enumName, 0, lhsTArgs.size(), line, col);
+    } else if (lhsTArgs.size() != tps.size()) {
+        throwEnumCtorTypeArity(enumName, tps.size(), lhsTArgs.size(), line, col);
+    }
+
+    map<string, TypeInfo> subst;
+    if (!tps.empty()) {
+        vector<TypeInfo> owned;
+        owned.reserve(tps.size());
+        bool argsOk = true;
+        for (size_t i = 0; i < tps.size(); ++i) {
+            try {
+                TypeInfo a = lhsTArgs[i]->getType();
+                subst[tps[i]] = a;
+                owned.push_back(std::move(a));
+            } catch (...) { // NOLINT(bugprone-empty-catch)
+                argsOk = false;
+                subst.clear();
+                break;
+            }
+        }
+        if (argsOk) validateOwnedTypeArgs(enumName, owned, line, col);
+    }
+
     auto* variant = enumDecl->variant(variantName);
     if (!variant) {
         throw RiuError(line, col, ErrorCode::E2020, enumName, variantName);
@@ -1770,7 +1806,7 @@ void validateEnumCtorShape(FileNode* file, FileNode* sdkFile, ExprPathCallNode* 
     }
 
     // E2032: 实参类型与 variant payload 类型严格匹配.
-    // payload 元素类型从 variant->payloadTypes()[i]->getType() 取;
+    // 泛型 enum 先按该次 turbofish 实参 subst 再比.
     // 实参类型 argExpr->getType() 任一抛错 (lambda 形参未推断 等) 时跳过该参数,
     // 留 codegen 原路径继续报.
     for (size_t i = 0; i < declArity; ++i) {
@@ -1779,6 +1815,7 @@ void validateEnumCtorShape(FileNode* file, FileNode* sdkFile, ExprPathCallNode* 
         TypeInfo actualType;
         try {
             expectedType = variant->payloadTypes()[i]->getType();
+            if (!subst.empty()) expectedType = expectedType.substitute(subst);
             actualType = argExpr->getType();
         } catch (...) {
             continue;

@@ -1,0 +1,17 @@
+; 3.3: 构造点 turbofish；payload 按该次实参 subst；槽带 genericArgs
+enum Box<T> {
+  A
+  V(T)
+}
+
+enum Pair<T, U> {
+  Both(T, U)
+}
+
+fn main() {
+  let a Box<i32> = Box:<i32>::A
+  let b Box<i32> = Box:<i32>::V(1)
+  let c Box<i64> = Box:<i64>::V(1)
+  let d Pair<i32, i64> = Pair:<i32, i64>::Both(1, 2)
+  ret;
+}

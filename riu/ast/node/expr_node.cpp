@@ -11,6 +11,7 @@
 
 #include "ast/name_lookup.h"
 #include "builtin_methods.h"
+#include "enum_node.h"
 #include "file_node.h"
 #include "fn_node.h"
 #include "spec_node.h"
@@ -2490,6 +2491,20 @@ TypeInfo ExprPathCallNode::structuralType() const {
                 return lhs;
             }
             return rt;
+        }
+    }
+
+    // 泛型 enum 构造 `E:<T>::V`：槽必须带 genericArgs，否则 `Box<i32>` 对不上裸名 Box。
+    if (auto* ed = nr.lookupEnum(lhs)) {
+        if (ed->isGeneric() && !_lhsTypeArgs.empty() && _lhsTypeArgs.size() == ed->typeParams().size()) {
+            vector<sp<TypeInfo>> args;
+            args.reserve(_lhsTypeArgs.size());
+            for (auto& ta : _lhsTypeArgs) {
+                args.push_back(make_shared<TypeInfo>(ta ? ta->getType() : TypeInfo()));
+            }
+            TypeInfo inst{n, std::move(args)};
+            inst.ownerModule = lhs.ownerModule;
+            return inst;
         }
     }
 

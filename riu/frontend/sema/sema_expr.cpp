@@ -1939,6 +1939,31 @@ void SemaPass::visitPathCall(ExprPathCallNode& node) {
                     }
                 }
             }
+        } else if (auto* ed = _names.lookupEnum(lhsTy); ed && ed->isGeneric()) {
+            // 泛型 enum 构造：payload 按该次实参 subst 后当下靶（灵活整数 / 嵌套字面量）。
+            map<string, TypeInfo> subst;
+            if (fillSubstFromTypeNodes(ed->typeParams(), n->lhsTypeArgs(), subst)) {
+                for (auto& [_, t] : subst)
+                    t = applyInstSubst(t);
+                auto* variant = ed->variant(n->variantName().getText());
+                if (variant && variant->payloadArity() == n->args().size()) {
+                    pathArgExpected.clear();
+                    bool ok = true;
+                    for (auto* pt : variant->payloadTypes()) {
+                        if (!pt) {
+                            ok = false;
+                            break;
+                        }
+                        try {
+                            pathArgExpected.push_back(applyInstSubst(pt->getType().substitute(subst)));
+                        } catch (...) { // NOLINT(bugprone-empty-catch)
+                            ok = false;
+                            break;
+                        }
+                    }
+                    if (ok) pathArgExpPtr = &pathArgExpected;
+                }
+            }
         }
     }
     visitExprList(n->args(), pathArgExpPtr);
@@ -2221,9 +2246,9 @@ void SemaPass::visitPathCall(ExprPathCallNode& node) {
         throw RiuError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E7001);
     }
 
-    // Phase 3.4.a: SemaPass 接管 E2019/E2020/E2021/E2032.
+    // Phase 3.4.a / 泛型 enum 3.3: SemaPass 接管 E2019/E2020/E2021/E2032/E6011.
     // typeOfPathCall 已在下钻实参后写槽 (getType 抛错时已在白名单重抛)。
-    // 任一异常被 helper 内部 try/catch (E2032 路径) 吞掉; E2019/E2020/E2021
+    // 任一异常被 helper 内部 try/catch (E2032 路径) 吞掉; E2019/E2020/E2021/E6011
     // 由 helper 主动抛出, SemaPass 实际接管.
     try {
         sema::validateEnumCtorShape(_file, _sdkFile, n);

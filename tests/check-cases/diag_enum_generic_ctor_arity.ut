@@ -1,0 +1,9 @@
+; 3.3: 泛型 enum 构造 turbofish 个数不对 → E6011
+enum Pair<T, U> {
+  V
+}
+
+fn main() {
+  let x Pair<i32, i64> = Pair:<i32>::V  ; check: E6011
+  ret;
+}

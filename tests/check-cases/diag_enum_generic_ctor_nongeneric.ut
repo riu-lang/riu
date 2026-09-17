@@ -1,0 +1,9 @@
+; 3.3: 非泛型 enum 写 turbofish → E6011
+enum Color {
+  Red
+}
+
+fn main() {
+  let c Color = Color:<i32>::Red  ; check: E6011
+  ret;
+}

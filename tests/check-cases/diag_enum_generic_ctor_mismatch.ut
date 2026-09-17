@@ -1,0 +1,9 @@
+; 3.3: 构造类型带 genericArgs，与注解比对 → E3014
+enum Box<T> {
+  A
+}
+
+fn main() {
+  let x Box<i64> = Box:<i32>::A  ; check: E3014
+  ret;
+}

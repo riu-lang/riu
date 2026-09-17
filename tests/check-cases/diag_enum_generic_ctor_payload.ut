@@ -1,0 +1,9 @@
+; 3.3: payload 按该次实参 subst 后再比 → E2032
+enum Box<T> {
+  V(T)
+}
+
+fn main() {
+  let x Box<i32> = Box:<i32>::V(true)  ; check: E2032
+  ret;
+}

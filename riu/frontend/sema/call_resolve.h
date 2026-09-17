@@ -366,9 +366,11 @@ void validateFnSymbolVisibility(const FnSymbolInfo* fnSymbol, const string& curr
 //
 // 抛错:
 //   - E2019: enum 名找不到 (用 node->enumName().getText() 即用户写法填 payload)
+//   - E6011: 泛型 enum 缺 turbofish / 个数不对；非泛型 enum 写了 `:<T>`
 //   - E2020: variant 名不在 enum 内
 //   - E2021: arity 不匹配 (零参 / tuple-payload variant 严格相等)
-//   - E2032: tuple-payload variant 第 i 个实参类型 != 声明 payload 类型,
+//   - E2032: tuple-payload variant 第 i 个实参类型 != 声明 payload 类型
+//            （泛型 enum 先按该次 lhsTypeArgs subst 再比）,
 //            payload 用 Rc<T> / Array<T> / [N]T 等用户友好形式渲染
 //
 // 实参类型经 argExpr->getType() 计算; 任一参数 getType 抛错时跳过该参数的 E2032 校验
