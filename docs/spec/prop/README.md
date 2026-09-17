@@ -10,10 +10,17 @@
 
 旧 `DRAFT-*` 已冻结，见 [`../archive.md`](../archive.md)。展开时把需要的结论抄进本提议「规范要点」，不要继续改旧草案。
 
+状态：
+- `提议`，未确定，还在修改评估
+- `待实施`，已确定，还未开始
+- `实施中`，已确定，正在修改代码
+- `已落地`，已实施完成，归档
+- `关闭`，提案至此关闭，本次不再做修改和实施。不影响新的相似提案
+
 | # | 标题 | 状态 | 文件 |
 |---|------|------|------|
 | 1 | 错误模型 v2 | 提议 | [1-error-v2.md](1-error-v2.md) |
-| 2 | `Iter<T>` / 泛型 for-in | 提议 | [2-iter.md](2-iter.md) |
+| 2 | `Iter<T, E>` / 泛型 for-in | 提议 | [2-iter.md](2-iter.md) |
 | 3 | 泛型 enum | 提议 | [3-generic-enum.md](3-generic-enum.md) |
 | 4 | 反射补全 | 提议 | [4-reflect.md](4-reflect.md) |
 | 5 | `format` 类 printf | 提议 | [5-format.md](5-format.md) |
