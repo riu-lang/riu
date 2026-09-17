@@ -1,0 +1,9 @@
+; 前导注释与空行
+
+use a
+use a.b.c
+use riu.io.*
+use 包.名
+
+fn skipped() {
+}

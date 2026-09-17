@@ -59,6 +59,7 @@ static_library("riu_rd") {
   sources = [
     "rd/dump.cpp",
     "rd/flat.cpp",
+    "rd/parser.cpp",
     "rd/scanner.cpp",
     "rd/token.cpp",
   ]

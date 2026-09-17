@@ -139,7 +139,7 @@ private:
 
 [[nodiscard]] std::string_view nodeKindName(NodeKind k);
 
-// parser 未接时的占位：无子节点的 Program。
+// 无子节点的 Program（空文件 / 仅空行）。
 [[nodiscard]] FlatAst emptyProgram();
 
 // 缩进树。空 root 输出空串。

@@ -14,12 +14,12 @@
 //   riu-ast <input.ut> --oneline   ; 单行输出 (默认多行 pretty)
 //   riu-ast <input.ut> --tokens    ; ANTLR default 通道 token
 //   riu-ast <input.ut> --rd-tokens ; rd Scanner default 通道 token
-//   riu-ast <input.ut> --rd        ; rd FlatAst 缩进树（parser 未接时打空 Program）
+//   riu-ast <input.ut> --rd        ; rd FlatAst 缩进树（program / use；其余顶层跳过）
 
 #include "riu/riuLexer.h"
 #include "riu/riuParser.h"
 
-#include "ast/rd/flat.h"
+#include "ast/rd/parser.h"
 #include "ast/rd/scanner.h"
 #include "ast/rd/token.h"
 
@@ -159,8 +159,14 @@ int main(int argc, char* argv[]) { // NOLINT(bugprone-exception-escape)
     }
 
     if (dumpRdAst) {
-        // TODO: rd.5 接 Parser 后按源文件建树；目前手填空 Program。
-        return writeOut(outputFile, rd::dumpTree(rd::emptyProgram()));
+        std::string src;
+        try {
+            src = readUtf8File(inputFile);
+        } catch (const std::exception& e) {
+            std::cerr << "Error: cannot load file " << inputFile << ": " << e.what() << '\n';
+            return 1;
+        }
+        return writeOut(outputFile, rd::dumpTree(rd::parseProgram(src)));
     }
 
     if (dumpRdTokens) {

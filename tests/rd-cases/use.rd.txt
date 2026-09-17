@@ -1,0 +1,5 @@
+Program
+  Use "a"
+  Use "a.b.c"
+  Use "riu.io.*"
+  Use "包.名"
