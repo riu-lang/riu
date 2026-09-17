@@ -7,6 +7,7 @@
 // 失效键：kFormatVersion + 源码 FNV-1a-64。重编 riu.exe 不使 .ud 作废。
 // v2：fn header 与 TypeInfo 写入 fallibleErr（`T ! E`），否则跨模块调用 mangle 丢 `!E`。
 // v3：fn header 边界从裸名改为 SpecRef（基名 + 类型实参），#15 泛型 spec。
+// v4：enum 二进制接口写入 typeParams（`enum E<T>`）；lookup 仍按裸名。
 
 #ifndef RIU_LANG_MOD_DECL_H
 #define RIU_LANG_MOD_DECL_H
@@ -23,7 +24,7 @@ class Node;
 
 namespace mod_decl {
 
-inline constexpr uint32_t kFormatVersion = 3;
+inline constexpr uint32_t kFormatVersion = 4;
 
 // 重建节点的所有者，生命周期跟 Riu。
 class NodeOwner {

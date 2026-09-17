@@ -678,6 +678,7 @@ void write(FileNode* file, const std::string& srcAbs, const std::string& declPat
         w.i32(e->getLineNumber());
         w.i32(e->getColumn());
         writeAnnos(w, *e);
+        writeStrings(w, e->typeParams());
         w.u32(static_cast<uint32_t>(e->variants().size()));
         for (auto v : e->variants()) {
             w.str(v->name().getText());
@@ -897,10 +898,15 @@ FileNode* tryLoad(Riu& riu, const std::string& declPath, const std::string& srcA
             int col = r.i32();
             vector<string> annos, annoArgs;
             readAnnos(r, annos, annoArgs);
+            auto tps = readStrings(r);
             auto* en = owner->make<EnumDeclNode>(file, Token(name, static_cast<size_t>(line > 0 ? line : 1)));
             en->setLocation(line, col);
             en->setAnnos(std::move(annos), std::move(annoArgs));
             en->setParentScope(file);
+            en->setTypeParams(tps);
+            for (auto& tp : tps) {
+                en->registerSymbol(tp, {SymbolKind::TypeParam, tp, TypeInfo(tp)});
+            }
             uint32_t nv = r.u32();
             for (uint32_t j = 0; j < nv; ++j) {
                 string vn = r.str();

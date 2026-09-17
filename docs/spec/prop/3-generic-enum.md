@@ -83,3 +83,4 @@ enum IterErr<E> {
 - 3.4（2026-09-17）：match 穷尽按 variant 名；绑定类型按 scrut 的 genericArgs subst payload。
 - 3.5（2026-09-17）：每单态一份 LLVM 类型（`generic::EnumInstance`）；拷贝 / 析构 tag dispatch 走 subst 后 payload。
 - 3.6（2026-09-17）：`T ! E` 的 E 存完整类型（getFullName）；E7008 / 透传 / mangle / wrapFallibleRetType 按完整类型。
+- 3.7（2026-09-17）：`.ud` v4 二进制 enum 写入 typeParams（不走 skeleton）；跨文件 `use` 后 `E<T>` lookup 仍裸名。formatter 印 `enum E<T>`。

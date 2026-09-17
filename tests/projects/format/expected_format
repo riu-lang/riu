@@ -77,3 +77,9 @@ fn make_tuple() i32 {
   #Mut let z i32 = p.0 + p.1 + x + y
   z
 }
+
+; ====== format_enum_generic: enum E<T> 头上 genericDef / payload 规整 ======
+enum Box<T, U> {
+  V(T, U)
+  Z
+}

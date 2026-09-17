@@ -1,0 +1,14 @@
+use riu.core.*
+use box.*
+
+; 跨文件 use 后 E<T> 仍按裸名 lookup；prebuild 写出 .ud 后再编本文件。
+fn local_unwrap(x Box<i32>) i32 {
+  ret match x {
+    Box::V(v) => v
+  }
+}
+
+fn main() {
+  println(unwrap(wrap(41)))
+  println(local_unwrap(Box:<i32>::V(2)))
+}

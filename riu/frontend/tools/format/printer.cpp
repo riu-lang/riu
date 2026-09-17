@@ -20,8 +20,8 @@
 //   缩进规整一次
 // - externDelc 用 Doc 重排：buildAnnos + extern { fnHeader... }
 //
-// 已实装顶层：imports / buildAnno / globalConst / aliasDecl / fn / externDelc
-// 仍回退顶层：enumDecl / structDecl / structImpl / draftDecl（Phase 4 起细化）
+// 已实装顶层：imports / buildAnno / globalConst / aliasDecl / fn / externDelc / enumDecl
+// 仍回退顶层：structDecl / structImpl / specDecl（Phase 4 起细化）
 //
 // 渲染：每个顶层 item 自身的 Doc 用 render() 处理，块之间用纯 "\n" 拼接，
 // 避免顶层间互相影响 group 决策。
@@ -154,6 +154,8 @@ private:
     Doc fnHeaderDoc(riuParser::FnHeaderContext* ctx);
     Doc fnBodyDoc(riuParser::FnBodyContext* ctx, int indentLevel);
     Doc externDelcDoc(riuParser::ExternDelcContext* ctx);
+    Doc enumDeclDoc(riuParser::EnumDeclContext* ctx);
+    Doc enumVariantDoc(riuParser::EnumVariantContext* ctx);
 
     // 类型 / 泛型 / 形参
     Doc typePathDoc(riuParser::TypePathContext* ctx);
@@ -1329,6 +1331,41 @@ Doc Printer::externDelcDoc(riuParser::ExternDelcContext* ctx) {
     return concat(std::move(parts));
 }
 
+Doc Printer::enumDeclDoc(riuParser::EnumDeclContext* ctx) {
+    std::vector<Doc> parts;
+    parts.push_back(text("enum "));
+    parts.push_back(text(ctx->name->getText()));
+    if (ctx->genericDef() != nullptr) {
+        parts.push_back(genericDefDoc(ctx->genericDef()));
+    }
+    parts.push_back(text(" {"));
+    std::vector<Doc> inner;
+    for (auto* v : ctx->variants) {
+        inner.push_back(hardline());
+        inner.push_back(enumVariantDoc(v));
+    }
+    if (!inner.empty()) {
+        parts.push_back(indent(2, concat(std::move(inner))));
+    }
+    parts.push_back(hardline());
+    parts.push_back(text("}"));
+    return concat(std::move(parts));
+}
+
+Doc Printer::enumVariantDoc(riuParser::EnumVariantContext* ctx) {
+    std::vector<Doc> parts;
+    parts.push_back(text(ctx->name->getText()));
+    if (!ctx->payloads.empty()) {
+        parts.push_back(text("("));
+        for (std::size_t i = 0; i < ctx->payloads.size(); ++i) {
+            if (i > 0) parts.push_back(text(", "));
+            parts.push_back(typeDoc(ctx->payloads[i]));
+        }
+        parts.push_back(text(")"));
+    }
+    return concat(std::move(parts));
+}
+
 Printer::Item Printer::visitTopLevel(antlr4::tree::ParseTree* child) {
     Item item;
     auto* ctx = dynamic_cast<antlr4::ParserRuleContext*>(child);
@@ -1353,8 +1390,10 @@ Printer::Item Printer::visitTopLevel(antlr4::tree::ParseTree* child) {
         item.doc = aliasDeclDoc(al);
     } else if (auto* fn = dynamic_cast<riuParser::FnContext*>(ctx)) {
         item.doc = fnDoc(fn);
+    } else if (auto* en = dynamic_cast<riuParser::EnumDeclContext*>(ctx)) {
+        item.doc = enumDeclDoc(en);
     } else {
-        // 未实装：enumDecl / structDecl / structImpl / specDecl
+        // 未实装：structDecl / structImpl / specDecl
         // 直接落原文。trim 末尾 LineEnd 让顶层间换行由 program 控制
         item.raw = trimRightLineEnds(rawSpan(tokens_, ctx));
     }

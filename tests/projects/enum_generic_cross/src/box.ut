@@ -1,0 +1,14 @@
+use riu.core.*
+
+; 3.7: 泛型 enum 走 .ud 二进制接口（记 typeParams，lookup 仍裸名）。
+enum Box<T> {
+  V(T)
+}
+
+fn wrap(n i32) Box<i32> = Box:<i32>::V(n)
+
+fn unwrap(x Box<i32>) i32 {
+  ret match x {
+    Box::V(v) => v
+  }
+}
