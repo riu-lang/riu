@@ -430,18 +430,18 @@ llvm::Value* Compiler::compileMatchExpr(ExprMatchNode* node) {
         if (!pat->isElse() && !pat->binds().empty()) {
             string vName = pat->variantName().getText();
             auto* variant = enumDecl->variant(vName);
-            // 重建 variant payload tuple struct
+            // 重建 variant payload tuple struct（泛型按 scrut 的 genericArgs subst）
             vector<llvm::Type*> elemTys;
             elemTys.reserve(variant->payloadTypes().size());
             for (auto t : variant->payloadTypes()) {
-                elemTys.push_back(getLLVMType(t->getType()));
+                elemTys.push_back(getLLVMType(substEnumPayload(enumDecl, scrutType, t)));
             }
             auto payloadStruct = llvm::StructType::get(_context, elemTys);
             auto payloadBufPtr = _builder.CreateStructGEP(enumLLVMType, scrutAlloca, 1, "match.payload.ptr");
 
             for (size_t k = 0; k < pat->binds().size(); ++k) {
                 const string& bn = pat->binds()[k].getText();
-                auto bindType = variant->payloadTypes()[k]->getType();
+                auto bindType = substEnumPayload(enumDecl, scrutType, variant->payloadTypes()[k]);
                 auto bindLLVMType = getLLVMType(bindType);
 
                 auto fieldPtr = _builder.CreateStructGEP(payloadStruct, payloadBufPtr, static_cast<unsigned>(k),

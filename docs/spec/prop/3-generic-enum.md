@@ -81,3 +81,4 @@ enum IterErr<E> {
 - 3.2（2026-09-17）：使用点实参个数 E6011；头上 `<T : D>` → E2037；`E<T>` = 名义名 + `genericArgs`，lookup 仍裸名。
 - 3.3（2026-09-17）：构造 `E:<T>::V` / `E:<T>::V(payload)` 按该次实参 subst payload；缺 turbofish → E6011。
 - 3.4（2026-09-17）：match 穷尽按 variant 名；绑定类型按 scrut 的 genericArgs subst payload。
+- 3.5（2026-09-17）：每单态一份 LLVM 类型（`generic::EnumInstance`）；拷贝 / 析构 tag dispatch 走 subst 后 payload。

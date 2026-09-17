@@ -10,11 +10,14 @@
 // - 检查类型是否需要析构函数
 
 #include "ast/mangler.h"
+#include "ast/node/enum_node.h"
 #include "ast/node/expr_node.h"
 #include "ast/node/literal_node.h"
 #include "compiler.h"
+#include "sema/call_resolve.h"
 #include <algorithm>
 #include <llvm/IR/BasicBlock.h>
+#include <llvm/IR/Comdat.h>
 #include <llvm/IR/Instructions.h>
 
 // ==================== 析构函数调用 ====================
@@ -229,7 +232,7 @@ void Compiler::releaseAtPtr(llvm::Value* slotPtr, const TypeInfo& type) {
 
     // Phase 5: enum 类型 —— 走合成的 __enum_drop_<E> 按 tag dispatch
     if (enumNeedsDestructor(type)) {
-        auto dtorFn = getEnumDestructorFunction(type.name, type.ownerModule);
+        auto dtorFn = getEnumDestructorFunction(type);
         if (dtorFn) {
             _builder.CreateCall(dtorFn, {slotPtr});
         }
@@ -592,7 +595,7 @@ bool Compiler::retainHandleAtCallSite(llvm::Value* argVal, const TypeInfo& argTy
     // copy helper 押后到后续优化。
     if (!isBuiltinType(argType.name) && enumNeedsDestructor(argType)) {
         FileNode* owner = nullptr;
-        auto decl = names().lookupEnum(argType.name, &owner);
+        auto decl = names().lookupEnum(argType, &owner);
         if (!decl) return false;
 
         auto enumLLVMType = getLLVMType(argType);
@@ -616,7 +619,7 @@ bool Compiler::retainHandleAtCallSite(llvm::Value* argVal, const TypeInfo& argTy
             if (!v->hasPayload()) continue;
             bool any = false;
             for (auto t : v->payloadTypes()) {
-                if (typeNeedsDestructor(t->getType())) {
+                if (typeNeedsDestructor(substEnumPayload(decl, argType, t))) {
                     any = true;
                     break;
                 }
@@ -634,13 +637,13 @@ bool Compiler::retainHandleAtCallSite(llvm::Value* argVal, const TypeInfo& argTy
             vector<llvm::Type*> elemTys;
             elemTys.reserve(v->payloadTypes().size());
             for (auto t : v->payloadTypes()) {
-                elemTys.push_back(getLLVMType(t->getType()));
+                elemTys.push_back(getLLVMType(substEnumPayload(decl, argType, t)));
             }
             auto payloadStruct = llvm::StructType::get(_context, elemTys);
             auto payloadBufPtr = _builder.CreateStructGEP(enumLLVMType, slot, 1, "arg.enum.payload.ptr");
 
             for (size_t i = 0; i < v->payloadTypes().size(); ++i) {
-                auto fieldType = v->payloadTypes()[i]->getType();
+                auto fieldType = substEnumPayload(decl, argType, v->payloadTypes()[i]);
                 if (!typeNeedsDestructor(fieldType)) continue;
                 auto fieldPtr = _builder.CreateStructGEP(payloadStruct, payloadBufPtr, static_cast<unsigned>(i),
                                                          "arg.enum.payload.elem");
@@ -1134,6 +1137,11 @@ bool Compiler::structParamUsesPointer(const TypeInfo& ti) {
     }
     if (structDecl) return false;
 
+    // enum（含泛型单态）一律 by-value；intern 后 _structTypes 会有 mangle 名，
+    // 不能走下面「仅 LLVM 表」的保守指针 ABI。
+    if (names().lookupEnum(ti)) return false;
+    if (_generic.enums().contains(ti.getMangleName())) return false;
+
     // 泛型实例 → by-value（3c.2.c）；实例 key 走 mangle，不走裸 name
     const string instKey = ti.getMangleName();
     if (_generic.structs().contains(instKey)) return false;
@@ -1341,10 +1349,22 @@ vector<TypeInfo> Compiler::resolveStructFieldTypes(const string& structName) {
 // 任一 variant 的 payload 元素需析构则枚举需析构
 bool Compiler::enumDeclNeedsDestructor(EnumDeclNode* decl) {
     if (!decl) return false;
+    if (decl->isGeneric()) return false;
     for (auto v : decl->variants()) {
         if (!v->hasPayload()) continue;
         for (auto t : v->payloadTypes()) {
             if (typeNeedsDestructor(t->getType())) return true;
+        }
+    }
+    return false;
+}
+
+bool Compiler::enumInstNeedsDestructor(EnumDeclNode* decl, const TypeInfo& enumType) {
+    if (!decl) return false;
+    for (auto v : decl->variants()) {
+        if (!v->hasPayload()) continue;
+        for (auto t : v->payloadTypes()) {
+            if (typeNeedsDestructor(substEnumPayload(decl, enumType, t))) return true;
         }
     }
     return false;
@@ -1360,11 +1380,35 @@ bool Compiler::enumNeedsDestructor(const string& enumName) {
 }
 
 bool Compiler::enumNeedsDestructor(const TypeInfo& type) {
-    if (!type.isNormal()) return false;
     FileNode* owner = nullptr;
     auto decl = names().lookupEnum(type, &owner);
     if (!decl) return false;
+    if (decl->isGeneric()) return enumInstNeedsDestructor(decl, type);
     return enumDeclNeedsDestructor(decl);
+}
+
+llvm::Function* Compiler::getEnumDestructorFunction(const TypeInfo& enumType) {
+    FileNode* owner = nullptr;
+    EnumDeclNode* decl = names().lookupEnum(enumType, &owner);
+    if (!decl) return nullptr;
+
+    string ownerModule = owner ? owner->moduleName() : (_file ? _file->moduleName() : "");
+    string typeName = decl->isGeneric() ? enumType.getMangleName() : enumType.name;
+    string mangled = Mangler::dtor(ownerModule, typeName);
+
+    auto func = _module->getFunction(mangled);
+    if (func) return func;
+
+    vector<llvm::Type*> params;
+    params.push_back(llvm::PointerType::get(_context, 0));
+    auto fnType = llvm::FunctionType::get(_builder.getVoidTy(), params, false);
+    auto* created = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, mangled, _module);
+    if (decl->isGeneric()) {
+        created->setLinkage(llvm::Function::LinkOnceODRLinkage);
+        created->setVisibility(llvm::GlobalValue::DefaultVisibility);
+        created->setComdat(_module->getOrInsertComdat(std::string(created->getName())));
+    }
+    return created;
 }
 
 // 获取或创建 enum dtor 声明（mangled 含 owner 模块名）
@@ -1379,35 +1423,36 @@ llvm::Function* Compiler::getEnumDestructorFunction(const string& enumName, cons
     if (!decl) decl = names().lookupEnum(enumName, &owner);
     if (!decl) return nullptr;
 
-    string ownerModule =
-        !ownerModuleHint.empty() ? ownerModuleHint : (owner ? owner->moduleName() : _file->moduleName());
-    string mangled = Mangler::dtor(ownerModule, enumName);
+    TypeInfo enumTy(enumName);
+    if (!ownerModuleHint.empty())
+        enumTy.ownerModule = ownerModuleHint;
+    else if (owner)
+        enumTy.ownerModule = owner->moduleName();
+    return getEnumDestructorFunction(enumTy);
+}
 
-    auto func = _module->getFunction(mangled);
-    if (func) return func;
-
-    vector<llvm::Type*> params;
-    params.push_back(llvm::PointerType::get(_context, 0));
-    auto fnType = llvm::FunctionType::get(_builder.getVoidTy(), params, false);
-    return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, mangled, _module);
+void Compiler::generateEnumDestructor(EnumDeclNode* decl, FileNode* owner) {
+    if (!decl) return;
+    TypeInfo enumTy(decl->name().getText());
+    if (owner) enumTy.ownerModule = owner->moduleName();
+    generateEnumDestructor(enumTy, decl, owner);
 }
 
 // 合成 __enum_drop_<E>(p*) 实现：switch on tag → 各 case 释放对应 variant 的 RC payload 字段
-// 全 POD enum 不会进到这里（compileEnumDtors 提前过滤）
-void Compiler::generateEnumDestructor(EnumDeclNode* decl, FileNode* owner) {
+// 全 POD enum 不会进到这里（compileEnumDtors / emitGenericEnumDtor 提前过滤）
+void Compiler::generateEnumDestructor(const TypeInfo& enumTy, EnumDeclNode* decl, FileNode* owner) {
     if (!decl) return;
-    string enumName = decl->name().getText();
+    (void)owner;
+    string enumName = decl->isGeneric() ? enumTy.getMangleName() : decl->name().getText();
     DEBUG_LOG_VAL("  Generating enum dtor for", enumName);
 
-    auto fn = getEnumDestructorFunction(enumName, owner ? owner->moduleName() : "");
+    auto fn = getEnumDestructorFunction(enumTy);
     if (!fn || !fn->empty()) return; // 已有定义则不重复
 
-    TypeInfo enumTy(enumName);
-    if (owner) enumTy.ownerModule = owner->moduleName();
     auto enumLLVMType = getLLVMType(enumTy);
     if (!enumLLVMType) return;
 
-    // 保存当前插入点（compileEnumDtors 在主流水线中可能已设过）
+    // 保存当前插入点（compileEnumDtors 在主流水线中可能已设过；intern 也可能在函数体中间）
     auto savedBB = _builder.GetInsertBlock();
     auto savedIP = _builder.GetInsertPoint();
 
@@ -1426,7 +1471,7 @@ void Compiler::generateEnumDestructor(EnumDeclNode* decl, FileNode* owner) {
         if (!v->hasPayload()) continue;
         bool any = false;
         for (auto t : v->payloadTypes()) {
-            if (typeNeedsDestructor(t->getType())) {
+            if (typeNeedsDestructor(substEnumPayload(decl, enumTy, t))) {
                 any = true;
                 break;
             }
@@ -1442,19 +1487,17 @@ void Compiler::generateEnumDestructor(EnumDeclNode* decl, FileNode* owner) {
         sw->addCase(_builder.getInt32(idx), caseBB);
         _builder.SetInsertPoint(caseBB);
 
-        // 重建 variant 的 tuple struct 类型（与 ctor 路径一致）
         vector<llvm::Type*> elemTys;
         elemTys.reserve(v->payloadTypes().size());
         for (auto t : v->payloadTypes()) {
-            elemTys.push_back(getLLVMType(t->getType()));
+            elemTys.push_back(getLLVMType(substEnumPayload(decl, enumTy, t)));
         }
         auto payloadStruct = llvm::StructType::get(_context, elemTys);
         auto payloadBufPtr = _builder.CreateStructGEP(enumLLVMType, thisArg, 1, "payload.ptr");
 
-        // 按声明逆序释放（与 struct 字段释放约定一致）
         for (size_t k = v->payloadTypes().size(); k > 0; --k) {
             size_t i = k - 1;
-            auto fieldType = v->payloadTypes()[i]->getType();
+            auto fieldType = substEnumPayload(decl, enumTy, v->payloadTypes()[i]);
             if (!typeNeedsDestructor(fieldType)) continue;
             auto fieldPtr =
                 _builder.CreateStructGEP(payloadStruct, payloadBufPtr, static_cast<unsigned>(i), "payload.elem");
@@ -1466,7 +1509,6 @@ void Compiler::generateEnumDestructor(EnumDeclNode* decl, FileNode* owner) {
     _builder.SetInsertPoint(exitBB);
     _builder.CreateRetVoid();
 
-    // 恢复插入点（避免污染调用方上下文）
     if (savedBB && !savedBB->getTerminator()) {
         _builder.SetInsertPoint(savedBB, savedIP);
     } else if (savedBB) {
@@ -1474,11 +1516,28 @@ void Compiler::generateEnumDestructor(EnumDeclNode* decl, FileNode* owner) {
     }
 }
 
-// 主流水线：为本 file 的每个 enum 声明（若需析构）发射 dtor 定义
+void Compiler::emitGenericEnumDtor(generic::EnumInstance& inst) {
+    if (inst.dtorEmitted || !inst.baseDecl) return;
+    auto enumTy = inst.typeInfo();
+    if (!enumInstNeedsDestructor(inst.baseDecl, enumTy)) {
+        inst.dtorEmitted = true;
+        return;
+    }
+    generateEnumDestructor(enumTy, inst.baseDecl, inst.ownerFile);
+    if (auto* fn = getEnumDestructorFunction(enumTy)) {
+        fn->setLinkage(llvm::Function::LinkOnceODRLinkage);
+        fn->setVisibility(llvm::GlobalValue::DefaultVisibility);
+        fn->setComdat(_module->getOrInsertComdat(std::string(fn->getName())));
+    }
+    inst.dtorEmitted = true;
+}
+
+// 主流水线：为本 file 的每个非泛型 enum 声明（若需析构）发射 dtor 定义
 void Compiler::compileEnumDtors() {
     auto& enums = _file->getEnumDecls();
     DEBUG_LOG_VAL("  compileEnumDtors", enums.size() << " enums");
     for (auto decl : enums) {
+        if (decl->isGeneric()) continue;
         if (!enumDeclNeedsDestructor(decl)) continue;
         generateEnumDestructor(decl, _file);
     }

@@ -16,7 +16,9 @@
 #include "ast/node/fn_node.h"
 #include "ast/node/spec_node.h"
 #include "ast/node/struct_node.h"
+#include "ast/node/type_node.h"
 #include "compiler.h"
+#include "sema/call_resolve.h"
 #include "sema/name_resolver.h"
 #include <array>
 #include <llvm/IR/DerivedTypes.h>
@@ -236,6 +238,86 @@ string Compiler::genericStruct(StructDeclNode* baseDecl, const vector<sp<TypeInf
                                             _riu ? _riu->sdkFile() : nullptr, mangledName, sourceLine);
     emitGenericStructLlvm(inst);
     _generic.structs().insert(std::move(inst));
+    return mangledName;
+}
+
+// ==================== 泛型枚举实例化 ====================
+
+TypeInfo Compiler::substEnumPayload(EnumDeclNode* decl, const TypeInfo& enumType, TypeNode* payload) const {
+    if (!payload) return {};
+    TypeInfo t = payload->getType();
+    auto subst = sema::enumInstSubst(decl, enumType);
+    if (!subst.empty()) t = t.substitute(subst);
+    return applySubst(t);
+}
+
+void Compiler::emitGenericEnumLlvm(const generic::EnumInstance& inst) {
+    if (!inst.baseDecl) return;
+    if (_structTypes.contains(inst.mangledName)) return;
+
+    auto subst = inst.substMap();
+    u64 maxPayload = 0;
+    try {
+        for (auto v : inst.baseDecl->variants()) {
+            if (!v->hasPayload()) continue;
+            vector<llvm::Type*> elemTys;
+            elemTys.reserve(v->payloadTypes().size());
+            for (auto t : v->payloadTypes()) {
+                TypeInfo pt = t->getType();
+                if (!subst.empty()) pt = pt.substitute(subst);
+                pt = applySubst(pt);
+                auto ll = getLLVMType(pt);
+                if (!ll) {
+                    throwSemaGap(static_cast<size_t>(inst.baseDecl->name().getLine()));
+                }
+                elemTys.push_back(ll);
+            }
+            auto payloadStruct = llvm::StructType::get(_context, elemTys);
+            auto sz = _module->getDataLayout().getTypeAllocSize(payloadStruct);
+            if (sz.getFixedValue() > maxPayload) maxPayload = sz.getFixedValue();
+        }
+    } catch (const RiuError& e) {
+        rethrowWithInstantiationContext(e);
+    }
+
+    vector<llvm::Type*> fields;
+    fields.push_back(_builder.getInt32Ty());
+    if (maxPayload > 0) {
+        fields.push_back(llvm::ArrayType::get(_builder.getInt8Ty(), maxPayload));
+    }
+    auto enumType = llvm::StructType::create(_context, fields, inst.mangledName);
+    _structTypes[inst.mangledName] = enumType;
+    _structTypes["$enum$" + inst.mangledName] = enumType;
+    DEBUG_LOG_VAL("Created generic enum instance", inst.mangledName << " payload=" << maxPayload);
+}
+
+// 问 generic 登记 enum 实例；缺 LLVM 类型再按 subst 发 layout，并按 subst 后 payload 发 dtor。
+string Compiler::genericEnum(EnumDeclNode* baseDecl, const vector<sp<TypeInfo>>& args, FileNode* ownerFile,
+                             int sourceLine) {
+    FileNode* instOwner = ownerFile ? ownerFile : _file;
+    vector<TypeInfo> owned;
+    owned.reserve(args.size());
+    for (auto& a : args)
+        owned.push_back(a ? withMangleOwners(*a, instOwner) : TypeInfo());
+
+    string mangledName = generic::enumInstanceName(baseDecl, owned, instOwner);
+    if (auto* existing = _generic.enums().find(mangledName)) {
+        emitGenericEnumLlvm(*existing);
+        return mangledName;
+    }
+
+    if (owned.size() != baseDecl->typeParams().size()) {
+        int errLine = sourceLine > 0 ? sourceLine : static_cast<int>(baseDecl->name().getLine());
+        if (errLine <= 0) errLine = 1;
+        throwSemaGap(errLine);
+    }
+
+    auto inst = generic::makeEnumInstance(baseDecl, std::move(owned), ownerFile, _file, mangledName, sourceLine);
+    emitGenericEnumLlvm(inst);
+    _generic.enums().insert(std::move(inst));
+    if (auto* stored = _generic.enums().find(mangledName)) {
+        emitGenericEnumDtor(*stored);
+    }
     return mangledName;
 }
 
@@ -477,6 +559,23 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
             string mangled = genericStruct(baseDecl, type.genericArgs, owner ? owner : _file);
             return _structTypes[mangled];
         }
+        {
+            FileNode* enumOwner = nullptr;
+            auto* enumDecl = names().lookupEnum(type, &enumOwner);
+            if (!enumOwner && _riu && !type.ownerModule.empty()) {
+                enumOwner = _riu->module(type.ownerModule);
+                if (enumOwner) enumDecl = enumOwner->localEnumDecl(type.name);
+            }
+            if (enumDecl && enumDecl->isGeneric()) {
+                if (type.genericArgs.size() != enumDecl->typeParams().size()) {
+                    int errLine = static_cast<int>(enumDecl->name().getLine());
+                    if (errLine <= 0) errLine = 1;
+                    throwSemaGap(errLine);
+                }
+                string mangled = genericEnum(enumDecl, type.genericArgs, enumOwner ? enumOwner : _file);
+                return _structTypes[mangled];
+            }
+        }
         // 从缓存查找
         string mangledKey = type.getMangleName();
         auto it = _structTypes.find(mangledKey);
@@ -598,6 +697,15 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
         }
         if (!enumDecl) enumDecl = names().lookupEnum(type, &enumOwner);
         if (enumDecl) {
+            if (enumDecl->isGeneric()) {
+                if (type.genericArgs.size() != enumDecl->typeParams().size()) {
+                    int errLine = static_cast<int>(enumDecl->name().getLine());
+                    if (errLine <= 0) errLine = 1;
+                    throwSemaGap(errLine);
+                }
+                string mangled = genericEnum(enumDecl, type.genericArgs, enumOwner ? enumOwner : _file);
+                return _structTypes[mangled];
+            }
             // 计算 max payload 字节数
             u64 maxPayload = 0;
             for (auto v : enumDecl->variants()) {

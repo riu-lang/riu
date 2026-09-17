@@ -3,6 +3,7 @@
 
 // 泛型单态化（`riu_generic`）。0 LLVM，不 include SemaPass 实现。
 // 2.6：实例表在 Registry；codegen 问已具体 Fn/Struct 再发 IR。Sema 复查仍自持表（instanceKey）。
+// 3.5：EnumInstance 同挂 Registry；LLVM 类型与 dtor 仍在 Compiler。
 
 #ifndef RIU_LANG_GENERIC_H
 #define RIU_LANG_GENERIC_H
@@ -11,6 +12,7 @@
 
 #include <deque>
 
+class EnumDeclNode;
 class FileNode;
 class FnNode;
 class StructDeclNode;
@@ -114,16 +116,62 @@ public:
 [[nodiscard]] string methodInstanceKey(FnNode* baseMethod, const string& structName, const vector<TypeInfo>& typeArgs,
                                        FileNode* ownerFile);
 
+struct EnumInstance {
+    EnumDeclNode* baseDecl = nullptr; // 泛型 enum 声明
+    FileNode* ownerFile = nullptr;    // 定义该 enum 的文件
+    vector<TypeInfo> args;            // 类型参数实例化实参
+    string mangledName;               // mangle 后的实例名（如 `mod.Box<i32>`）
+    string consumerModule;
+    bool dtorEmitted = false; // codegen 是否已发射该单态的 dtor
+    string sourceFile;
+    int sourceLine = 0;
+
+    [[nodiscard]] string ownerModule() const;
+    [[nodiscard]] TypeInfo typeInfo() const;
+    [[nodiscard]] map<string, TypeInfo> substMap() const;
+};
+
+// 从声明 + 实参填一份实例记录（不入表）。`ownerFile` 空则用 `currentFile`。
+[[nodiscard]] EnumInstance makeEnumInstance(EnumDeclNode* baseDecl, vector<TypeInfo> args, FileNode* ownerFile,
+                                            FileNode* currentFile, string mangledName, int sourceLine);
+
+// 泛型 enum 单态表：key = 定义模块全限定实例名（如 "mod.Box<i32>"）。
+class EnumTable {
+    map<string, EnumInstance> _instances;
+
+public:
+    [[nodiscard]] EnumInstance* find(const string& mangledName);
+    [[nodiscard]] const EnumInstance* find(const string& mangledName) const;
+    [[nodiscard]] bool contains(const string& mangledName) const { return _instances.contains(mangledName); }
+
+    EnumInstance& operator[](const string& mangledName) { return _instances[mangledName]; }
+
+    void insert(EnumInstance inst);
+
+    [[nodiscard]] size_t size() const { return _instances.size(); }
+
+    auto begin() { return _instances.begin(); }
+    auto end() { return _instances.end(); }
+    [[nodiscard]] auto begin() const { return _instances.begin(); }
+    [[nodiscard]] auto end() const { return _instances.end(); }
+};
+
+// 定义模块全限定 enum 实例名（如 `mod.Box<i32>`）。`args` 须已补 owner。
+[[nodiscard]] string enumInstanceName(EnumDeclNode* baseDecl, const vector<TypeInfo>& args, FileNode* ownerFile);
+
 // codegen 持有；登记 / 查询。LLVM 类型与函数 IR 仍在 Compiler。
 class Registry {
     StructTable _structs;
     FnTable _fns;
+    EnumTable _enums;
 
 public:
     [[nodiscard]] StructTable& structs() { return _structs; }
     [[nodiscard]] const StructTable& structs() const { return _structs; }
     [[nodiscard]] FnTable& fns() { return _fns; }
     [[nodiscard]] const FnTable& fns() const { return _fns; }
+    [[nodiscard]] EnumTable& enums() { return _enums; }
+    [[nodiscard]] const EnumTable& enums() const { return _enums; }
 
     // 已有则返回 key；否则登记。typeArgs 须已补 owner。arity 由调用方保证。
     string internFn(FnNode* baseFn, const vector<TypeInfo>& typeArgs, FileNode* ownerFile, FileNode* currentFile);

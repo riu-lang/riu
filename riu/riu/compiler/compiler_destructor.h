@@ -52,12 +52,16 @@
     llvm::Function* getOrCreateRcTypedReleaseFn(const TypeInfo& rcType);
     // Phase B-1: #NoCopy / move 辅助
     [[nodiscard]] bool isNoCopyType(const TypeInfo& type) const; // 查 struct decl 的 #NoCopy 注解
-    bool enumNeedsDestructor(const string& enumName);            // Phase 5: 任一 variant payload 需析构则枚举需析构
-    bool enumNeedsDestructor(const TypeInfo& type);              // 非 Normal 直接 false；identity 不走裸名重建
-    bool enumDeclNeedsDestructor(EnumDeclNode* decl);            // Phase 5: 同上，按声明节点
+    bool enumNeedsDestructor(const string& enumName); // Phase 5: 任一 variant payload 需析构则枚举需析构
+    bool enumNeedsDestructor(const TypeInfo& type);   // Generic 单态按 subst 后 payload；非 enum  false
+    bool enumDeclNeedsDestructor(EnumDeclNode* decl); // Phase 5: 非泛型声明原文；泛型模板不据此发射
+    bool enumInstNeedsDestructor(EnumDeclNode* decl, const TypeInfo& enumType); // 按该次实参 subst payload
+    llvm::Function* getEnumDestructorFunction(const TypeInfo& enumType);        // 非泛型短名 / 泛型实例 mangle
     llvm::Function* getEnumDestructorFunction(const string& enumName,
-                                              const string& ownerModuleHint = {}); // Phase 5: 获取或创建 enum dtor
-    void generateEnumDestructor(EnumDeclNode* decl, FileNode* owner); // Phase 5: 合成 __enum_drop_<E>(p*) 实现
-    void compileEnumDtors(); // Phase 5: 在主流水线中为本文件 enum 生成 dtor 定义
+                                              const string& ownerModuleHint = {}); // Phase 5: 非泛型短名
+    void generateEnumDestructor(EnumDeclNode* decl, FileNode* owner); // 非泛型：合成 __enum_drop_<E>(p*)
+    void generateEnumDestructor(const TypeInfo& enumType, EnumDeclNode* decl,
+                                FileNode* owner); // 按 enumType（含 genericArgs）合成 dtor
+    void compileEnumDtors();                      // 本文件非泛型 enum；泛型单态在 intern 时发
 // clang-format on
 #endif

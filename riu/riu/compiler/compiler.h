@@ -13,6 +13,7 @@
 #include <llvm/IR/Module.h>
 
 #include "ast/node/ast_visitor.h"
+#include "ast/node/enum_node.h"
 #include "ast/node/expr_node.h"
 #include "ast/node/file_node.h"
 #include "ast/node/fn_node.h"
@@ -95,12 +96,16 @@ class Compiler : public AstVisitor {
                                             const string& fallibleErrType = "") const;
     string genericStruct(StructDeclNode* baseDecl, const vector<sp<TypeInfo>>& args, FileNode* ownerFile,
                          int sourceLine = 0); // 问 generic 登记 struct，缺则发 LLVM layout
+    string genericEnum(EnumDeclNode* baseDecl, const vector<sp<TypeInfo>>& args, FileNode* ownerFile,
+                       int sourceLine = 0); // 问 generic 登记 enum，缺则发 LLVM layout
     string internGenericFn(FnNode* baseFn, const vector<TypeInfo>& typeArgs, FileNode* ownerFile,
                            int sourceLine); // 问 generic 登记 fn 实例
     string internGenericMethod(FnNode* baseMethod, const string& structName, const vector<TypeInfo>& typeArgs,
                                FileNode* ownerFile,
                                int sourceLine);                      // 问 generic 登记 method 实例
     void emitGenericStructLlvm(const generic::StructInstance& inst); // 按 subst 发 LLVM struct 类型
+    void emitGenericEnumLlvm(const generic::EnumInstance& inst);     // 按 subst 发 LLVM enum 类型
+    void emitGenericEnumDtor(generic::EnumInstance& inst);           // 该单态若需析构则合成 dtor
     void emitInstanceMethods();                                      // 生成所有泛型结构体实例的方法
     void emitFnInstances();                                          // 生成所有泛型函数实例
 

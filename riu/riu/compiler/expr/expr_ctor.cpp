@@ -406,7 +406,7 @@ llvm::Value* Compiler::compileEnumCtorExpr(ExprPathCallNode* node) {
     }
 
     FileNode* owner = nullptr;
-    TypeInfo enumTy = node->getType();
+    TypeInfo enumTy = applySubst(node->getType());
     auto enumDecl = names().lookupEnum(enumTy, &owner);
     auto variant = enumDecl->variant(variantName);
 
@@ -433,7 +433,7 @@ llvm::Value* Compiler::compileEnumCtorExpr(ExprPathCallNode* node) {
         vector<llvm::Type*> elemTys;
         elemTys.reserve(declArity);
         for (auto t : variant->payloadTypes()) {
-            auto ll = getLLVMType(t->getType());
+            auto ll = getLLVMType(substEnumPayload(enumDecl, enumTy, t));
             if (!ll) {
                 throwSemaGap(line, col);
             }

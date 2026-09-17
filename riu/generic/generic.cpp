@@ -4,6 +4,7 @@
 #include "generic.h"
 
 #include "ast/name_lookup.h"
+#include "ast/node/enum_node.h"
 #include "ast/node/file_node.h"
 #include "ast/node/fn_node.h"
 #include "ast/node/struct_node.h"
@@ -70,6 +71,73 @@ const generic::StructInstance* generic::StructTable::find(const string& mangledN
 void generic::StructTable::insert(StructInstance inst) {
     string key = inst.mangledName;
     _instances.emplace(std::move(key), std::move(inst));
+}
+
+string generic::EnumInstance::ownerModule() const {
+    if (ownerFile) return ownerFile->moduleName();
+    return consumerModule;
+}
+
+TypeInfo generic::EnumInstance::typeInfo() const {
+    if (!baseDecl) return {};
+    vector<sp<TypeInfo>> spArgs;
+    spArgs.reserve(args.size());
+    for (const auto& a : args) {
+        spArgs.push_back(std::make_shared<TypeInfo>(a));
+    }
+    TypeInfo t{baseDecl->name().getText(), std::move(spArgs)};
+    if (ownerFile) t.ownerModule = ownerFile->moduleName();
+    return t;
+}
+
+map<string, TypeInfo> generic::EnumInstance::substMap() const {
+    map<string, TypeInfo> subst;
+    if (!baseDecl) return subst;
+    const auto& tparams = baseDecl->typeParams();
+    for (size_t i = 0; i < tparams.size() && i < args.size(); ++i) {
+        subst[tparams[i]] = args[i];
+    }
+    return subst;
+}
+
+generic::EnumInstance generic::makeEnumInstance(EnumDeclNode* baseDecl, vector<TypeInfo> args, FileNode* ownerFile,
+                                                FileNode* currentFile, string mangledName, int sourceLine) {
+    EnumInstance inst;
+    inst.baseDecl = baseDecl;
+    inst.ownerFile = ownerFile ? ownerFile : currentFile;
+    inst.mangledName = std::move(mangledName);
+    inst.args = std::move(args);
+    inst.sourceFile = currentFile ? currentFile->moduleName() : "";
+    inst.sourceLine = sourceLine;
+    inst.consumerModule =
+        inst.ownerFile ? inst.ownerFile->moduleName() : (currentFile ? currentFile->moduleName() : "");
+    return inst;
+}
+
+generic::EnumInstance* generic::EnumTable::find(const string& mangledName) {
+    auto it = _instances.find(mangledName);
+    return it == _instances.end() ? nullptr : &it->second;
+}
+
+const generic::EnumInstance* generic::EnumTable::find(const string& mangledName) const {
+    auto it = _instances.find(mangledName);
+    return it == _instances.end() ? nullptr : &it->second;
+}
+
+void generic::EnumTable::insert(EnumInstance inst) {
+    string key = inst.mangledName;
+    _instances.emplace(std::move(key), std::move(inst));
+}
+
+string generic::enumInstanceName(EnumDeclNode* baseDecl, const vector<TypeInfo>& args, FileNode* ownerFile) {
+    vector<sp<TypeInfo>> spArgs;
+    spArgs.reserve(args.size());
+    for (const auto& a : args) {
+        spArgs.push_back(std::make_shared<TypeInfo>(a));
+    }
+    TypeInfo t{baseDecl->name().getText(), std::move(spArgs)};
+    if (ownerFile) t.ownerModule = ownerFile->moduleName();
+    return t.getMangleName();
 }
 
 string generic::FnInstance::ownerModule() const {

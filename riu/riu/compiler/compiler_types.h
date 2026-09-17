@@ -64,5 +64,8 @@
     // 当 target 解析为 tuple 且 expr 为 tuple 字面量时，逐元素递归推断；
     // 否则委托给 AST 层的 tryInferIntType。
     void inferFlexibleInts(ExprNode* expr, const TypeInfo& target);
+
+    // 泛型 enum 单态：payload 按 enumType.genericArgs subst；非泛型原样。再套 applySubst。
+    [[nodiscard]] TypeInfo substEnumPayload(EnumDeclNode* decl, const TypeInfo& enumType, TypeNode* payload) const;
 // clang-format on
 #endif

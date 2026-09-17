@@ -1,0 +1,37 @@
+use riu.core.*
+
+; 3.5: 每单态一份 LLVM 类型；拷贝 / 析构 tag dispatch 走 subst 后 payload。
+enum Box<T> {
+  V(T)
+}
+
+enum Opt<T> {
+  None
+  Some(T)
+}
+
+fn unwrap_i32(x Box<i32>) i32 {
+  ret match x {
+    Box::V(v) => v
+  }
+}
+
+fn unwrap_str(x Box<String>) String {
+  ret match x {
+    Box::V(v) => v
+  }
+}
+
+fn take_opt(x Opt<i32>) i32 {
+  ret match x {
+    Opt::None => 0
+    Opt::Some(v) => v
+  }
+}
+
+fn main() {
+  println(unwrap_i32(Box:<i32>::V(41)))
+  println(unwrap_str(Box:<String>::V("ok")))
+  println(take_opt(Opt:<i32>::None))
+  println(take_opt(Opt:<i32>::Some(2)))
+}
