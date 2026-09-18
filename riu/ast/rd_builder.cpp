@@ -3,7 +3,6 @@
 
 #include "rd_builder.h"
 
-#include "ast_builder.h"
 #include "ast_builder_helpers.h"
 #include "node/alias_node.h"
 #include "node/enum_node.h"

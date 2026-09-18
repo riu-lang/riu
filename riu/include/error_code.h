@@ -8,7 +8,7 @@
 // 其中 message 是 std::vformat 兼容的模板（{} 占位）。
 //
 // 分段：
-//   E1xxx  词法（Phase 3 ANTLR Listener 接管，预留）
+//   E1xxx  词法 / 文法（rd Scanner / Parser）
 //   E2xxx  语法 / AST 结构
 //   E3xxx  类型
 //   E4xxx  所有权 / 借用
@@ -86,7 +86,7 @@ inline const DiagSeverity* lookupDefaultSeverity(const std::string& code) {
 // ── 占位 ──────────────────────────────────────────────────────────────
 DEF_ERR(0000, "")
 
-// ── E1xxx 词法 / 文法（ANTLR SyntaxErrorListener / rd Scanner·Parser） ─
+// ── E1xxx 词法 / 文法（rd Scanner / Parser） ─
 DEF_ERR(1001, "lexer error: {}")
 DEF_ERR(1002, "syntax error: {}")
 

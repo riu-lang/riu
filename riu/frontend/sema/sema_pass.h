@@ -22,7 +22,7 @@ class Riu;
 
 // SemaPass —— Sema/Codegen 拆分骨架（Phase 3.1）
 //
-// 原设计的流水线 `file → antlr → AST → 语义检查 → llvm → ok` 中"语义检查"
+// 原设计的流水线 `file → parse → AST → 语义检查 → llvm → ok` 中"语义检查"
 // 这一段早期为赶通混在了 `Compiler` 里。SemaPass 是把它再抠出来的入口：
 // 不依赖 LLVM、只看 AST、产出 `resolvedType` / `resolvedSymbol` 等标注。
 //

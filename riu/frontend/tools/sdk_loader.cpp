@@ -13,14 +13,10 @@
 
 #include <array>
 
-#include "ast/ast_builder.h"
 #include "ast/mod_decl.h"
 #include "ast/node/file_node.h"
 #include "ast/node/node.h"
 #include "ast/riu.h"
-#include "riu/riuLexer.h"
-#include "riu/riuParser.h"
-#include "tools/syntax_error_listener.h"
 
 #include <algorithm>
 #include <filesystem>

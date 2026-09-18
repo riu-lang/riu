@@ -5,11 +5,10 @@
 //
 // 实现放在 analyzer 而不是 ast/riu.cpp，避免 riu_ast 编译期 include analyzer/。
 // 构造/析构也在本文件：unique_ptr<SpecRegistry/SpecImplChecker> 的构造期
-// unwind 与析构都需要完整类型；FileNode / ASTBuilder 所有权逻辑不变。
+// unwind 与析构都需要完整类型；FileNode / RdBuilder 所有权逻辑不变。
 
 #include "ast/riu.h"
 
-#include "ast/ast_builder.h"
 #include "ast/mod_decl.h"
 #include "ast/rd_builder.h"
 #include "spec_impl_checker.h"
@@ -18,7 +17,6 @@
 Riu::Riu() : _sdkFile(nullptr) {}
 
 Riu::~Riu() {
-    _moduleBuilders.clear();
     _rdBuilders.clear();
     _declOwners.clear();
     for (auto file : _files) {

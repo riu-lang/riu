@@ -11,7 +11,7 @@ namespace rd {
 namespace {
 
 constexpr std::array kKindNames{
-#define RD_KIND_NAME(_name, antlrName) std::string_view{antlrName},
+#define RD_KIND_NAME(_name, dumpName) std::string_view{dumpName},
     RD_KIND_LIST(RD_KIND_NAME)
 #undef RD_KIND_NAME
 };
@@ -72,13 +72,6 @@ std::string_view kindName(Kind k) {
     const auto i = static_cast<std::size_t>(k);
     if (i >= kKindNames.size()) return "INVALID";
     return kKindNames[i];
-}
-
-Kind kindFromAntlrName(std::string_view name) {
-    for (std::size_t i = 0; i < kKindNames.size(); ++i) {
-        if (kKindNames[i] == name) return static_cast<Kind>(i);
-    }
-    return Kind::Invalid;
 }
 
 Kind keywordKind(std::string_view ident) {

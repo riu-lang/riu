@@ -1,67 +1,30 @@
 // Copyright (c) 2026. Yin-Jinlong@github
 // MPL-2.0
 
-// ast_builder 拆分文件共享的注解 / 注解校验辅助。
+// RdBuilder 共享的注解白名单 / 头部校验 / 表达式辅助。
 //
-// 来源：原 ast_builder.cpp 顶部匿名命名空间块（P1 Phase 2 拆分前）。
 // 每个 .cpp 单独包含本头会各得到一份 anonymous-namespace 副本，
 // 等价于原来「同一个 .cpp 内 file-local static」，不破坏链接。
 //
 // 内容：
 //   - knownAnnos / argAnnos / nonFnAllowedAnnos / externFnAllowedAnnos —— 注解白名单
-//   - AnnoList 容器 + checkAnnoArity / collectAnnos* —— 注解收集 / 形态校验
-//   - LetAnnoFlags + readLetAnnos —— let 注解三档（Mut/Frozen/Cval）
-//   - checkNoReturnHeader —— #NoReturn 头部级校验（E7012 / E7013）
+//   - checkNoReturnHeader / checkFallibleRetMismatch —— fn 头部校验
+//   - peelFallibleRetType —— `T ! E` 拆回 base + err
+//   - exprContainsTryCatch —— 全局 init 禁 try/catch（E3155）
 
 #ifndef RIU_LANG_AST_BUILDER_HELPERS_H
 #define RIU_LANG_AST_BUILDER_HELPERS_H
 
+#include "node/expr_node.h"
 #include "node/fn_node.h"
+#include "node/statement_node.h"
 #include "node/type_node.h"
-#include "riu/riuParser.h"
 #include "types.h"
 
-#include "misc/Interval.h"
+#include <set>
+#include <utility>
 
 namespace {
-
-// 含隐藏通道空白的源片段（ctx->getText() 会把 `let x i32` 拼成 `letxi32`）
-inline string ctxSource(antlr4::ParserRuleContext* ctx) {
-    if (!ctx || !ctx->getStart() || !ctx->getStop()) return {};
-    auto* input = ctx->getStart()->getInputStream();
-    if (!input) return ctx->getText();
-    return input->getText(antlr4::misc::Interval(ctx->getStart()->getStartIndex(), ctx->getStop()->getStopIndex()));
-}
-
-inline TypePath typePathFromCtx(riu::riuParser::TypePathContext* ctx) {
-    TypePath p;
-    if (!ctx) return p;
-    p.segs.reserve(ctx->segs.size());
-    for (auto* id : ctx->segs)
-        p.segs.emplace_back(id);
-    return p;
-}
-
-inline string typeNormalLastName(riu::riuParser::TypeNormalContext* tn) {
-    return typePathFromCtx(tn ? tn->typePath() : nullptr).lastName();
-}
-
-inline string typeGenericLastName(riu::riuParser::TypeGenericContext* tg) {
-    return typePathFromCtx(tg ? tg->typePath() : nullptr).lastName();
-}
-
-// 声明头 `<T>` 必须是裸名；`fn f<T&>` / `struct Foo<i32&>` 报 E4037。
-inline string requireBareTypeParamName(riu::riuParser::TypeContext* t) {
-    auto* start = (t && t->getStart()) ? t->getStart() : nullptr;
-    int line = start ? static_cast<int>(start->getLine()) : 1;
-    int col = start ? static_cast<int>(start->getCharPositionInLine()) + 1 : 1;
-    auto* tn = dynamic_cast<riu::riuParser::TypeNormalContext*>(t);
-    if (!tn || tn->SymbolAnd()) {
-        throw RiuError(line, col, ErrorCode::E4037, std::string("type parameter"))
-            .withHint("声明头写 `<T>`，借用写在形参上：`fn f<T>(x T&)`");
-    }
-    return typeNormalLastName(tn);
-}
 
 // 已知的构建注解名字白名单；未知注解在 AST 构建期报错
 // #NoReturn 由 DRAFT-错误.md 引入（spec §11.5.1）：
@@ -90,137 +53,11 @@ inline const set<string>& nonFnAllowedAnnos() {
     return s;
 }
 
-// 注解名 + 单参槽位（与 _annoArgs 对齐）。无参注解的 args[i] 为空字符串。
-struct AnnoList {
-    vector<string> names;
-    vector<string> args;
-};
-
-// 从 BuildAnnoContext 取注解参数文本（§11.1.1.1 扩展：ID / 数字 / 字符串 / type）
-template <typename A>
-inline string getBuildAnnoArgText(A* ctx) {
-    if (auto* aa = ctx->annoArg()) {
-        if (aa->arg) {
-            string t = aa->arg->getText();
-            if (auto* gd = aa->genericDef()) t += gd->getText();
-            return t;
-        }
-        if (aa->argNum) return aa->argNum->getText(); // INT / FLOAT
-        if (aa->argStr) return aa->argStr->getText(); // STR_LINE_RAW (r"...")
-        if (aa->argTPL) {                             // "text"
-            string t;
-            for (auto* tn : aa->argText)
-                t += tn->getText();
-            return t;
-        }
-        if (aa->argType) return aa->argType->getText(); // type
-    }
-    return "";
-}
-
-// 校验单参 / 零参形态：argAnnos() 中的注解必须带括号参数，否则缺参；其他注解出现括号参数视为多余。
-// hasArg 基于括号是否存在（ParStart != nullptr），空字符串 "" 也是合法参数值。
-template <typename A>
-static void checkAnnoArity(A* a, const string& name, bool hasArg) {
-    bool needArg = argAnnos().contains(name);
-    if (needArg && !hasArg) {
-        throw RiuError(static_cast<int>(a->name->getLine()), static_cast<int>(a->name->getCharPositionInLine()) + 1,
-                       ErrorCode::E2005, name);
-    }
-    if (!needArg && hasArg) {
-        throw RiuError(static_cast<int>(a->name->getLine()), static_cast<int>(a->name->getCharPositionInLine()) + 1,
-                       ErrorCode::E2005, name);
-    }
-}
-
-template <typename AnnoVec>
-AnnoList collectAnnos(const AnnoVec& annos) {
-    AnnoList out;
-    for (auto* a : annos) {
-        string name = a->name->getText();
-        if (name == "Fallible") {
-            throw RiuError(static_cast<int>(a->name->getLine()), static_cast<int>(a->name->getCharPositionInLine()) + 1,
-                           ErrorCode::E2005, name)
-                .withHint("removed; declare failure with `T ! E` in the function signature instead");
-        }
-        if (!knownAnnos().contains(name)) {
-            throw RiuError(static_cast<int>(a->name->getLine()), static_cast<int>(a->name->getCharPositionInLine()) + 1,
-                           ErrorCode::E2005, name);
-        }
-        // §12.4.1.1：DraftLike 只能标在 draft 声明；其它位置（fn / struct / impl / extern / global）报 E1110
-        if (name == "DraftLike") {
-            throw RiuError(static_cast<int>(a->name->getLine()), static_cast<int>(a->name->getCharPositionInLine()) + 1,
-                           ErrorCode::E1110);
-        }
-        string arg = getBuildAnnoArgText(a);
-        checkAnnoArity(a, name, a->ParStart() != nullptr);
-        out.names.push_back(std::move(name));
-        out.args.push_back(std::move(arg));
-    }
-    return out;
-}
-
-// 仅 visitSpecDecl 使用：白名单同 collectAnnos，但保留 DraftLike
-template <typename AnnoVec>
-AnnoList collectAnnosForSpec(const AnnoVec& annos) {
-    AnnoList out;
-    for (auto* a : annos) {
-        string name = a->name->getText();
-        if (name == "Fallible") {
-            throw RiuError(static_cast<int>(a->name->getLine()), static_cast<int>(a->name->getCharPositionInLine()) + 1,
-                           ErrorCode::E2005, name)
-                .withHint("removed; declare failure with `T ! E` in the function signature instead");
-        }
-        if (!knownAnnos().contains(name)) {
-            throw RiuError(static_cast<int>(a->name->getLine()), static_cast<int>(a->name->getCharPositionInLine()) + 1,
-                           ErrorCode::E2005, name);
-        }
-        // draft 声明上 #Test 不合法（§11.3.1.2）
-        if (name == "Test") {
-            throw RiuError(static_cast<int>(a->name->getLine()), static_cast<int>(a->name->getCharPositionInLine()) + 1,
-                           ErrorCode::E2011, name);
-        }
-        string arg = getBuildAnnoArgText(a);
-        checkAnnoArity(a, name, a->ParStart() != nullptr);
-        out.names.push_back(std::move(name));
-        out.args.push_back(std::move(arg));
-    }
-    return out;
-}
-
-// 用于非 fn 位置（struct / extern / globalConst）：进一步收紧到 fn-only 注解清单
-template <typename AnnoVec>
-AnnoList collectAnnosNonFn(const AnnoVec& annos) {
-    AnnoList out = collectAnnos(annos);
-    for (size_t i = 0; i < out.names.size(); ++i) {
-        if (!nonFnAllowedAnnos().contains(out.names[i])) {
-            // 取对应的 token 用于行列号
-            auto* a = annos[i];
-            throw RiuError(static_cast<int>(a->name->getLine()), static_cast<int>(a->name->getCharPositionInLine()) + 1,
-                           ErrorCode::E2011, out.names[i]);
-        }
-    }
-    return out;
-}
-
 // 用于 extern 块内 fnHeader：允许 `Builtin` 与 `#NoReturn`（DRAFT-错误.md §8.3）。
 // 可失败签名 `T ! E` 在 extern 上仍被推迟（[#7]），不在白名单。
 inline const set<string>& externFnAllowedAnnos() {
     static const set<string> s = {"Builtin", "NoReturn", "CName"};
     return s;
-}
-
-template <typename AnnoVec>
-AnnoList collectAnnosExternFn(const AnnoVec& annos) {
-    AnnoList out = collectAnnos(annos);
-    for (size_t i = 0; i < out.names.size(); ++i) {
-        if (!externFnAllowedAnnos().contains(out.names[i])) {
-            auto* a = annos[i];
-            throw RiuError(static_cast<int>(a->name->getLine()), static_cast<int>(a->name->getCharPositionInLine()) + 1,
-                           ErrorCode::E2011, out.names[i]);
-        }
-    }
-    return out;
 }
 
 // Phase 10d-1：`#NoReturn` 头部级语义校验（E7012 / E7013）
@@ -253,7 +90,7 @@ inline std::pair<TypeNode*, TypeNode*> peelFallibleRetType(TypeNode* retType) {
     if (!retType) return {nullptr, nullptr};
     if (auto* f = dynamic_cast<TypeFallibleNode*>(retType)) {
         TypeNode* base = f->baseType();
-        // `! E` / `() ! E`：unit 不是成功通道类型，与 g4 `SymbolExcl errType` 对齐。
+        // `! E` / `() ! E`：unit 不是成功通道类型。
         if (auto* tup = dynamic_cast<TypeTupleNode*>(base)) {
             if (tup->elementTypes().empty()) base = nullptr;
         }
@@ -262,46 +99,104 @@ inline std::pair<TypeNode*, TypeNode*> peelFallibleRetType(TypeNode* retType) {
     return {retType, nullptr};
 }
 
-// DRAFT-let-unify §3.4：`let` 注解只允许 #Mut / #Frozen / #Cval / #Inline，互斥；其他报 E3112。
-// #Inline 仅与 #Cval 组合使用（相当于 C #define），不与 #Mut / #Frozen 共存。
-struct LetAnnoFlags {
-    bool isMut = false;
-    bool isFrozen = false;
-    bool isCval = false;
-    bool isInline = false;
-};
+inline bool exprContainsTryCatch(ExprNode* expr) {
+    if (!expr) return false;
 
-template <typename AnnoVec>
-static LetAnnoFlags readLetAnnos(const AnnoVec& annos) {
-    LetAnnoFlags r;
-    for (auto* a : annos) {
-        const string name = a->name->getText();
-        auto* tk = a->name;
-        int line = static_cast<int>(tk->getLine());
-        int col = static_cast<int>(tk->getCharPositionInLine()) + 1;
-        if (name == "Mut") {
-            if (r.isFrozen) throw RiuError(line, col, ErrorCode::E3115, "Frozen", "Mut");
-            if (r.isCval) throw RiuError(line, col, ErrorCode::E3115, "Cval", "Mut");
-            if (r.isInline) throw RiuError(line, col, ErrorCode::E3115, "Inline", "Mut");
-            r.isMut = true;
-        } else if (name == "Frozen") {
-            if (r.isMut) throw RiuError(line, col, ErrorCode::E3115, "Mut", "Frozen");
-            if (r.isCval) throw RiuError(line, col, ErrorCode::E3115, "Cval", "Frozen");
-            if (r.isInline) throw RiuError(line, col, ErrorCode::E3115, "Inline", "Frozen");
-            r.isFrozen = true;
-        } else if (name == "Cval") {
-            if (r.isMut) throw RiuError(line, col, ErrorCode::E3115, "Mut", "Cval");
-            if (r.isFrozen) throw RiuError(line, col, ErrorCode::E3115, "Frozen", "Cval");
-            r.isCval = true;
-        } else if (name == "Inline") {
-            if (r.isMut) throw RiuError(line, col, ErrorCode::E3115, "Mut", "Inline");
-            if (r.isFrozen) throw RiuError(line, col, ErrorCode::E3115, "Frozen", "Inline");
-            r.isInline = true;
-        } else {
-            throw RiuError(line, col, ErrorCode::E3112, name);
-        }
+    if (dynamic_cast<ExprTryCatchNode*>(expr)) return true;
+
+    if (auto* bin = dynamic_cast<ExprBinOpNode*>(expr)) {
+        return exprContainsTryCatch(bin->left()) || exprContainsTryCatch(bin->right());
     }
-    return r;
+
+    if (auto* ne = dynamic_cast<ExprNullElseNode*>(expr)) {
+        return exprContainsTryCatch(ne->left()) || exprContainsTryCatch(ne->right());
+    }
+
+    if (auto* un = dynamic_cast<ExprUnaryNode*>(expr)) {
+        return exprContainsTryCatch(un->right());
+    }
+
+    if (auto* call = dynamic_cast<ExprCallNode*>(expr)) {
+        if (exprContainsTryCatch(call->getCalleeExpr())) return true;
+        for (auto& a : call->getArgs()) {
+            if (exprContainsTryCatch(a)) return true;
+        }
+        return false;
+    }
+
+    if (auto* dot = dynamic_cast<ExprDotNode*>(expr)) {
+        return exprContainsTryCatch(dot->baseExpr());
+    }
+
+    if (auto* ol = dynamic_cast<ExprOneLineIfElseNode*>(expr)) {
+        if (exprContainsTryCatch(ol->condition())) return true;
+        if (exprContainsTryCatch(ol->trueValue())) return true;
+        if (exprContainsTryCatch(ol->falseValue())) return true;
+        return false;
+    }
+
+    if (auto* paren = dynamic_cast<ExprParenNode*>(expr)) {
+        return exprContainsTryCatch(paren->expr());
+    }
+
+    if (auto* arr = dynamic_cast<ExprArrayNode*>(expr)) {
+        for (auto& e : arr->elements()) {
+            if (exprContainsTryCatch(e)) return true;
+        }
+        return false;
+    }
+
+    if (auto* m = dynamic_cast<ExprMatchNode*>(expr)) {
+        if (exprContainsTryCatch(m->scrutinee())) return true;
+        for (auto& arm : m->arms()) {
+            if (arm->hasBlock()) {
+                auto* blk = arm->block();
+                if (blk->hasResult() && exprContainsTryCatch(blk->resultExpr())) return true;
+                for (auto& s : blk->statements()) {
+                    if (auto se = dynamic_cast<StatementExprNode*>(s)) {
+                        if (exprContainsTryCatch(se->expr())) return true;
+                    }
+                }
+            } else if (exprContainsTryCatch(arm->body())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    if (auto* sl = dynamic_cast<ExprStructLitNode*>(expr)) {
+        if (sl->positional() && exprContainsTryCatch(sl->positional())) return true;
+        for (auto& fi : sl->fields()) {
+            if (exprContainsTryCatch(fi->value())) return true;
+        }
+        return false;
+    }
+    if (auto* dynCtor = dynamic_cast<ExprDynCtorNode*>(expr)) {
+        return exprContainsTryCatch(dynCtor->arg());
+    }
+    if (auto* pc = dynamic_cast<ExprPathCallNode*>(expr)) {
+        for (auto& a : pc->args()) {
+            if (exprContainsTryCatch(a)) return true;
+        }
+        return false;
+    }
+
+    if (auto* g = dynamic_cast<ExprGetNode*>(expr)) {
+        if (exprContainsTryCatch(g->arrayExpr())) return true;
+        for (auto& idx : g->indices()) {
+            if (exprContainsTryCatch(idx)) return true;
+        }
+        return false;
+    }
+
+    if (auto* tup = dynamic_cast<ExprTupleNode*>(expr)) {
+        for (auto& e : tup->elements()) {
+            if (exprContainsTryCatch(e)) return true;
+        }
+        return false;
+    }
+
+    return false;
 }
 
 } // namespace

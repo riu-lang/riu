@@ -1,2 +1,0 @@
-# ANTLR4 generated code — disable all checks except one harmless check to avoid "no checks enabled" error.
-Checks: '-*,bugprone-integer-division'

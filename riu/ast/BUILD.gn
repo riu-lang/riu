@@ -5,7 +5,6 @@ config("riu_ast_public") {
   include_dirs = [
     "//riu",
     "//riu/include",
-    "//riu/ast/gen",
     "//third_party/toml11/single_include",
     "//third_party/utfcpp/source",
   ]
@@ -13,24 +12,14 @@ config("riu_ast_public") {
 
 static_library("riu_ast") {
   public_configs = [ ":riu_ast_public" ]
-  public_deps = [ "//build/third_party:antlr4_static" ]
 
   sources = [
-    "ast_builder.cpp",
-    "ast_builder_decl.cpp",
-    "ast_builder_struct.cpp",
-    "ast_builder_fn.cpp",
-    "ast_builder_stmt.cpp",
-    "ast_builder_expr.cpp",
-    "ast_builder_type.cpp",
     "diagnostic.cpp",
     "mangler.cpp",
     "mod_decl.cpp",
     "name_lookup.cpp",
-    "parse_program.cpp",
     "riu.cpp",
     "syntax_diag.cpp",
-    "syntax_error_listener.cpp",
     "type_path.cpp",
     "rd/dump.cpp",
     "rd/flat.cpp",
@@ -52,10 +41,6 @@ static_library("riu_ast") {
     "node/statement_node.cpp",
     "node/struct_node.cpp",
     "node/type_node.cpp",
-    "gen/riu/riuLexer.cpp",
-    "gen/riu/riuParser.cpp",
-    "gen/riu/riuParserBaseVisitor.cpp",
-    "gen/riu/riuParserVisitor.cpp",
   ]
 }
 

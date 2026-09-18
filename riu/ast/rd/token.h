@@ -15,7 +15,7 @@ namespace rd {
 
 using i32 = std::int32_t;
 
-// g4 词法规则名 → Kind。第二列是 ANTLR vocabulary 的 symbolic name（EOF / INVALID 例外）。
+// 词法规则名 → Kind。第二列是 dump 用的 symbolic name（EOF / INVALID 例外）。
 #define RD_KIND_LIST(X)                                                                                                \
     X(Invalid, "INVALID")                                                                                              \
     X(Eof, "EOF")                                                                                                      \
@@ -105,7 +105,7 @@ using i32 = std::int32_t;
     X(STR_TPL_TEXT, "STR_TPL_TEXT")
 
 enum class Kind : std::uint8_t {
-#define RD_KIND_ENUM(name, antlrName) name,
+#define RD_KIND_ENUM(name, dumpName) name,
     RD_KIND_LIST(RD_KIND_ENUM)
 #undef RD_KIND_ENUM
 };
@@ -137,7 +137,6 @@ struct ParseError {
 };
 
 [[nodiscard]] std::string_view kindName(Kind k);
-[[nodiscard]] Kind kindFromAntlrName(std::string_view name);
 
 // 精确匹配 g4 关键字；非关键字返回 Invalid。
 [[nodiscard]] Kind keywordKind(std::string_view ident);

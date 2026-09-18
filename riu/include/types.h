@@ -3,7 +3,6 @@
 
 #pragma once
 
-#include "antlr4-runtime.h"
 #include "error_code.h"
 #include <algorithm>
 #include <cassert>
@@ -15,6 +14,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -71,23 +71,11 @@ class TokenInfo {
 public:
     TokenInfo() = default;
 
-    TokenInfo(antlr4::Token* token) {
-        if (token) {
-            _text = token->getText();
-            _line = token->getLine();
-            _charPositionInLine = token->getCharPositionInLine();
-            _tokenIndex = token->getTokenIndex();
-            _startIndex = token->getStartIndex();
-            _stopIndex = token->getStopIndex();
-        }
-    }
-
-    // 合成 Token：用于编译器解糖时构造没有真实 antlr token 的节点
-    // 例如 T? -> Nullable<T> 时，"Nullable" 这个名字没有源文件来源
+    // 合成 Token：解糖时没有源 token 的节点（如 T? → Nullable<T> 的 "Nullable"）
     TokenInfo(string text, size_t line) : _text(std::move(text)), _line(line) {}
 
     // 从 rd::Pos 填行列与字节区间。charPositionInLine 0-based；start/stop 为 UTF-8 字节，
-    // stop 与 ANTLR 一样是闭区间（半开 end-1）。
+    // stop 是闭区间（半开 end-1）。
     TokenInfo(string text, size_t line, size_t charPositionInLine, size_t tokenIndex, size_t startIndex,
               size_t stopIndex)
         : _text(std::move(text)), _line(line), _charPositionInLine(charPositionInLine), _tokenIndex(tokenIndex),
@@ -290,16 +278,6 @@ public:
     RiuError& operator=(RiuError&&) noexcept = default;
     // NOLINTEND(bugprone-exception-escape)
 };
-
-template <typename T>
-T* any_cast_p(const std::any& a) {
-    return std::any_cast<T*>(a);
-}
-
-template <typename T>
-T any_cast_v(const std::any& a) {
-    return std::any_cast<T>(a);
-}
 
 enum class TypeKind : u8 {
     Normal,       // 普通具名类型（内置标量 / 用户 struct 名 / Self）

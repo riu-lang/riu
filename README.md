@@ -4,7 +4,7 @@
 
 ## 项目简介
 
-riu（发音通 U，非英语）是一门自举的编程语言，使用 ANTLR4 解析语法，LLVM 作为编译后端。编译器将 `.ut`（U Text）源文件编译为可执行文件；模块声明缓存为 `.ud`。
+riu（发音通 U，非英语）是一门自举的编程语言，手写词法/语法分析，LLVM 作为编译后端。编译器将 `.ut`（U Text）源文件编译为可执行文件；模块声明缓存为 `.ud`。
 
 ### 语言特性
 
@@ -51,7 +51,6 @@ fn main() {
 | 依赖 | 说明 |
 |------|------|
 | LLVM | 编译器后端基础设施 |
-| ANTLR4 | 语法解析器生成器 |
 | utfcpp | UTF-8 编码处理 |
 | zlib | 压缩库 |
 
@@ -69,7 +68,6 @@ git submodule update --init scripts/ps-sync-deps
 |------|------|
 | `./sync-deps.ps1` | 按 `DEPS.json` 同步 `third_party/` 与 `bin/`（调用 `scripts/ps-sync-deps`） |
 | `./build.ps1` | GN + Ninja 构建入口 |
-| `./gen-antlr.ps1` | 从 `riu/ast/riu*.g4` 生成 C++ 解析器到 `riu/ast/gen/riu/` |
 | `./count-lines.ps1` | `cloc` 统计（可选 commit，默认 HEAD） |
 | `./lint.ps1` | clang-tidy（默认 git 变动文件；`--all` / 路径参数） |
 | `./format.ps1` | clang-format（默认 git 变动；`--all` / `--check` / 路径参数） |
@@ -83,16 +81,6 @@ git submodule update --init scripts/ps-sync-deps
 ```
 
 若 `llvm` 源码 commit 有变，下次 `./build.ps1 riu`（或 `./build.ps1 llvm`）会按 stamp 自动重新 gn gen 并编译 LLVM（首次/升级可能很久）。
-
-### 生成解析器代码
-
-修改 `riu/ast/riu*.g4` 后：
-
-```powershell
-./gen-antlr.ps1
-```
-
-需要先有 `bin/antlr-4.13.2-complete.jar`（由 `sync-deps` 下载）。
 
 ### 代码统计
 
@@ -124,7 +112,7 @@ git submodule update --init scripts/ps-sync-deps
 
 # 可选：附属工具
 ./build.ps1 riu-lsp     # LSP 服务器（编辑器插件用）
-./build.ps1 riu-ast     # 仅 ANTLR parse tree 转储工具
+./build.ps1 riu-ast     # 词法 / FlatAst 转储工具
 ./build.ps1             # 全部默认目标
 ```
 
@@ -168,7 +156,7 @@ entry="main.ut"
 
 | 命令 | 说明 |
 |------|------|
-| `riu-ast <input.ut> [-o <file>] [--oneline]` | 转储 ANTLR parse tree；仅词法 + 语法，遇到语法错也输出含 `<error>` 节点的树 |
+| `riu-ast <input.ut> [-o <file>] [--rd] [--rd-tokens]` | 转储 rd FlatAst（默认）或词法 token；仅词法 + 语法 |
 | `riu-lsp` | 独立 LSP 服务器二进制 |
 
 ## 编辑器支持
@@ -206,7 +194,7 @@ riu test --verbose          # 打印每个测试 stdout/stderr
 riu test --test-mod riu.core.array  # 只测指定模块
 ```
 
-语法以 `riu/ast/riu*.g4` 和 [文档](docs/index.md) 为准，用例需符合这两者。
+语法以 `riu/ast/riu*.g4`、手写 parser 和 [文档](docs/index.md) 为准，用例需符合这三者。
 
 测试逻辑：`./build.ps1 test` 定义在 [tests/run.ps1](tests/run.ps1)；`riu test` 流程为 `riu build --test` → 并行 spawn `riu-test-runner` 子进程加载 DLL 执行。
 

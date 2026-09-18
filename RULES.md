@@ -2,7 +2,7 @@
 
 每会话入口（`AGENTS.md` → 本文件）。不要擅自改任务方向；卡住就停下来问。规范没写 = 不允许。不要用 Rust / C++ / Go 语义套 riu。
 
-`riu/ast/riu*.g4` **只读**。任务看起来要改语法 → 立刻停，列问题给用户。权威：g4 + 编译器源码 > docs（冲突时改 docs）。路径 / 测试名 / 命令参数查实际文件，不凭命名猜。
+`riu/ast/riu*.g4` **只读**（rd.13 换成 `riu.bnf` 前仍留着对照）。任务看起来要改语法 → 立刻停，列问题给用户。权威：手写 Scanner/Parser + g4 > docs（冲突时改 docs）。路径 / 测试名 / 命令参数查实际文件，不凭命名猜。
 
 ## 工作文件
 
@@ -63,9 +63,8 @@ Windows + Clang（无 MSVC 作编译器；仍需 VS 的 Windows SDK / STL）。`
 | `riu/ast/` | `./build.ps1 riu riu-check riu-ast` |
 | `riu/lsp/` | `./build.ps1 riu-lsp` |
 | `riu/test-runner/` | `./build.ps1 riu-test-runner` |
-| `riu/ast/riu*.g4` | `./gen-antlr.ps1` → 上面全部 |
 
-新 `.cpp` / `.h` 写入对应 `BUILD.gn` 的 `sources`，否则 ninja 编不到。不手改 `riu/ast/gen/`（只许 `./gen-antlr.ps1`）。`frontend` / `check` / `lsp` / `ast` / `analyzer` 不加 LLVM。
+新 `.cpp` / `.h` 写入对应 `BUILD.gn` 的 `sources`，否则 ninja 编不到。`frontend` / `check` / `lsp` / `ast` / `analyzer` 不加 LLVM。
 
 ## 验证
 
@@ -104,7 +103,7 @@ riu/                 构建子系统（各自 BUILD.gn）
   riu/cli/           build / test / format
   include/           公共头（error_code.h 等）
   rt/                C99 运行时 riurt.lib
-  ast/               ANTLR4 + AST；gen/ 与 riu*.g4 不要手改
+  ast/               rd Scanner/Parser + FileNode；riu*.g4 只读对照
   analyzer/          语义分析器
   frontend/          sema + tools + formatter（0 LLVM）
   check/             riu-check
@@ -118,5 +117,5 @@ tests/projects/      项目回归；tests/check-cases/ 诊断用例
 build/               GN；plugins/ 编辑器；third_party/ 依赖
 rules/               按需规则（syntax / sema / spec-writeback）
 RULES.md             会话入口；AGENTS.md → RULES.md
-*.ps1                build / sync-deps / gen-antlr / lint / format
+*.ps1                build / sync-deps / lint / format
 ```

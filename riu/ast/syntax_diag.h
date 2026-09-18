@@ -1,7 +1,7 @@
 // Copyright (c) 2026. Yin-Jinlong@github
 // MPL-2.0
 
-// 词法 / 文法诊断渲染（0 ANTLR）。ANTLR SyntaxErrorListener 与 rd Parser 共用。
+// 词法 / 文法诊断渲染。rd Scanner / Parser 共用。
 
 #ifndef RIU_LANG_SYNTAX_DIAG_H
 #define RIU_LANG_SYNTAX_DIAG_H
@@ -12,7 +12,7 @@
 #include <string>
 
 // 一条 E1001 / E1002。line 1-based；col 1-based（与 Diagnostic 一致）。
-// message 是错误码模板 `{}` 的实参（ANTLR 原文或 rd 生成的 mismatched / no viable）。
+// message 是错误码模板 `{}` 的实参（rd 生成的 mismatched / no viable）。
 struct SyntaxDiag {
     bool is_lexer = false;
     std::string file;

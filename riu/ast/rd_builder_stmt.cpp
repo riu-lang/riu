@@ -3,7 +3,7 @@
 
 #include "rd_builder.h"
 
-#include "ast_builder.h"
+#include "ast_builder_helpers.h"
 #include "node/alias_node.h"
 #include "node/expr_node.h"
 #include "node/global_const_node.h"
@@ -159,7 +159,7 @@ StatementNode* RdBuilder::buildLet(rd::NodeId id, bool global) {
             if (!type) throw RiuError(n.pos.line, n.pos.column + 1, ErrorCode::E3113, nameTok.getText());
             if (!expr) throw RiuError(n.pos.line, n.pos.column + 1, ErrorCode::E3154, nameTok.getText());
             inferFlexibleIntForType(expr, type->getType());
-            if (ASTBuilder::exprContainsTryCatch(expr)) {
+            if (exprContainsTryCatch(expr)) {
                 throw RiuError(n.pos.line, n.pos.column + 1, ErrorCode::E3155, nameTok.getText());
             }
             auto* globalVar = create<GlobalVarNode>(id, file, nameTok, type, expr, true);
@@ -180,7 +180,7 @@ StatementNode* RdBuilder::buildLet(rd::NodeId id, bool global) {
         if (!type) throw RiuError(n.pos.line, n.pos.column + 1, ErrorCode::E3113, nameTok.getText());
         if (!expr) throw RiuError(n.pos.line, n.pos.column + 1, ErrorCode::E3154, nameTok.getText());
         inferFlexibleIntForType(expr, type->getType());
-        if (ASTBuilder::exprContainsTryCatch(expr)) {
+        if (exprContainsTryCatch(expr)) {
             throw RiuError(n.pos.line, n.pos.column + 1, ErrorCode::E3155, nameTok.getText());
         }
         auto* globalVar = create<GlobalVarNode>(id, file, nameTok, type, expr);

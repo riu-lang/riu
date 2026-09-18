@@ -24,7 +24,7 @@
 
 // windows.h 必须在拉入 riu frontend (经由 include/types.h 做了 `using namespace
 // std`) 之前 #include, 否则 std::byte 与 winapi byte 冲突 (rpcndr.h).
-// NOGDI 跳过 wingdi.h, 避免其 ERROR 宏与 antlr4 的 ERROR 标识符冲突.
+// NOGDI 跳过 wingdi.h, 避免其 ERROR 宏与其它头冲突.
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #define NOGDI
@@ -607,7 +607,7 @@ static int runCheckTest(const vector<string>& paths, int threads, const vector<s
     }
 
     // 每文件独立 Riu（BUG#3）。`; require-sdk` 在本进程 parseSdkDir 一次（走 .ud）。
-    // 并行：按 worker 分片 spawn（每进程 --threads 1），避免进程内 ANTLR 抢 DFA。
+    // 并行：按 worker 分片 spawn（每进程 --threads 1）。
     size_t fileCount = files.size();
     vector<TestFileResult> results(fileCount);
 

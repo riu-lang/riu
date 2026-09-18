@@ -8,7 +8,6 @@
 
 #include <memory>
 
-class ASTBuilder;
 class RdBuilder;
 class SpecRegistry;
 class SpecImplChecker;
@@ -48,10 +47,9 @@ class Riu {
     vector<string> _loadOrder;        // 首次加载顺序，用于后续 codegen 与链接
     vector<string> _loadStack;        // 加载栈，用于循环依赖检测
 
-    // 持有导入模块的 ASTBuilder / RdBuilder，使 AST 节点存活至 Riu 析构
-    vector<std::unique_ptr<ASTBuilder>> _moduleBuilders;
+    // 持有导入模块的 RdBuilder，使 AST 节点存活至 Riu 析构
     vector<std::unique_ptr<RdBuilder>> _rdBuilders;
-    // .ud 重建的节点（不经 ASTBuilder）
+    // .ud 重建的节点（不经 RdBuilder）
     vector<std::unique_ptr<mod_decl::NodeOwner>> _declOwners;
 
     // 项目根目录（含 `riu.toml` 的最近祖先目录；否则为主文件所在目录）
@@ -84,7 +82,6 @@ public:
     void bindModule(FileNode* file, const string& absPath, const string& moduleName);
     // SDK 自举等场景先登记已知依赖路径，供 pkg `to` 目标校验使用；不代表模块已加载。
     void registerModulePath(const string& absPath, const string& moduleName);
-    void keepBuilder(std::unique_ptr<ASTBuilder> builder);
     void keepRdBuilder(std::unique_ptr<RdBuilder> builder);
     void adoptDeclOwner(std::unique_ptr<mod_decl::NodeOwner> owner);
 
@@ -137,7 +134,7 @@ public:
                                         const string& package = "") const;
 
     // 解析主入口 `.ut` 文件（不走 moduleName → path 映射）。
-    // 产生的 ASTBuilder 被 Riu 持有，AST 节点在 Riu 析构前有效。
+    // 产生的 RdBuilder 被 Riu 持有，AST 节点在 Riu 析构前有效。
     FileNode* loadMainFile(const string& absPath, const string& moduleName);
 
     // codegen 用：若当前是 .ud 重建的接口树，则整文件 parse 出带体的 AST。

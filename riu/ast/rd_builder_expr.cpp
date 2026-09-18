@@ -255,7 +255,7 @@ LambdaExprNode* RdBuilder::buildLambda(rd::NodeId id, bool /*trailing*/) {
         node = create<LambdaExprNode>(id, scope, LambdaExprNode::Form::Block, std::move(params), retType, nullptr,
                                       blk->statements());
         if (blk->hasResult()) {
-            // 块值已在 statements 里按 ASTBuilder 规则抽出；lambda block 体保留 statements
+            // 块值已在 statements 里抽出；lambda block 体保留 statements
         }
     } else if (i < n.children_count) {
         auto* bodyExpr = buildExpr(child(id, i));

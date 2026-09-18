@@ -2,7 +2,7 @@
 
 本文件汇总 riu-lang 仓库的关键架构图，便于快速上手与跨模块讨论。图示用 Mermaid，配合 [RULES.md](RULES.md) / [rules/sema-codegen.md](rules/sema-codegen.md) 阅读。
 
-权威源：`riu/ast/riu*.g4`（语法）、`riu/` C++ 源码、`BUILD.gn` / `build/`（构建拓扑）。图与代码冲突时以代码为准，**回头更新本文档**而非反过来。
+权威源：`riu/ast/riu*.g4`（对照）+ `riu/ast/rd/`（词法/语法）+ `riu/` C++ 源码、`BUILD.gn` / `build/`（构建拓扑）。图与代码冲突时以代码为准，**回头更新本文档**而非反过来。
 
 ---
 
@@ -10,7 +10,6 @@
 
 ```mermaid
 graph LR
-    antlr[antlr4_static<br/>C++17 静态库]
     zlib[zlib]
     llvm[llvm<br/>GN + Ninja]
     astlib[riu_ast]
@@ -22,11 +21,10 @@ graph LR
 
     riu[riu<br/>主二进制 CLI]
     lsp[riu-lsp<br/>LSP 服务器]
-    ast[riu-ast<br/>parse tree dump]
+    ast[riu-ast<br/>rd dump]
     check[riu-check<br/>快速语义检查]
     runner[riu-test-runner]
 
-    antlr --> astlib
     astlib --> analyzer
     astlib --> generic
     astlib --> frontend
@@ -43,7 +41,7 @@ graph LR
 
     classDef nollvm fill:#e0f3e0,stroke:#3a3
     classDef llvmDep fill:#fde2e2,stroke:#c33
-    class frontend,lsp,ast,check,astlib,analyzer,generic,antlr,runner nollvm
+    class frontend,lsp,ast,check,astlib,analyzer,generic,runner nollvm
     class llvm,riu llvmDep
 ```
 
@@ -65,10 +63,10 @@ AST（数据 + 注解槽）  ←  Generic（替换栈 + struct / fn 实例表）
 
 ```mermaid
 flowchart TB
-    src[.ut 源文件] --> lex[riuLexer<br/>ANTLR4 生成]
-    lex --> parse[riuParser<br/>ANTLR4 生成]
-    parse --> tree[ParseTree]
-    tree --> builder[ast::AstBuilder<br/>riu/ast/ast_builder.cpp]
+    src[.ut 源文件] --> scan[rd Scanner]
+    scan --> parse[rd Parser]
+    parse --> flat[FlatAst]
+    flat --> builder[RdBuilder]
     builder --> ast[AST 节点<br/>riu/ast/node/*]
 
     ast --> pm[PassManager<br/>addAnalysisPasses + codegen]
@@ -97,8 +95,8 @@ flowchart TB
 ```mermaid
 flowchart LR
     subgraph FE [riu_frontend]
-        L[Lexer + Parser]
-        B[AstBuilder]
+        L[rd Scanner + Parser]
+        B[RdBuilder]
         PM[PassManager]
         A[Analyzer]
         S[SemaPass]
@@ -229,7 +227,7 @@ flowchart LR
 
 - `riu/`：编译器实现（`riu/` 零 LLVM；`riu/riu/compiler/` 全 LLVM，`compiler.h` 是 driver，子系统在 `compiler_*.h`；`riu/analyzer/` 语义检查；`riu/lsp/` LSP；`riu/frontend/tools/` 工具）
 - `sdk/riu/`：自举 runtime（独立 riu 项目 → `riu.lib`）
-- `riu/ast/gen/`：ANTLR 生成代码（不要手改）
+- `riu/ast/rd/`：手写 Scanner / Parser / FlatAst
 - `docs/`：中文教程 + `docs/spec/` 规范草案
 - `tests/`：单文件用例 + 项目用例（前缀分组）
 - `plugins/`：编辑器 / Claude Code 插件

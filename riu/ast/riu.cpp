@@ -12,7 +12,6 @@
 
 #include <toml.hpp>
 
-#include "ast_builder.h"
 #include "mod_decl.h"
 #include "rd_builder.h"
 
@@ -22,10 +21,6 @@
 #ifdef _DEBUG
 bool debug = false;
 #endif
-
-void Riu::keepBuilder(std::unique_ptr<ASTBuilder> builder) {
-    _moduleBuilders.push_back(std::move(builder));
-}
 
 void Riu::keepRdBuilder(std::unique_ptr<RdBuilder> builder) {
     _rdBuilders.push_back(std::move(builder));

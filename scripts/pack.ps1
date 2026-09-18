@@ -54,7 +54,6 @@ Copy-Item -LiteralPath (Join-Path $ProjectRoot 'README.md') -Destination (Join-P
 Copy-Item -LiteralPath (Join-Path $ProjectRoot 'LICENSE.txt') -Destination (Join-Path $stage 'LICENSE.txt')
 
 $licenses = @(
-    @{ Lib = 'antlr4'; Rel = 'antlr4\LICENSE.txt' },
     @{ Lib = 'cli11'; Rel = 'cli11\LICENSE' },
     @{ Lib = 'llvm'; Rel = 'llvm\llvm\LICENSE.TXT' },
     @{ Lib = 'utfcpp'; Rel = 'utfcpp\LICENSE' },

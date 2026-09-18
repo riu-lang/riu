@@ -4,7 +4,6 @@
 #include "rd_builder.h"
 
 #include "ast/syntax_diag.h"
-#include "ast_builder.h"
 #include "ast_builder_helpers.h"
 #include "node/alias_node.h"
 #include "node/enum_node.h"
@@ -596,7 +595,7 @@ void RdBuilder::addStruct(rd::NodeId id) {
             if (!typeParams.empty()) throw RiuError(fn.pos.line, fn.pos.column + 1, ErrorCode::E3157, structName);
             if (!init) throw RiuError(fn.pos.line, fn.pos.column + 1, ErrorCode::E3150, string(fn.value));
             inferFlexibleIntForType(init, ty->getType());
-            if (ASTBuilder::exprContainsTryCatch(init)) {
+            if (exprContainsTryCatch(init)) {
                 throw RiuError(fn.pos.line, fn.pos.column + 1, ErrorCode::E3155, string(fn.value));
             }
             StructDeclNode::StaticFieldEntry sf;
