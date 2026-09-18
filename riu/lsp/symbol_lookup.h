@@ -34,6 +34,10 @@ struct TokenHit {
 };
 TokenHit identifierAt(const std::string& docText, LspPosition pos);
 
+// TokenInfo start/stop 是 UTF-8 字节（闭区间 stop）。src 空则退回 line + 字节列。
+void tokenToLspRange(std::string_view src, const Token& tok, LspPosition& start, LspPosition& end);
+bool tokenToLspRangeFromFile(const std::string& absPath, const Token& tok, LspPosition& start, LspPosition& end);
+
 // 名字查找：先 file 本地，再依次走 wildcardImports / moduleAliases / packageAliases
 struct LookupResult {
     enum class Kind : u8 { None, Function, Struct, GlobalConst };

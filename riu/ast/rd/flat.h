@@ -2,7 +2,7 @@
 // MPL-2.0
 //
 // 结构参考 V flat（MIT）。NodeKind 按 riuParser.g4 构造，不是 V 的 key_go / payload 表。
-// rd.8 起 FileNode 主路走本栈；format / LSP / skeleton 仍 ANTLR。
+// rd.8 起 FileNode 主路走本栈。
 
 #ifndef RIU_LANG_RD_FLAT_H
 #define RIU_LANG_RD_FLAT_H

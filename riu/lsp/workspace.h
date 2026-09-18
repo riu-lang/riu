@@ -8,8 +8,8 @@
 //   （key = 文件绝对路径），保证不互相串扰
 // - 每个项目持有一个 Riu 实例 + main FileNode + URI/path → FileNode 的索引
 // - 重建时机：didOpen（首次）与 didSave（用户保存）。didChange 不重建，
-//   避免编辑期反复跑 ASTBuilder。代价：未保存时跳转/补全停留在上次保存版本
-// - ASTBuilder/SDK 解析的 RiuError 一律 catch，记录为 buildError，仍保留旧
+//   避免编辑期反复跑 RdBuilder。代价：未保存时跳转/补全停留在上次保存版本
+// - RdBuilder/SDK 解析的 RiuError 一律 catch，记录为 buildError，仍保留旧
 //   FileNode 不清空，让 LSP 至少能基于上次成功的快照工作
 //
 // URI 与路径：

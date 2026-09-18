@@ -3,15 +3,13 @@
 
 // LSP 文档模型
 //
-// 维护 uri -> {version, text}，按需把文本喂给 riuLexer/riuParser 产出
-// 诊断（语法错误）与文档符号（fn / struct / letGlobal）。
+// 维护 uri -> {version, text}，按需把文本喂给 rd Scanner/Parser 产出
+// 诊断（E1001/E1002）与文档符号（顶层 fn / struct / let）。
 //
 // 设计取舍：
-// - P1 只跑 lexer + parser，不跑 ASTBuilder。原因：ASTBuilder 在 visitImports
-//   时调用 Riu::loadModule 会触发跨文件解析（依赖项目根、riu.toml 等），与
-//   单文件 LSP 的"轻量解析-即时反馈"模型不匹配。语义诊断与跨文件能力留给 P2。
-// - 解析结果（lexer/parser/tokenStream）需要在符号收集后还活着；用 unique_ptr
-//   全部拴在 Document 上，并保留 ProgramContext* 的弱引用。
+// - P1 只跑词法 + 语法 + FlatAst，不跑 RdBuilder。RdBuilder 会 loadModule
+//   展开 import（依赖项目根、riu.toml），与单文件「轻量解析-即时反馈」不匹配。
+//   语义诊断与跨文件能力留给 P2（Workspace / Project）。
 
 #pragma once
 
@@ -22,17 +20,6 @@
 
 #include "position.h"
 #include "types.h"
-
-namespace antlr4 {
-class ANTLRInputStream;
-class CommonTokenStream;
-} // namespace antlr4
-
-namespace riu {
-class riuLexer;
-class riuParser;
-namespace riuParserNS {} // namespace riuParserNS
-} // namespace riu
 
 namespace riu::lsp {
 
@@ -49,6 +36,7 @@ struct Diagnostic {
     LspPosition end;
     Severity severity = Severity::Error;
     std::string message;
+    std::string code; // E1001 / E1002；可空
 };
 
 // LSP SymbolKind 子集（参见 lsp 规范）

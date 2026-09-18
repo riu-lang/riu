@@ -1,25 +1,16 @@
 // Copyright (c) 2026. Yin-Jinlong@github
 // MPL-2.0
 
-#ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#undef ERROR
-#endif
-
 #include "workspace.h"
 
-#include "ast/ast_builder.h"
 #include "ast/node/file_node.h"
 #include "ast/riu.h"
-
-#include "antlr4-runtime.h"
-#include "riu/riuLexer.h"
-#include "riu/riuParser.h"
+#include "tools/sdk_loader.h"
 
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
@@ -77,57 +68,11 @@ std::string urlEncodePath(const std::string& s) {
     return out;
 }
 
-// 取当前可执行文件路径（仅 Windows 实现；非 Windows 返回空，依赖前两条兜底）
-std::string getMainExecutablePath() {
-#ifdef _WIN32
-    std::array<wchar_t, MAX_PATH> buf{};
-    DWORD n = GetModuleFileNameW(nullptr, buf.data(), static_cast<DWORD>(buf.size()));
-    if (n == 0 || n >= MAX_PATH) return {};
-    return fs::path(std::wstring(buf.data(), n)).string();
-#else
-    return {};
-#endif
-}
-
 std::string findSdkPathForLsp() {
-    // 1. 显式 env 覆盖（用于 LSP 部署 / 测试）
     if (const char* env = std::getenv("RIU_SDK_PATH")) {
         if (fs::is_directory(env)) return env;
     }
-    // 2. 仓库内调试：cwd
-    if (fs::is_directory("sdk/riu/core")) return "sdk/riu/core";
-    // 3. exe 旁的 ../sdk/riu/core
-    std::string exe = getMainExecutablePath();
-    if (!exe.empty()) {
-        fs::path exePath(exe);
-        fs::path sdk = exePath.parent_path().parent_path() / "sdk" / "riu" / "core";
-        if (fs::is_directory(sdk)) return sdk.string();
-    }
-    return "";
-}
-
-// 解析 SDK 目录的所有 .ut 文件到 riu 实例。失败抛 runtime_error。
-void parseSdkInto(const std::string& sdkDir, Riu& riu) {
-    std::vector<std::string> files;
-    for (const auto& e : fs::directory_iterator(sdkDir)) {
-        if (!e.is_regular_file()) continue;
-        auto p = e.path().string();
-        if (p.ends_with(".ut")) files.push_back(p);
-    }
-    std::ranges::sort(files);
-    for (const auto& f : files) {
-        antlr4::ANTLRFileStream stream;
-        stream.loadFromFile(f);
-        ::riu::riuLexer lexer(&stream);
-        antlr4::CommonTokenStream tokens(&lexer);
-        ::riu::riuParser parser(&tokens);
-        auto program = parser.program();
-        if (parser.getNumberOfSyntaxErrors()) {
-            throw std::runtime_error("SDK syntax error: " + f);
-        }
-        ASTBuilder ab(riu, "riu.core", true);
-        ab.build(program); // 抛 RiuError 自然向上传
-    }
+    return sdk_loader::findSdkPath();
 }
 
 } // namespace
@@ -228,7 +173,7 @@ bool Project::rebuild() {
         std::string sdkDir = findSdkPathForLsp();
         if (!sdkDir.empty()) {
             try {
-                parseSdkInto(sdkDir, *_riu);
+                sdk_loader::parseSdkDir(sdkDir, *_riu);
             } catch (const std::exception& e) {
                 // SDK 失败不致命：仅记录，仍然加载主文件
                 _buildError = std::string("SDK parse failed: ") + e.what();

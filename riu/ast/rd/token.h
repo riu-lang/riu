@@ -2,7 +2,7 @@
 // MPL-2.0
 //
 // 结构参考 V token/position（MIT）。Kind 名沿用 g4 规则名，不是 V 关键字。
-// 本栈只给 riu-ast dump 用；ANTLR 仍是 riu / riu-check / LSP / format 主路。
+// rd.9 起编译 / check 主路；rd.10 format；rd.11 LSP。
 
 #ifndef RIU_LANG_RD_TOKEN_H
 #define RIU_LANG_RD_TOKEN_H

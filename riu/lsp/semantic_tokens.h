@@ -3,10 +3,9 @@
 
 // LSP textDocument/semanticTokens 支持
 //
-// 复跑 riuLexer 把 token 类型映射到 LSP semanticTokens 协议的
+// 复跑 rd Scanner 把 token 类型映射到 LSP semanticTokens 协议的
 // (deltaLine, deltaStartChar, length, tokenType, tokenModifiers)
-// 五元组编码。当前实现只看 lexer token，不依赖 parse 树，因此即使
-// 文档存在语法错误也能着色。
+// 五元组编码。ID 的 class/function/method 等由 FlatAst 覆盖；语法错时仍有 lexer 着色。
 
 #pragma once
 

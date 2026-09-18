@@ -177,7 +177,7 @@ public:
 private:
     [[nodiscard]] string packageSourceDir(const string& package) const;
     [[nodiscard]] bool isInsidePackage(const FileNode* caller, const string& package) const;
-    // 底层解析 + RdBuilder（format / LSP 仍走 ANTLR）。内部用。
+    // 底层解析 + RdBuilder。内部用。
     FileNode* _parseFile(const string& absPath, const string& moduleName, int errorLine);
 
     // 项目模式（有 riu.toml / _projectName）才读写 `.ud`；riu-check 单文件不写。

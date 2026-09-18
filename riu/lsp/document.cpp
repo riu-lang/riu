@@ -4,123 +4,118 @@
 // LSP 文档解析实现
 //
 // 流程:
-//   text -> ANTLRInputStream -> riuLexer -> CommonTokenStream -> riuParser
-//   错误监听器收集 syntaxError(line, col, msg) -> Diagnostic
-//   解析成功后遍历 ProgramContext 的 fn / structDecl / structImpl / letGlobal
-//   生成 DocumentSymbol（name + range + selectionRange）
+//   text -> rd::parseProgram
+//   ParseError → SyntaxDiag → Diagnostic（E1001/E1002）
+//   FlatAst Program 顶层 fn / struct / let 生成 DocumentSymbol
 
 #include "document.h"
 
-#include "antlr4-runtime.h"
-#include "riu/riuLexer.h"
-#include "riu/riuParser.h"
-#include "utf8.h"
+#include "ast/rd/parser.h"
+#include "ast/syntax_diag.h"
+#include "position.h"
 
+#include <algorithm>
+#include <exception>
 #include <utility>
+#include <vector>
 
 namespace riu::lsp {
 
 namespace {
 
-// 计算 UTF-8 字符串的 code point 数。utf8::distance 抛异常时回退按字节数。
-size_t codePointCount(const std::string& s) {
-    try {
-        return utf8::distance(s.begin(), s.end());
-    } catch (...) {
-        return s.size();
+LspPosition tokStart(const std::string& text, const rd::Token& tok) {
+    return utf8OffsetToLsp(text, static_cast<size_t>(std::max(tok.pos.offset, 0)));
+}
+
+LspPosition tokEnd(const std::string& text, const rd::Token& tok) {
+    const auto end = tok.pos.end > tok.pos.offset ? tok.pos.end : tok.pos.offset;
+    return utf8OffsetToLsp(text, static_cast<size_t>(std::max(end, 0)));
+}
+
+LspPosition posStart(const std::string& text, const rd::Pos& pos) {
+    return utf8OffsetToLsp(text, static_cast<size_t>(std::max(pos.offset, 0)));
+}
+
+LspPosition posEnd(const std::string& text, const rd::Pos& pos) {
+    rd::i32 end = pos.end;
+    if (end <= pos.offset) end = pos.offset + 1;
+    if (end < 0) end = 0;
+    return utf8OffsetToLsp(text, static_cast<size_t>(end));
+}
+
+std::vector<rd::Token> scanDefaultIds(std::string_view src) {
+    std::vector<rd::Token> out;
+    rd::Scanner sc(src);
+    for (;;) {
+        rd::Token t = sc.next();
+        if (t.kind == rd::Kind::Eof) break;
+        out.push_back(t);
     }
+    return out;
 }
 
-// 把 (line, codePointCol) 范围转 LspPosition；end 由 (line, col + cpLen(text)) 求得。
-// stopText 是该 token 的源码文本，用于计算右端点的 code point 偏移。
-LspPosition tokenStartPos(const std::string& text, antlr4::Token* tok) {
-    if (!tok) return {};
-    return antlrToLsp(text, tok->getLine(), tok->getCharPositionInLine());
-}
-
-LspPosition tokenEndPos(const std::string& text, antlr4::Token* tok) {
-    if (!tok) return {};
-    // 注意: token 文本可能跨行（多行字符串等）；P1 只用于标识符和关键字 token，
-    // 不做跨行兜底。后续如果遇到多行 token，需要按 \n 切分重算列。
-    const std::string& t = tok->getText();
-    size_t cpLen = codePointCount(t);
-    return antlrToLsp(text, tok->getLine(), tok->getCharPositionInLine() + cpLen);
-}
-
-// 错误监听器：把 ANTLR 的 syntaxError 转为 Diagnostic。
-class DiagnosticListener : public antlr4::BaseErrorListener {
-public:
-    DiagnosticListener(const std::string& docText, std::vector<Diagnostic>& out) : _text(docText), _out(out) {}
-
-    void syntaxError(antlr4::Recognizer* /*recognizer*/, antlr4::Token* offending, size_t line,
-                     size_t charPositionInLine, const std::string& msg, std::exception_ptr /*e*/) override {
-        Diagnostic d;
-        d.severity = Severity::Error;
-        d.message = msg;
-        d.start = antlrToLsp(_text, line, charPositionInLine);
-        // end: 优先用 offending token 的右端；否则同 start
-        if (offending) {
-            d.end = tokenEndPos(_text, offending);
-            if (d.end.line < d.start.line || (d.end.line == d.start.line && d.end.character < d.start.character)) {
-                d.end = d.start;
-            }
-        } else {
-            d.end = d.start;
-            d.end.character += 1; // 给个最小宽度，编辑器才能高亮
+// 关键字之后第一个匹配 name 的 ID（跳过前导 #Anno）。
+const rd::Token* nameAfterKw(const std::vector<rd::Token>& toks, const rd::Pos& span, rd::Kind kw,
+                             std::string_view name) {
+    bool seenKw = false;
+    for (const auto& t : toks) {
+        if (t.pos.offset < span.offset) continue;
+        if (span.end > span.offset && t.pos.offset >= span.end) break;
+        if (!seenKw) {
+            if (t.kind == kw) seenKw = true;
+            continue;
         }
-        _out.push_back(std::move(d));
+        if (t.kind == rd::Kind::ID && t.text == name) return &t;
     }
-
-private:
-    const std::string& _text;
-    std::vector<Diagnostic>& _out;
-};
-
-// 把整个 ParserRuleContext 的范围转 LSP 范围（用 start/stop token 边界）
-void contextRange(const std::string& text, antlr4::ParserRuleContext* ctx, LspPosition& start, LspPosition& end) {
-    auto* a = ctx->getStart();
-    auto* b = ctx->getStop();
-    start = tokenStartPos(text, a);
-    end = b ? tokenEndPos(text, b) : tokenEndPos(text, a);
+    for (const auto& t : toks) {
+        if (t.kind != rd::Kind::ID || t.text != name) continue;
+        if (t.pos.offset < span.offset) continue;
+        if (span.end > span.offset && t.pos.offset >= span.end) continue;
+        return &t;
+    }
+    return nullptr;
 }
 
-void collectSymbols(const std::string& text, ::riu::riuParser::ProgramContext* prog, std::vector<DocSymbol>& out) {
-    if (!prog) return;
-
-    for (auto* fn : prog->fn()) {
-        auto* hdr = fn->fnHeader();
-        if (!hdr || !hdr->name) continue;
+void collectSymbols(const std::string& text, const rd::FlatAst& ast, const std::vector<rd::Token>& toks,
+                    std::vector<DocSymbol>& out) {
+    const rd::NodeId root = ast.root();
+    if (root == rd::kEmptyNode) return;
+    const rd::Node& prog = ast.at(root);
+    for (rd::i32 i = 0; i < prog.children_count; ++i) {
+        const rd::NodeId id = ast.child(root, i);
+        if (id == rd::kEmptyNode) continue;
+        const rd::Node& n = ast.at(id);
         DocSymbol s;
-        s.name = hdr->name->getText();
-        s.kind = SymbolKind::Function;
-        contextRange(text, fn, s.rangeStart, s.rangeEnd);
-        s.selStart = tokenStartPos(text, hdr->name);
-        s.selEnd = tokenEndPos(text, hdr->name);
-        out.push_back(std::move(s));
-    }
-
-    for (auto* sd : prog->structDecl()) {
-        auto* st = sd->structType();
-        if (!st || !st->name) continue;
-        DocSymbol s;
-        s.name = st->name->getText();
-        s.kind = SymbolKind::Struct;
-        contextRange(text, sd, s.rangeStart, s.rangeEnd);
-        s.selStart = tokenStartPos(text, st->name);
-        s.selEnd = tokenEndPos(text, st->name);
-        out.push_back(std::move(s));
-    }
-
-    // spec-unify v1：structImpl 产生式已删，方法段合并进 structDecl —— 上面的循环已覆盖。
-
-    for (auto* lg : prog->letGlobal()) {
-        if (!lg->name) continue;
-        DocSymbol s;
-        s.name = lg->name->getText();
-        s.kind = SymbolKind::Constant;
-        contextRange(text, lg, s.rangeStart, s.rangeEnd);
-        s.selStart = tokenStartPos(text, lg->name);
-        s.selEnd = tokenEndPos(text, lg->name);
+        rd::Kind kw = rd::Kind::Invalid;
+        switch (n.kind) {
+        case rd::NodeKind::Fn:
+            if (n.value.empty()) continue;
+            s.kind = SymbolKind::Function;
+            kw = rd::Kind::Fn;
+            break;
+        case rd::NodeKind::Struct:
+            if (n.value.empty()) continue;
+            s.kind = SymbolKind::Struct;
+            kw = rd::Kind::Struct;
+            break;
+        case rd::NodeKind::Let:
+            if (n.value.empty()) continue;
+            s.kind = SymbolKind::Constant;
+            kw = rd::Kind::Let;
+            break;
+        default:
+            continue;
+        }
+        s.name = std::string(n.value);
+        s.rangeStart = posStart(text, n.pos);
+        s.rangeEnd = posEnd(text, n.pos);
+        if (const rd::Token* nameTok = nameAfterKw(toks, n.pos, kw, n.value)) {
+            s.selStart = tokStart(text, *nameTok);
+            s.selEnd = tokEnd(text, *nameTok);
+        } else {
+            s.selStart = s.rangeStart;
+            s.selEnd = s.rangeEnd;
+        }
         out.push_back(std::move(s));
     }
 }
@@ -145,20 +140,35 @@ bool Document::parseIfDirty() {
     _symbols.clear();
 
     try {
-        antlr4::ANTLRInputStream input(_text);
-        ::riu::riuLexer lexer(&input);
-        DiagnosticListener listener(_text, _diagnostics);
-        lexer.removeErrorListeners();
-        lexer.addErrorListener(&listener);
-
-        antlr4::CommonTokenStream tokens(&lexer);
-        ::riu::riuParser parser(&tokens);
-        parser.removeErrorListeners();
-        parser.addErrorListener(&listener);
-
-        auto* prog = parser.program();
-        // 即使有语法错误，parse 树也可能部分可用
-        collectSymbols(_text, prog, _symbols);
+        rd::ParseResult parsed = rd::parseProgram(_text);
+        for (const auto& e : parsed.errors) {
+            SyntaxDiag in;
+            in.is_lexer = e.is_lexer;
+            in.line = e.pos.line;
+            in.col = e.pos.column + 1;
+            in.message = e.message;
+            in.offending = e.offending;
+            in.prev_text = e.prev_text;
+            ::Diagnostic filled;
+            if (!fillSyntaxDiagnostic(filled, in)) continue;
+            Diagnostic d;
+            d.severity = Severity::Error;
+            d.code = filled.code;
+            d.message = filled.message;
+            for (const auto& h : filled.hints) {
+                d.message += '\n';
+                d.message += h;
+            }
+            d.start = posStart(_text, e.pos);
+            d.end = posEnd(_text, e.pos);
+            if (d.end.line < d.start.line || (d.end.line == d.start.line && d.end.character <= d.start.character)) {
+                d.end = d.start;
+                d.end.character += 1;
+            }
+            _diagnostics.push_back(std::move(d));
+        }
+        auto toks = scanDefaultIds(_text);
+        collectSymbols(_text, parsed.ast, toks, _symbols);
     } catch (const std::exception& e) {
         Diagnostic d;
         d.severity = Severity::Error;

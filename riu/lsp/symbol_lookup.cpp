@@ -8,11 +8,10 @@
 #include "ast/node/global_const_node.h"
 #include "ast/node/struct_node.h"
 #include "ast/node/type_node.h"
+#include "ast/rd/scanner.h"
 #include "sema/name_resolver.h"
 #include "workspace.h"
 
-#include "antlr4-runtime.h"
-#include "riu/riuLexer.h"
 #include "utf8.h"
 #include <cstdio>
 
@@ -24,28 +23,6 @@
 namespace riu::lsp {
 
 namespace {
-
-// 把 (ANTLR 1-based 行 + 0-based 代码点列, token 文本) → LSP Range
-// 行号对换：ANTLR 1-based → LSP 0-based
-LspPosition toLspStart(const std::string& docText, size_t antlrLine, size_t antlrCol) {
-    return antlrToLsp(docText, static_cast<int>(antlrLine), static_cast<int>(antlrCol));
-}
-
-LspPosition toLspEnd(const std::string& docText, size_t antlrLine, size_t antlrCol, const std::string& tokText) {
-    // token 是单行 IDENT，结束列 = 起始列 + 代码点数
-    int cps = 0;
-    auto it = tokText.begin();
-    auto end = tokText.end();
-    try {
-        while (it < end) {
-            utf8::next(it, end);
-            ++cps;
-        }
-    } catch (...) {
-        cps = static_cast<int>(tokText.size());
-    }
-    return antlrToLsp(docText, static_cast<int>(antlrLine), static_cast<int>(antlrCol) + cps);
-}
 
 bool tokenContains(const LspPosition& s, const LspPosition& e, const LspPosition& p) {
     if (p.line < s.line || p.line > e.line) return false;
@@ -95,21 +72,15 @@ std::string typeInfoDisplay(const TypeInfo& info) {
 
 TokenHit identifierAt(const std::string& docText, LspPosition pos) {
     TokenHit hit;
-    antlr4::ANTLRInputStream input(docText);
-    ::riu::riuLexer lexer(&input);
-    lexer.removeErrorListeners();
-    antlr4::CommonTokenStream tokens(&lexer);
-    tokens.fill();
-    for (auto* tok : tokens.getTokens()) {
-        if (tok->getType() != ::riu::riuLexer::ID) continue;
-        if (tok->getChannel() != antlr4::Token::DEFAULT_CHANNEL) continue;
-        size_t antlrLine = tok->getLine();
-        size_t antlrCol = tok->getCharPositionInLine();
-        std::string text = tok->getText();
-        LspPosition s = toLspStart(docText, antlrLine, antlrCol);
-        LspPosition e = toLspEnd(docText, antlrLine, antlrCol, text);
+    rd::Scanner sc(docText);
+    for (;;) {
+        rd::Token tok = sc.next();
+        if (tok.kind == rd::Kind::Eof) break;
+        if (tok.kind != rd::Kind::ID) continue;
+        LspPosition s = utf8OffsetToLsp(docText, static_cast<size_t>(std::max(tok.pos.offset, 0)));
+        LspPosition e = utf8OffsetToLsp(docText, static_cast<size_t>(std::max(tok.pos.end, tok.pos.offset)));
         if (tokenContains(s, e, pos)) {
-            hit.text = std::move(text);
+            hit.text = std::string(tok.text);
             hit.start = s;
             hit.end = e;
             hit.found = true;
@@ -117,6 +88,30 @@ TokenHit identifierAt(const std::string& docText, LspPosition pos) {
         }
     }
     return hit;
+}
+
+void tokenToLspRange(std::string_view src, const Token& tok, LspPosition& start, LspPosition& end) {
+    if (!src.empty() && tok.getStartIndex() <= src.size()) {
+        start = utf8OffsetToLsp(src, tok.getStartIndex());
+        const size_t stop = tok.getStopIndex();
+        const size_t endOff = stop >= tok.getStartIndex() ? stop + 1 : tok.getStartIndex();
+        end = utf8OffsetToLsp(src, endOff);
+        return;
+    }
+    start.line = static_cast<int>(tok.getLine() > 0 ? tok.getLine() - 1 : 0);
+    start.character = static_cast<int>(tok.getCharPositionInLine());
+    end.line = start.line;
+    end.character = start.character + static_cast<int>(tok.getText().size());
+}
+
+bool tokenToLspRangeFromFile(const std::string& absPath, const Token& tok, LspPosition& start, LspPosition& end) {
+    std::string src;
+    if (!readFileText(absPath, src)) {
+        tokenToLspRange({}, tok, start, end);
+        return false;
+    }
+    tokenToLspRange(src, tok, start, end);
+    return true;
 }
 
 LookupResult lookupName(Project& project, FileNode* fromFile, const std::string& name) {
@@ -190,15 +185,7 @@ LocatedRange locateNamedSymbol(FileNode* file, const std::string& name) {
         }
     }
     if (!gotToken) return out;
-    // 文件路径 → uri
-    // FileNode 不直接持文件路径；我们通过 Project::allFiles() 反查会更稳，但
-    // 这里假定 caller 已知 file 的归一化路径并自己拼 URI。本函数只产 (line/col) 范围。
-    // 行号 ANTLR 1-based → LSP 0-based；列 ANTLR 0-based 代码点 → 等价 0-based UTF-16
-    // （标识符全 ASCII，不会有 UTF-16 surrogate）
-    out.start.line = static_cast<int>(tok.getLine() > 0 ? tok.getLine() - 1 : 0);
-    out.start.character = static_cast<int>(tok.getCharPositionInLine());
-    out.end.line = out.start.line;
-    out.end.character = out.start.character + static_cast<int>(tok.getText().size());
+    tokenToLspRangeFromFile(file->sourcePath(), tok, out.start, out.end);
     out.ok = true;
     return out;
 }

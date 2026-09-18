@@ -3,14 +3,14 @@
 
 #include "semantic_tokens.h"
 
+#include <algorithm>
+#include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <utility>
+#include <vector>
 
-#include "antlr4-runtime.h"
+#include "ast/rd/parser.h"
 #include "position.h"
-#include "riu/riuLexer.h"
-#include "riu/riuParser.h"
 #include "types.h"
 #include "utf8.h"
 
@@ -40,80 +40,83 @@ enum class TT : u8 {
 constexpr unsigned MOD_DECLARATION = 1u << 0u;
 
 // 返回值 < 0 表示该 token 不参与高亮（空白、标点等）。
-int classify(size_t type) {
-    using L = ::riu::riuLexer;
+int classify(rd::Kind type) {
     switch (type) {
-    case L::Space:
-    case L::LineEnd:
+    case rd::Kind::Space:
+    case rd::Kind::LineEnd:
+    case rd::Kind::Invalid:
+    case rd::Kind::Eof:
         return -1;
 
-    case L::LineComment:
-    case L::LineEndComment:
+    case rd::Kind::LineComment:
+    case rd::Kind::LineEndComment:
         return static_cast<int>(TT::Comment);
 
-    case L::Break:
-    case L::Catch:
-    case L::Elif:
-    case L::Else:
-    case L::Enum:
-    case L::Extern:
-    case L::False:
-    case L::Fn:
-    case L::If:
-    case L::Let:
-    case L::Loop:
-    case L::Match:
-    case L::Null:
-    case L::Ret:
-    case L::SelfType:
-    case L::Struct:
-    case L::True:
-    case L::Try:
-    case L::TypeKw:
-    case L::Use:
+    case rd::Kind::Break:
+    case rd::Kind::Catch:
+    case rd::Kind::Continue:
+    case rd::Kind::Elif:
+    case rd::Kind::Else:
+    case rd::Kind::Enum:
+    case rd::Kind::Extern:
+    case rd::Kind::False:
+    case rd::Kind::Fn:
+    case rd::Kind::For:
+    case rd::Kind::If:
+    case rd::Kind::In:
+    case rd::Kind::Let:
+    case rd::Kind::Loop:
+    case rd::Kind::Match:
+    case rd::Kind::Null:
+    case rd::Kind::Ret:
+    case rd::Kind::SelfType:
+    case rd::Kind::Struct:
+    case rd::Kind::True:
+    case rd::Kind::Try:
+    case rd::Kind::TypeKw:
+    case rd::Kind::Use:
         return static_cast<int>(TT::Keyword);
 
     // 仅着色"真正的运算符"，逗号/分号/点/括号留默认色
-    case L::SymbolAdd:
-    case L::SymbolAnd:
-    case L::SymbolAt:
-    case L::SymbolDiv:
-    case L::SymbolEq:
-    case L::SymbolExcl:
-    case L::SymbolLt:
-    case L::SymbolMod:
-    case L::SymbolMt:
-    case L::SymbolMul:
-    case L::SymbolQuest:
-    case L::SymbolRev:
-    case L::SymbolSub:
+    case rd::Kind::SymbolAdd:
+    case rd::Kind::SymbolAnd:
+    case rd::Kind::SymbolAt:
+    case rd::Kind::SymbolDiv:
+    case rd::Kind::SymbolEq:
+    case rd::Kind::SymbolExcl:
+    case rd::Kind::SymbolLt:
+    case rd::Kind::SymbolMod:
+    case rd::Kind::SymbolMt:
+    case rd::Kind::SymbolMul:
+    case rd::Kind::SymbolQuest:
+    case rd::Kind::SymbolRev:
+    case rd::Kind::SymbolSub:
         return static_cast<int>(TT::Operator);
 
-    case L::ID:
+    case rd::Kind::ID:
         return static_cast<int>(TT::Variable);
 
-    case L::INT:
-    case L::FLOAT:
-    case L::INT_10:
-    case L::INT_2:
-    case L::INT_8:
-    case L::INT_16:
-    case L::INT_SUFFIX:
-    case L::FLOAT_SUFFIX:
-    case L::FLOAT_DOT:
-    case L::FLOAT_EXP:
-    case L::NUN_SIGN:
+    case rd::Kind::INT:
+    case rd::Kind::FLOAT:
+    case rd::Kind::DOT_NUM:
+    case rd::Kind::INT_10:
+    case rd::Kind::INT_2:
+    case rd::Kind::INT_8:
+    case rd::Kind::INT_16:
+    case rd::Kind::INT_SUFFIX:
+    case rd::Kind::FLOAT_SUFFIX:
+    case rd::Kind::FLOAT_DOT:
+    case rd::Kind::FLOAT_EXP:
+    case rd::Kind::NUN_SIGN:
         return static_cast<int>(TT::Number);
 
-    // 字符串模板：开/闭引号、文本片段、$ident 一律按字符串高亮；
-    // ${ ... } 内嵌表达式段落由 popMode 后的常规 token 接管，不在此处处理。
-    case L::STR_TPL_OPEN:
-    case L::STR_TPL_CLOSE:
-    case L::STR_TPL_TEXT:
-    case L::STR_TPL_DOLLAR_ID:
-    case L::STR_TPL_INTERP_OPEN:
-    case L::STR_LINE_RAW:
-    case L::CODE_POINT:
+    case rd::Kind::STR_TPL_OPEN:
+    case rd::Kind::STR_TPL_CLOSE:
+    case rd::Kind::STR_TPL_TEXT:
+    case rd::Kind::STR_TPL_DOLLAR_ID:
+    case rd::Kind::STR_TPL_INTERP_OPEN:
+    case rd::Kind::STR_LINE_RAW:
+    case rd::Kind::CODE_POINT:
         return static_cast<int>(TT::String);
 
     default:
@@ -121,13 +124,13 @@ int classify(size_t type) {
     }
 }
 
-// 计算 UTF-8 字符串的 UTF-16 code unit 数（LSP 协议默认列单位）。
-int utf16Length(const std::string& s) {
+int utf16Length(std::string_view s) {
     int len = 0;
     auto it = s.begin();
-    while (it != s.end()) {
+    auto end = s.end();
+    while (it != end) {
         try {
-            uint32_t cp = utf8::next(it, s.end());
+            uint32_t cp = utf8::next(it, end);
             len += (cp > 0xFFFF) ? 2 : 1;
         } catch (...) {
             ++it;
@@ -137,153 +140,197 @@ int utf16Length(const std::string& s) {
     return len;
 }
 
-// (kind, modifiers bitmask)
 using OverrideEntry = std::pair<int, int>;
-using OverrideMap = std::unordered_map<size_t, OverrideEntry>;
+using OverrideMap = std::unordered_map<rd::i32, OverrideEntry>;
 
 struct CollectState {
     OverrideMap overrides;
+    std::vector<rd::Token> ids; // 按 offset 升序的 default ID
 };
 
-// 把 token 的索引登记为指定语义类型（只覆盖 ID 类 token，避免误标关键字）。
-void put(OverrideMap& m, antlr4::Token* tok, TT kind, int mods = 0) {
-    if (!tok) return;
-    if (tok->getType() != ::riu::riuLexer::ID) return;
-    m[tok->getTokenIndex()] = {static_cast<int>(kind), mods};
+void putIndex(OverrideMap& m, rd::i32 index, TT kind, int mods = 0) {
+    m[index] = {static_cast<int>(kind), mods};
 }
 
-void putTypePath(OverrideMap& m, ::riu::riuParser::TypePathContext* path, TT lastKind, int lastMods = 0) {
-    if (!path) return;
-    const auto& segs = path->segs;
-    for (size_t i = 0; i < segs.size(); ++i) {
-        bool last = i + 1 == segs.size();
-        put(m, segs[i], last ? lastKind : TT::Class, last ? lastMods : 0);
+bool inSpan(const rd::Pos& span, const rd::Token& t) {
+    if (t.pos.offset < span.offset) return false;
+    if (span.end > span.offset && t.pos.offset >= span.end) return false;
+    return true;
+}
+
+void putAtOffset(CollectState& s, rd::i32 offset, TT kind, int mods = 0) {
+    for (const auto& t : s.ids) {
+        if (t.pos.offset == offset) {
+            putIndex(s.overrides, t.index, kind, mods);
+            return;
+        }
+        if (t.pos.offset > offset) return;
     }
 }
 
-// 后序遍历：子节点先处理。Phase 6D 后 N(...) 同名 ctor 已被 E3130 拦截,
-// 无需再额外维护 structNames 用于 ExprCall 着色。
-void collectOverrides(antlr4::tree::ParseTree* node, CollectState& state) {
-    if (!node) return;
-    using P = ::riu::riuParser;
-
-    for (auto* child : node->children) {
-        collectOverrides(child, state);
+void putNameInSpan(CollectState& s, const rd::Pos& span, std::string_view name, TT kind, int mods = 0) {
+    if (name.empty()) return;
+    for (const auto& t : s.ids) {
+        if (!inSpan(span, t) || t.text != name) continue;
+        if (s.overrides.contains(t.index)) continue;
+        putIndex(s.overrides, t.index, kind, mods);
+        return;
     }
+}
+
+void putIdsInSpan(CollectState& s, const rd::Pos& span, TT lastKind, int lastMods = 0, TT otherKind = TT::Class) {
+    std::vector<rd::i32> idxs;
+    for (const auto& t : s.ids) {
+        if (inSpan(span, t)) idxs.push_back(t.index);
+    }
+    for (size_t i = 0; i < idxs.size(); ++i) {
+        const bool last = i + 1 == idxs.size();
+        putIndex(s.overrides, idxs[i], last ? lastKind : otherKind, last ? lastMods : 0);
+    }
+}
+
+bool isUpperIdent(std::string_view v) {
+    return !v.empty() && v[0] >= 'A' && v[0] <= 'Z';
+}
+
+void collectOverrides(const rd::FlatAst& ast, rd::NodeId id, CollectState& state) {
+    if (id == rd::kEmptyNode) return;
+    const rd::Node& n = ast.at(id);
+    for (rd::i32 i = 0; i < n.children_count; ++i)
+        collectOverrides(ast, ast.child(id, i), state);
 
     auto& out = state.overrides;
 
-    if (auto* c = dynamic_cast<P::StructDeclContext*>(node)) {
-        if (auto* st = c->structType(); st && st->name) {
-            // spec-unify v1：#Spec 注解的 struct 渲染为 Interface（spec），否则 Class
-            bool isSpec = false;
-            for (auto* a : c->buildAnnos) {
-                if (a->name && a->name->getText() == "Spec") {
-                    isSpec = true;
+    switch (n.kind) {
+    case rd::NodeKind::Struct: {
+        bool isSpec = false;
+        for (rd::i32 i = 0; i < n.children_count; ++i) {
+            const rd::Node& c = ast.at(ast.child(id, i));
+            if (c.kind == rd::NodeKind::Anno && c.value == "Spec") {
+                isSpec = true;
+                break;
+            }
+        }
+        putNameInSpan(state, n.pos, n.value, isSpec ? TT::Interface : TT::Class, MOD_DECLARATION);
+        break;
+    }
+    case rd::NodeKind::Fn:
+        putNameInSpan(state, n.pos, n.value, TT::Function, MOD_DECLARATION);
+        break;
+    case rd::NodeKind::Anno:
+        putNameInSpan(state, n.pos, n.value, TT::Metadata, 0);
+        break;
+    case rd::NodeKind::Field:
+        putAtOffset(state, n.pos.offset, TT::Property, MOD_DECLARATION);
+        break;
+    case rd::NodeKind::Param:
+        putAtOffset(state, n.pos.offset, TT::Parameter, MOD_DECLARATION);
+        break;
+    case rd::NodeKind::Dot:
+        putAtOffset(state, n.pos.offset, TT::Property, 0);
+        break;
+    case rd::NodeKind::GetRef:
+        for (rd::i32 i = 1; i < n.children_count; ++i) {
+            const rd::Node& c = ast.at(ast.child(id, i));
+            if (c.kind == rd::NodeKind::Ident) putAtOffset(state, c.pos.offset, TT::Property, 0);
+        }
+        break;
+    case rd::NodeKind::StructLit:
+        if (n.children_count > 0) {
+            const rd::Node& lhs = ast.at(ast.child(id, 0));
+            if (lhs.kind == rd::NodeKind::TypePath) putIdsInSpan(state, lhs.pos, TT::Class, 0);
+        }
+        break;
+    case rd::NodeKind::FieldInit:
+        putAtOffset(state, n.pos.offset, TT::Property, 0);
+        break;
+    case rd::NodeKind::StaticFieldSet:
+        if (n.children_count > 0) {
+            const rd::Node& path = ast.at(ast.child(id, 0));
+            if (path.kind == rd::NodeKind::TypePath) putIdsInSpan(state, path.pos, TT::Class, 0);
+        }
+        putNameInSpan(state, n.pos, n.value, TT::Property, 0);
+        // pos 是类型路径，字段名在 :: 之后：再按 value 找尚未覆盖的 ID
+        if (!n.value.empty()) {
+            for (const auto& t : state.ids) {
+                if (t.text != n.value) continue;
+                if (n.children_count > 0) {
+                    const rd::Pos& pp = ast.at(ast.child(id, 0)).pos;
+                    if (t.pos.offset < pp.end) continue;
+                }
+                if (out.contains(t.index)) continue;
+                putIndex(out, t.index, TT::Property, 0);
+                break;
+            }
+        }
+        break;
+    case rd::NodeKind::TypePath:
+    case rd::NodeKind::TypeGeneric:
+        putIdsInSpan(state, n.pos, TT::Class, 0);
+        break;
+    case rd::NodeKind::Alias:
+        putNameInSpan(state, n.pos, n.value, TT::Class, MOD_DECLARATION);
+        break;
+    case rd::NodeKind::Enum:
+        putNameInSpan(state, n.pos, n.value, TT::Enum, MOD_DECLARATION);
+        break;
+    case rd::NodeKind::EnumVariant:
+        putAtOffset(state, n.pos.offset, TT::EnumMember, MOD_DECLARATION);
+        break;
+    case rd::NodeKind::EnumCtor: {
+        if (n.children_count > 0) {
+            const rd::Node& lhs = ast.at(ast.child(id, 0));
+            if (lhs.kind == rd::NodeKind::TypePath) putIdsInSpan(state, lhs.pos, TT::Enum, 0);
+        }
+        putAtOffset(state, n.pos.offset, isUpperIdent(n.value) ? TT::EnumMember : TT::Function, 0);
+        break;
+    }
+    case rd::NodeKind::Pattern: {
+        rd::i32 i = 0;
+        if (i < n.children_count) {
+            const rd::Node& path = ast.at(ast.child(id, i));
+            if (path.kind == rd::NodeKind::TypePath) {
+                putIdsInSpan(state, path.pos, TT::Enum, 0);
+                ++i;
+            }
+        }
+        putNameInSpan(state, n.pos, n.value, TT::EnumMember, 0);
+        // Pattern.pos 可能落在 variant 之后；variant 在 TypePath 与绑定之间
+        if (!n.value.empty() && n.children_count > 0) {
+            const rd::Node& first = ast.at(ast.child(id, 0));
+            if (first.kind == rd::NodeKind::TypePath) {
+                for (const auto& t : state.ids) {
+                    if (t.text != n.value) continue;
+                    if (t.pos.offset < first.pos.end) continue;
+                    if (out.contains(t.index)) continue;
+                    putIndex(out, t.index, TT::EnumMember, 0);
                     break;
                 }
             }
-            put(out, st->name, isSpec ? TT::Interface : TT::Class, MOD_DECLARATION);
         }
-    } else if (auto* c = dynamic_cast<P::FnHeaderContext*>(node)) {
-        put(out, c->name, TT::Function, MOD_DECLARATION);
-    } else if (auto* c = dynamic_cast<P::BuildAnnoContext*>(node)) {
-        // 构建注解 #Name（顶行堆叠：fn/struct/extern 上）
-        if (c->name) put(out, c->name, TT::Metadata, 0);
-    } else if (auto* c = dynamic_cast<P::LetAnnoContext*>(node)) {
-        // let 行内注解 #Mut / #Cval / #Frozen
-        if (c->name) put(out, c->name, TT::Metadata, 0);
-    } else if (auto* c = dynamic_cast<P::FiledDeclContext*>(node)) {
-        put(out, c->name, TT::Property, MOD_DECLARATION);
-    } else if (auto* c = dynamic_cast<P::FnParamStdContext*>(node)) {
-        put(out, c->name, TT::Parameter, MOD_DECLARATION);
-    } else if (auto* c = dynamic_cast<P::FnParamGroupContext*>(node)) {
-        for (auto* tok : c->names)
-            put(out, tok, TT::Parameter, MOD_DECLARATION);
-    } else if (auto* c = dynamic_cast<P::LambdaParamStdContext*>(node)) {
-        put(out, c->name, TT::Parameter, MOD_DECLARATION);
-    } else if (auto* c = dynamic_cast<P::LambdaParamGroupContext*>(node)) {
-        for (auto* tok : c->names)
-            put(out, tok, TT::Parameter, MOD_DECLARATION);
-    } else if (auto* c = dynamic_cast<P::ExprDotContext*>(node)) {
-        // 默认全部当字段；如果整个 dot 是被调用的左部，下面 ExprCall 分支会把最后一个 member 改成 method
-        for (auto* tok : c->member)
-            put(out, tok, TT::Property, 0);
-    } else if (auto* c = dynamic_cast<P::ExprGetRefContext*>(node)) {
-        // &a.b.c —— subs 链上每个 ID 均为字段名
-        for (auto* tok : c->subs)
-            put(out, tok, TT::Property, 0);
-    } else if (auto* c = dynamic_cast<P::ExprStructLitContext*>(node)) {
-        // Self { .x = 1 .y = 2 } 或 Name { .x = 1 } —— 类型名按 Class，字段名按 Property
-        if (c->typeName) putTypePath(out, c->typeName, TT::Class, 0);
-        for (auto* fi : c->fieldInits) {
-            if (fi && fi->name) put(out, fi->name, TT::Property, 0);
+        for (; i < n.children_count; ++i) {
+            const rd::Node& b = ast.at(ast.child(id, i));
+            if (b.kind == rd::NodeKind::Ident) putAtOffset(state, b.pos.offset, TT::Parameter, MOD_DECLARATION);
         }
-    } else if (auto* c = dynamic_cast<P::StatementStaticFieldSetContext*>(node)) {
-        // Type::FIELD = expr —— 类型名按 Class，字段名按 Property
-        if (c->typeName) putTypePath(out, c->typeName, TT::Class, 0);
-        if (c->fieldName) put(out, c->fieldName, TT::Property, 0);
-    } else if (auto* c = dynamic_cast<P::TypeNormalContext*>(node)) {
-        putTypePath(out, c->typePath(), TT::Class, 0);
-    } else if (auto* c = dynamic_cast<P::TypeGenericContext*>(node)) {
-        putTypePath(out, c->typePath(), TT::Class, 0);
-        // TypeNullable / TypeArray / TypeTuple 本身不持有顶层 ID
-        // Function<...> 走 TypeGeneric
-    } else if (auto* c = dynamic_cast<P::AliasDeclContext*>(node)) {
-        // 类型别名 `type Name = T`：左侧名字按用户类型染色
-        if (auto* term = c->name) put(out, term, TT::Class, MOD_DECLARATION);
-    } else if (auto* c = dynamic_cast<P::EnumDeclContext*>(node)) {
-        // enum E { ... } 的 E 染成枚举名
-        if (c->name) put(out, c->name, TT::Enum, MOD_DECLARATION);
-    } else if (auto* c = dynamic_cast<P::EnumVariantContext*>(node)) {
-        // 一行一个 variant 名，染成 enumMember
-        if (c->name) put(out, c->name, TT::EnumMember, MOD_DECLARATION);
-        // payloads 是 type 列表，递归覆盖
-    } else if (auto* c = dynamic_cast<P::ExprEnumCtorContext*>(node)) {
-        // E::V / T::foo：枚举构造与静态函数调用共用此节点。
-        // 枚举 variant 按惯例大写开头（PascalCase），函数/方法小写开头（camelCase）；
-        // 语法层以此启发式分流着色。
-        if (c->enumName) putTypePath(out, c->enumName, TT::Enum, 0);
-        if (c->variant) {
-            std::string vName = c->variant->getText();
-            bool isUpper = !vName.empty() && (vName[0] >= 'A' && vName[0] <= 'Z');
-            put(out, c->variant, isUpper ? TT::EnumMember : TT::Function, 0);
+        break;
+    }
+    case rd::NodeKind::Catch:
+        putNameInSpan(state, n.pos, n.value, TT::Parameter, MOD_DECLARATION);
+        break;
+    case rd::NodeKind::Call: {
+        if (n.children_count <= 0) break;
+        const rd::Node& left = ast.at(ast.child(id, 0));
+        if (left.kind == rd::NodeKind::Dot) {
+            putAtOffset(state, left.pos.offset, TT::Method, 0);
+        } else if (left.kind == rd::NodeKind::Ident) {
+            putAtOffset(state, left.pos.offset, TT::Function, 0);
+        } else if (left.kind == rd::NodeKind::EnumCtor) {
+            putAtOffset(state, left.pos.offset, isUpperIdent(left.value) ? TT::EnumMember : TT::Method, 0);
         }
-    } else if (auto* c = dynamic_cast<P::PatternEnumContext*>(node)) {
-        // match 模式 E::V(a, b)：a/b 是新引入绑定，按 Parameter 染色
-        if (c->enumName) putTypePath(out, c->enumName, TT::Enum, 0);
-        if (c->variant) put(out, c->variant, TT::EnumMember, 0);
-        for (auto* tok : c->binds)
-            put(out, tok, TT::Parameter, MOD_DECLARATION);
-    } else if (auto* c = dynamic_cast<P::CatchArmContext*>(node)) {
-        // catch err T { ... } 中的 err 是绑定参数；T 走 type 递归
-        if (c->err) put(out, c->err, TT::Parameter, MOD_DECLARATION);
-    } else if (auto* c = dynamic_cast<P::ExprCallContext*>(node)) {
-        if (auto* dot = dynamic_cast<P::ExprDotContext*>(c->left)) {
-            // x.y() / a.b.c() —— 末尾 member 改 method
-            if (!dot->member.empty()) {
-                auto* tok = dot->member.back();
-                if (tok && tok->getType() == ::riu::riuLexer::ID) {
-                    out[tok->getTokenIndex()] = {static_cast<int>(TT::Method), 0};
-                }
-            }
-        } else if (auto* litExpr = dynamic_cast<P::ExprLiteralContext*>(c->left)) {
-            // foo() —— 普通函数调用; Phase 6D 后同名 ctor `Foo(...)` 已被 E3130 拦截,
-            // struct 名作 callee 已非构造形态, 这里一律按 Function 着色.
-            if (auto* obj = dynamic_cast<P::LiteralObjContext*>(litExpr->literal())) {
-                if (auto* tok = obj->name) {
-                    out[tok->getTokenIndex()] = {static_cast<int>(TT::Function), 0};
-                }
-            }
-        } else if (auto* enumCtor = dynamic_cast<P::ExprEnumCtorContext*>(c->left)) {
-            // T::foo() 静态函数/方法调用 —— variant 覆盖为 Method；
-            // 仅当首字母大写时才认定为枚举构造，已由 ExprEnumCtor 分支着色
-            if (enumCtor->variant) {
-                std::string vName = enumCtor->variant->getText();
-                bool isUpper = !vName.empty() && (vName[0] >= 'A' && vName[0] <= 'Z');
-                out[enumCtor->variant->getTokenIndex()] = {static_cast<int>(isUpper ? TT::EnumMember : TT::Method), 0};
-            }
-        }
+        break;
+    }
+    default:
+        break;
     }
 }
 
@@ -305,20 +352,23 @@ std::vector<int> computeSemanticTokens(std::string_view text) {
     std::vector<int> data;
     if (text.empty()) return data;
 
-    std::string textStr(text);
-    antlr4::ANTLRInputStream input(textStr);
-    ::riu::riuLexer lexer(&input);
-    lexer.removeErrorListeners();
-    antlr4::CommonTokenStream tokens(&lexer);
-    tokens.fill();
+    std::vector<rd::Token> raw;
+    {
+        rd::Scanner sc(text);
+        for (;;) {
+            rd::Token t = sc.nextRaw();
+            if (t.kind == rd::Kind::Eof) break;
+            raw.push_back(t);
+        }
+    }
 
-    // 解析阶段：失败时直接退化为纯 lexer 着色。
     CollectState state;
+    for (const auto& t : raw) {
+        if (t.kind == rd::Kind::ID) state.ids.push_back(t);
+    }
     try {
-        ::riu::riuParser parser(&tokens);
-        parser.removeErrorListeners();
-        auto* tree = parser.program();
-        collectOverrides(tree, state);
+        rd::ParseResult parsed = rd::parseProgram(text);
+        if (parsed.ast.root() != rd::kEmptyNode) collectOverrides(parsed.ast, parsed.ast.root(), state);
     } catch (...) { // NOLINT(bugprone-empty-catch)
         // 解析失败，沿用 lexer 默认着色
     }
@@ -327,35 +377,29 @@ std::vector<int> computeSemanticTokens(std::string_view text) {
     int prevLine = 0;
     int prevChar = 0;
 
-    for (auto* tok : tokens.getTokens()) {
-        if (!tok) continue;
-        if (tok->getType() == antlr4::Token::EOF) break;
-
-        int kind = classify(tok->getType());
+    for (const auto& tok : raw) {
+        int kind = classify(tok.kind);
         int mods = 0;
         if (kind < 0) continue;
 
-        // ID 上下文覆盖（class/function/method/property/parameter + declaration modifier）
-        if (tok->getType() == ::riu::riuLexer::ID) {
-            auto it = overrides.find(tok->getTokenIndex());
+        if (tok.kind == rd::Kind::ID) {
+            auto it = overrides.find(tok.index);
             if (it != overrides.end()) {
                 kind = it->second.first;
                 mods = it->second.second;
             }
         }
 
-        const std::string& tt = tok->getText();
-        // LSP 规定 token 不能跨行，跨行的暂时跳过（riu 字符串都是行内）
-        if (tt.find('\n') != std::string::npos) continue;
+        if (tok.text.find('\n') != std::string_view::npos) continue;
 
-        int length = utf16Length(tt);
+        int length = utf16Length(tok.text);
         if (length <= 0) continue;
 
-        LspPosition start = antlrToLsp(text, tok->getLine(), tok->getCharPositionInLine());
+        LspPosition start = utf8OffsetToLsp(text, static_cast<size_t>(std::max(tok.pos.offset, 0)));
 
         int deltaLine = start.line - prevLine;
         int deltaChar = (deltaLine == 0) ? (start.character - prevChar) : start.character;
-        if (deltaLine < 0 || deltaChar < 0) continue; // 防御：保证编码合法
+        if (deltaLine < 0 || deltaChar < 0) continue;
 
         data.push_back(deltaLine);
         data.push_back(deltaChar);

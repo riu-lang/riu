@@ -124,12 +124,14 @@ static json rangeToJson(const LspPosition& s, const LspPosition& e) {
 static void publishDiagnostics(Document& doc) {
     json diags = json::array();
     for (const auto& d : doc.diagnostics()) {
-        diags.push_back({
+        json djson = {
             {"range", rangeToJson(d.start, d.end)},
             {"severity", static_cast<int>(d.severity)},
             {"source", "riu"},
             {"message", d.message},
-        });
+        };
+        if (!d.code.empty()) djson["code"] = d.code;
+        diags.push_back(std::move(djson));
     }
     json msg = {
         {"jsonrpc", "2.0"},
@@ -457,18 +459,7 @@ static std::optional<std::pair<std::string, std::pair<LspPosition, LspPosition>>
         return std::nullopt;
     }
     LspPosition s, e;
-    s.line = static_cast<int>(tok.getLine() > 0 ? tok.getLine() - 1 : 0);
-    s.character = static_cast<int>(tok.getCharPositionInLine());
-    e.line = s.line;
-    // 名字 token 不含换行；用 codepoint 计长度，与 character（codepoint 列）一致
-    const std::string& tn = tok.getText();
-    int cpLen = 0;
-    try {
-        cpLen = static_cast<int>(utf8::distance(tn.begin(), tn.end()));
-    } catch (...) {
-        cpLen = static_cast<int>(tn.size());
-    }
-    e.character = s.character + cpLen;
+    tokenToLspRangeFromFile(ownerPath, tok, s, e);
     return std::make_pair(pathToUri(ownerPath), std::make_pair(s, e));
 }
 
@@ -476,7 +467,7 @@ static std::optional<std::pair<std::string, std::pair<LspPosition, LspPosition>>
 // 仅按起始行筛选 + 取最大者；无 end-line 信息，对单文件场景已足够。
 static FnNode* findEnclosingFn(FileNode* file, int lspLine0) {
     if (!file) return nullptr;
-    int targetLine = lspLine0 + 1; // ANTLR 行号是 1-based
+    int targetLine = lspLine0 + 1; // 节点行号 1-based
     FnNode* best = nullptr;
     int bestLine = 0;
     auto consider = [&](FnNode* fn) {
@@ -534,16 +525,7 @@ static std::optional<json> tokenLocLink(Project& project, FileNode* ownerFile, c
     }
     if (ownerPath.empty()) return std::nullopt;
     LspPosition s, e;
-    s.line = static_cast<int>(tok.getLine() > 0 ? tok.getLine() - 1 : 0);
-    s.character = static_cast<int>(tok.getCharPositionInLine());
-    e.line = s.line;
-    int cpLen = 0;
-    try {
-        cpLen = static_cast<int>(utf8::distance(tok.getText().begin(), tok.getText().end()));
-    } catch (...) {
-        cpLen = static_cast<int>(tok.getText().size());
-    }
-    e.character = s.character + cpLen;
+    tokenToLspRangeFromFile(ownerPath, tok, s, e);
     return json{
         {"originSelectionRange", rangeToJson(origStart, origEnd)},
         {"targetUri", pathToUri(ownerPath)},
