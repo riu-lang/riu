@@ -629,8 +629,13 @@ ExprNode* RdBuilder::buildExpr(rd::NodeId id) {
             hasParens = true;
             node->addArg(buildExpr(child(id, i)));
         }
-        // 有括号或零参带 ()：parser 在 ParStart 时才 parseArgList。无孩子 args 且源上有 () 难区分。
-        // 有 args 一定有括号；无 args 保持 false（E::V 与 E::V() 语义等价）。
+        // 零参 `E::V()`：parseArgList 不挂孩子，用源上 variant 名后是否 `(` 区分 `E::V`。
+        if (!hasParens && !n.value.empty()) {
+            auto p = static_cast<size_t>(n.pos.offset) + n.value.size();
+            while (p < _src.size() && _src[p] == ' ')
+                ++p;
+            hasParens = p < _src.size() && _src[p] == '(';
+        }
         if (hasParens) node->setHasParens(true);
         return static_cast<ExprNode*>(node);
     }

@@ -3,8 +3,8 @@
 
 // trivia 扫描实现
 //
-// 线性扫描 CommonTokenStream 的所有 token：
-// - HIDDEN 通道的 LineComment / LineEndComment 收集为 TriviaComment；
+// 线性扫描 rd Scanner::nextRaw()：
+// - hidden 的 LineComment / LineEndComment 收集为 TriviaComment；
 //   行尾注释 (LineEndComment, 紧跟在某 default token 同一行后) 挂到该 default
 //   token 的 trailing 桶；行首注释挂到"下一个 default token"的 leading 桶；
 // - 通过相邻两个 default token 之间出现的换行数 (>=2) 判定空行，写入
@@ -12,103 +12,104 @@
 
 #include "tools/format/trivia.h"
 
+#include "ast/rd/scanner.h"
+
 #include <cstddef>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "antlr4-runtime.h"
-#include "riu/riuLexer.h"
-
 namespace riu::format {
 
 namespace {
 
+bool isHidden(rd::Kind k) {
+    return k == rd::Kind::Space || k == rd::Kind::LineComment || k == rd::Kind::LineEndComment;
+}
+
 // 把 lexer 抓到的注释原文规整成"纯注释主体"：剥去前导空格 (LineComment 词法
 // 规则把行首空格也吞进 token，列对齐由格式化器外层负责) 和尾随的 \r\n
 // (LineComment 末尾固定有一个 LineEnd)
-std::string trimCommentText(const std::string& s) {
+std::string trimCommentText(std::string_view s) {
     std::size_t a = 0;
     while (a < s.size() && s[a] == ' ')
         ++a;
     std::size_t b = s.size();
     while (b > a && (s[b - 1] == '\n' || s[b - 1] == '\r'))
         --b;
-    return s.substr(a, b - a);
+    return std::string(s.substr(a, b - a));
 }
 
 } // namespace
 
-TriviaMap buildTrivia(antlr4::CommonTokenStream& stream) {
-    TriviaMap map;
-    stream.fill();
-    const auto& toks = stream.getTokens();
+TriviaScan scanTrivia(std::string_view src) {
+    TriviaScan out;
+    rd::Scanner sc(src);
 
     auto lastDefault = static_cast<std::size_t>(-1);
     std::size_t lastDefaultLine = 0;
     std::vector<TriviaComment> pendingLeading;
 
-    for (auto* tk : toks) {
-        if (tk->getType() == antlr4::Token::EOF) break;
-        const auto channel = tk->getChannel();
-        const auto type = tk->getType();
-        const auto& rawText = tk->getText();
+    for (;;) {
+        rd::Token tk = sc.nextRaw();
+        if (tk.kind == rd::Kind::Eof) break;
+        const auto type = tk.kind;
+        const std::string_view rawText = tk.text;
 
-        if (channel == antlr4::Token::DEFAULT_CHANNEL) {
-            std::size_t idx = tk->getTokenIndex();
+        if (!isHidden(type) && type != rd::Kind::Invalid) {
+            const auto idx = static_cast<std::size_t>(tk.index);
+            out.defaultToks.push_back(tk);
             // LineEnd 自身也走 default 通道（每行一个），不能用它更新行号锚，
             // 否则会把空行的 LineEnd 当作"上一行"把空行吃掉
-            if (type == riuLexer::LineEnd) {
-                continue;
-            }
-            // 行号差 >= 2 视为存在空行；若中间有 leading 注释 (pendingLeading
-            // 非空)，应从最后一条 leading 注释的行号起算，否则一行注释会被
-            // 当成"空行"误触发 blankBefore
+            if (type == rd::Kind::LineEnd) continue;
+
             std::size_t prevLine = pendingLeading.empty() ? lastDefaultLine : pendingLeading.back().line;
-            if (std::cmp_not_equal(lastDefault, -1) && tk->getLine() > prevLine + 1) {
-                map.blankBefore[idx] = true;
+            if (std::cmp_not_equal(lastDefault, -1) && static_cast<std::size_t>(tk.pos.line) > prevLine + 1) {
+                out.map.blankBefore[idx] = true;
             }
             if (!pendingLeading.empty()) {
-                // 检测最后一条 leading 注释与该 token 之间是否有空行
-                if (tk->getLine() > pendingLeading.back().line + 1) {
-                    map.blankAfterLeading[idx] = true;
+                if (static_cast<std::size_t>(tk.pos.line) > pendingLeading.back().line + 1) {
+                    out.map.blankAfterLeading[idx] = true;
                 }
-                map.leadingByTokenIndex[idx] = std::move(pendingLeading);
+                out.map.leadingByTokenIndex[idx] = std::move(pendingLeading);
                 pendingLeading.clear();
             }
             lastDefault = idx;
-            lastDefaultLine = tk->getLine();
+            lastDefaultLine = static_cast<std::size_t>(tk.pos.line);
             continue;
         }
 
-        // HIDDEN 通道：注释 / 空白
-        if (type == riuLexer::LineEndComment) {
-            // 行尾注释：挂到上一个 default token 的 trailing
-            if (std::cmp_not_equal(lastDefault, -1) && tk->getLine() == lastDefaultLine) {
-                map.trailingByTokenIndex[lastDefault].push_back({.text = trimCommentText(rawText),
-                                                                 .isLineComment = true,
-                                                                 .line = tk->getLine(),
-                                                                 .blankBefore = false});
+        if (type == rd::Kind::LineEndComment) {
+            if (std::cmp_not_equal(lastDefault, -1) && std::cmp_equal(tk.pos.line, lastDefaultLine)) {
+                out.map.trailingByTokenIndex[lastDefault].push_back({.text = trimCommentText(rawText),
+                                                                     .isLineComment = true,
+                                                                     .line = static_cast<std::size_t>(tk.pos.line),
+                                                                     .blankBefore = false});
             } else {
                 std::size_t prevLine = pendingLeading.empty() ? lastDefaultLine : pendingLeading.back().line;
-                bool blank =
-                    (std::cmp_not_equal(lastDefault, -1) || !pendingLeading.empty()) && tk->getLine() > prevLine + 1;
+                bool blank = (std::cmp_not_equal(lastDefault, -1) || !pendingLeading.empty()) &&
+                             static_cast<std::size_t>(tk.pos.line) > prevLine + 1;
                 pendingLeading.push_back({.text = trimCommentText(rawText),
                                           .isLineComment = true,
-                                          .line = tk->getLine(),
+                                          .line = static_cast<std::size_t>(tk.pos.line),
                                           .blankBefore = blank});
             }
-        } else if (type == riuLexer::LineComment) {
+        } else if (type == rd::Kind::LineComment) {
             std::size_t prevLine = pendingLeading.empty() ? lastDefaultLine : pendingLeading.back().line;
-            bool blank =
-                (std::cmp_not_equal(lastDefault, -1) || !pendingLeading.empty()) && tk->getLine() > prevLine + 1;
-            pendingLeading.push_back(
-                {.text = trimCommentText(rawText), .isLineComment = true, .line = tk->getLine(), .blankBefore = blank});
+            bool blank = (std::cmp_not_equal(lastDefault, -1) || !pendingLeading.empty()) &&
+                         static_cast<std::size_t>(tk.pos.line) > prevLine + 1;
+            pendingLeading.push_back({.text = trimCommentText(rawText),
+                                      .isLineComment = true,
+                                      .line = static_cast<std::size_t>(tk.pos.line),
+                                      .blankBefore = blank});
         }
-        // 其它 hidden token (Space 等) 当前不需要记录
     }
 
-    return map;
+    return out;
+}
+
+TriviaMap buildTrivia(std::string_view src) {
+    return scanTrivia(src).map;
 }
 
 } // namespace riu::format

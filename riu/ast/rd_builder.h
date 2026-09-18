@@ -50,6 +50,7 @@ class RdBuilder {
     vector<Node*> _nodes;
     vector<ScopeNode*> _scopeStack;
     FileNode* _targetFile = nullptr;
+    bool _expandImports = true;
 
     template <typename T, typename... Args>
     T* create(const rd::Pos& pos, Args&&... args) {
@@ -128,6 +129,8 @@ public:
     ~RdBuilder();
 
     void setTargetFile(FileNode* file) { _targetFile = file; }
+    // 格式化只记 UseSpec，不 loadModule（单文件、无工程根）。
+    void setExpandImports(bool v) { _expandImports = v; }
     [[nodiscard]] const vector<rd::ParseError>& errors() const { return _errors; }
 
     FileNode* build();

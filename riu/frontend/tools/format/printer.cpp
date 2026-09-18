@@ -3,50 +3,38 @@
 
 // AST 驱动格式化器实现
 //
-// Phase 4a 范围（增量, 表达式简单形态走 Doc, 块形态仍 raw）:
-// - 简单内联表达式: literal / paren / unary / binary（含 shift/compare/eq/bool/
-//   nullElse）/ call(无尾随 lambda) / dot / tupleMember / get / getRef /
-//   array / tuple / enumCtor / arrayInit / this / lambdaParen（表达式体）
-// - 仍走 raw: lambda 语句体 / tryCatch / match / ifElse /
-//   oneLineIfElse / call 含尾随 lambda
-// - 已接入 fnExprkBody（`fn name() T = <expr>` 体）
-//
-// Phase 3 范围:
-// - 类型节点全套：type 的 Normal / Generic / Nullable / Array
-//   / Tuple 各变体，统一处理后置 `&` 借用标记
-// - genericDef / genericDefWithRef / fnParams / fnParam 全套
-// - fnHeader / fnBody 框架：fnHeader 用 Doc 重排参数；fnBody 表达式体走
-//   `= <rawExpr>`、块体走 `{...}` 把 statementBlock 内容当原文嵌入并按
-//   缩进规整一次
-// - externDelc 用 Doc 重排：buildAnnos + extern { fnHeader... }
-//
-// 已实装顶层：imports / buildAnno / globalConst / aliasDecl / fn / externDelc / enumDecl
-// 仍回退顶层：structDecl / structImpl / specDecl（Phase 4 起细化）
-//
-// 渲染：每个顶层 item 自身的 Doc 用 render() 处理，块之间用纯 "\n" 拼接，
-// 避免顶层间互相影响 group 决策。
+// 词法 trivia 走 rd nextRaw()；顶层 / 类型走 FileNode（`T?` / `T&` 由
+// typeDocAst 从 Nullable / Ref 印回）。表达式 / 语句经 AstVisitor。
+// 多行语句仍按源切片再整体平移缩进；struct / spec / extern 顶层回退原文。
 
 #include "tools/format/printer.h"
 
-#include <any>
+#include <algorithm>
+#include <cctype>
 #include <cstddef>
-#include <exception>
+#include <ranges>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
-#include "antlr4-runtime.h"
-#include "ast/ast_builder.h"
 #include "ast/node/alias_node.h"
 #include "ast/node/ast_visitor.h"
+#include "ast/node/enum_node.h"
 #include "ast/node/expr_node.h"
+#include "ast/node/file_node.h"
+#include "ast/node/fn_node.h"
+#include "ast/node/global_const_node.h"
+#include "ast/node/global_var_node.h"
 #include "ast/node/literal_node.h"
+#include "ast/node/spec_node.h"
+#include "ast/node/spec_ref.h"
 #include "ast/node/statement_node.h"
+#include "ast/node/struct_node.h"
 #include "ast/node/type_node.h"
+#include "ast/rd/token.h"
+#include "ast/rd_builder.h"
 #include "ast/riu.h"
-#include "misc/Interval.h"
-#include "riu/riuLexer.h"
-#include "riu/riuParser.h"
 
 #include "tools/format/doc.h"
 #include "tools/format/render.h"
@@ -58,18 +46,6 @@ namespace riu::format {
 
 namespace {
 
-// ==================== 工具：原文截取 ====================
-
-// 抓取一棵子树覆盖的源码原文。BufferedTokenStream::getText(Interval) 不过滤
-// 通道，因此返回的字符串与输入完全一致（含其中的 hidden 注释 / 空白）。
-std::string rawSpan(antlr4::CommonTokenStream& tokens, antlr4::ParserRuleContext* ctx) {
-    if (ctx == nullptr || ctx->start == nullptr || ctx->stop == nullptr) return {};
-    return tokens.getText(antlr4::misc::Interval(ctx->start->getTokenIndex(), ctx->stop->getTokenIndex()));
-}
-
-// 把多行原文按"原始公共缩进"剥掉，再补上目标缩进。
-// 用于把回退区块嵌入到当前缩进语境里时不带入旧缩进。
-// 当前回退路径都在顶层 (indent=0)，简单起见保留原样不做缩进规整。
 std::string trimRightLineEnds(std::string s) {
     while (!s.empty() && (s.back() == '\n' || s.back() == '\r')) {
         s.pop_back();
@@ -77,16 +53,12 @@ std::string trimRightLineEnds(std::string s) {
     return s;
 }
 
-// ==================== Printer ====================
-
-// 4.4：表达式 / 语句经 AstVisitor::accept 分派；顶层 item / 类型节点仍走 parse tree
-// （类型在 builder 里会解糖成 Nullable / Ref，parse tree 才能保住 `T?` / `T&` 写法）。
 class Printer : public AstVisitor {
 public:
-    Printer(antlr4::CommonTokenStream& tokens, const TriviaMap& trivia, ASTBuilder& builder)
-        : tokens_(tokens), trivia_(trivia), builder_(builder) {}
+    Printer(std::string_view source, const TriviaMap& trivia, const std::vector<rd::Token>& defaultToks)
+        : source_(source), trivia_(trivia), defaultToks_(defaultToks) {}
 
-    Doc programDoc(riuParser::ProgramContext* ctx);
+    Doc programDoc(FileNode& file);
 
     void visitCall(ExprCallNode&) override;
     void visitLiteral(ExprLiteralNode&) override;
@@ -130,61 +102,32 @@ public:
     void visitAlias(AliasDeclNode&) override;
 
 private:
-    antlr4::CommonTokenStream& tokens_;
+    std::string_view source_;
     const TriviaMap& trivia_;
-    ASTBuilder& builder_;
+    const std::vector<rd::Token>& defaultToks_;
     Doc _doc;
     int _stmtIndent = 0;
 
-    // 顶层 item 的渲染单元：要么是结构化 Doc (走 render 出现刷格式)，
-    // 要么是纯原文块 (按行直出，避免再次 break/flat 决策影响)
     struct Item {
-        std::vector<TriviaComment> leading; // 项前 leading 注释
-        bool blankBefore = false;           // 是否需要在前面插入一个空行
-        bool blankAfterLeading = false;     // leading 与项之间是否需要空行
-        Doc doc;                            // 结构化输出 (与 raw 二选一)
-        std::string raw;                    // 原文回退输出 (与 doc 二选一)
+        std::vector<TriviaComment> leading;
+        bool blankBefore = false;
+        bool blankAfterLeading = false;
+        Doc doc;
+        std::string raw;
+        int sortTok = 0;
+        int sortLine = 0;
     };
 
-    Item visitTopLevel(antlr4::tree::ParseTree* child);
-
-    Doc importsDoc(riuParser::ImportsContext* ctx);
-    Doc buildAnnoDoc(riuParser::BuildAnnoContext* ctx);
-    Doc letGlobalDoc(riuParser::LetGlobalContext* ctx);
-    Doc aliasDeclDoc(riuParser::AliasDeclContext* ctx);
-    Doc fnDoc(riuParser::FnContext* ctx);
-    Doc fnHeaderDoc(riuParser::FnHeaderContext* ctx);
-    Doc fnBodyDoc(riuParser::FnBodyContext* ctx, int indentLevel);
-    Doc externDelcDoc(riuParser::ExternDelcContext* ctx);
-    Doc enumDeclDoc(riuParser::EnumDeclContext* ctx);
-    Doc enumVariantDoc(riuParser::EnumVariantContext* ctx);
-
-    // 类型 / 泛型 / 形参
-    Doc typePathDoc(riuParser::TypePathContext* ctx);
-    Doc typeDoc(riuParser::TypeContext* ctx);
-    Doc genericDefDoc(riuParser::GenericDefContext* ctx);
-    Doc genericDefWithRefDoc(riuParser::GenericDefWithRefContext* ctx);
-    Doc fnParamsDoc(riuParser::FnParamsContext* ctx);
-    Doc fnParamDoc(riuParser::FnParamContext* ctx);
-
-    // 表达式
-    Doc exprDoc(riuParser::ExprContext* ctx);
-
-    // 语句 / 块
-    // indentLevel: 当前语句所处的"逻辑缩进层" (顶层 fn body 内是 1，
-    // 嵌套 statementBlock 内逐层 +1)，用于多行 raw 回退时计算目标列
-    Doc statementBlockDoc(riuParser::StatementBlockContext* ctx, int indentLevel);
-    Doc statementDoc(riuParser::StatementContext* ctx, int indentLevel);
-
-    // 把多行原文按"原起始列 → 目标列"做整体平移：第 0 行原样，第 i>0 行
-    // 把至多 srcStartCol 个前导空格替换为 targetCol 空格
+    [[nodiscard]] const rd::Token* tokAt(int idx) const;
+    [[nodiscard]] rd::Kind kindAt(const Node& n) const;
+    [[nodiscard]] std::string rawSpan(int startIdx, int stopIdx) const;
+    [[nodiscard]] std::string rawSpan(const Node& n) const;
+    [[nodiscard]] std::string rawSpanWithoutTrailingLineEnd(const Node& n) const;
     static std::string reindentMultilineRaw(const std::string& raw, std::size_t srcStartCol, std::size_t targetCol);
 
-    // 抓 ctx 的原文，但去掉末尾的 LineEnd token（语句规则末尾固定挂 LineEnd）
-    std::string rawSpanWithoutTrailingLineEnd(antlr4::ParserRuleContext* ctx);
-
-    // 取顶层 item 起始 default token 的 index，用于查 trivia
-    static std::size_t startTokenIndex(antlr4::ParserRuleContext* ctx) { return ctx->start->getTokenIndex(); }
+    Item itemFromTok(int tokStart);
+    void attachTrailing(Item& item, int startIdx, int stopIdx);
+    void attachTrailing(std::vector<Doc>& parts, int startIdx, int stopIdx);
 
     Doc formatExpr(ExprNode* n);
     Doc formatStmt(StatementNode* n);
@@ -195,212 +138,129 @@ private:
     Doc letAnnosDoc(bool isMut, bool isConst, bool isFrozen);
     Doc lambdaParamsFromSlots(const std::vector<LambdaParamSlot>& slots);
     Doc binExpr(ExprNode* left, const char* op, ExprNode* right);
+    Doc specRefDoc(const SpecRef& r);
+    Doc genericDefDoc(const std::vector<std::string>& names, const std::vector<std::vector<SpecRef>>& bounds);
+    Doc annoDoc(const std::string& name, const std::string& arg);
+    Doc headerAnnosDoc(const FnHeaderNode& h);
+    Doc fnHeaderDoc(FnHeaderNode* h);
+    Doc fnParamsDoc(FnHeaderNode* h);
+    Doc fnDoc(FnNode* fn);
+    Doc fnBodyDoc(FnNode* fn, int indentLevel);
+    Doc enumDeclDoc(EnumDeclNode* en);
+    Doc aliasDeclDoc(AliasDeclNode* al);
+    Doc letGlobalDoc(GlobalConstNode* g);
+    Doc letGlobalVarDoc(GlobalVarNode* g);
+    Doc useDoc(const FileNode::UseSpec& u);
     Doc astBlockDoc(StatementBlockNode* block, int indentLevel);
-    Doc statementDocParse(riuParser::StatementContext* ctx, int indentLevel);
+    Doc blockDoc(const std::vector<StatementNode*>& stmts, ExprNode* result, int blockEndTok, int indentLevel);
+    Doc stmtInBlock(StatementNode* s, int indentLevel);
+    Doc exprInBlock(ExprNode* e, int indentLevel);
+    [[nodiscard]] bool isMultiline(const Node& n) const;
+    [[nodiscard]] int useTokIndex(int line) const;
+    void collectExternItems(std::vector<Item>& items);
 };
 
-Doc Printer::importsDoc(riuParser::ImportsContext* ctx) {
-    std::vector<Doc> parts;
-    parts.push_back(text("use "));
-    parts.push_back(typePathDoc(ctx->typePath()));
-    if (ctx->useAll != nullptr) {
-        parts.push_back(text(".*"));
-    }
-    return concat(std::move(parts));
+const rd::Token* Printer::tokAt(int idx) const {
+    if (idx < 0 || static_cast<std::size_t>(idx) >= defaultToks_.size()) return nullptr;
+    return &defaultToks_[static_cast<std::size_t>(idx)];
 }
 
-Doc Printer::buildAnnoDoc(riuParser::BuildAnnoContext* ctx) {
-    std::vector<Doc> parts;
-    parts.push_back(text("#"));
-    parts.push_back(text(ctx->name->getText()));
-    if (ctx->ParStart() != nullptr) {
-        parts.push_back(text("("));
-        if (auto* aa = ctx->annoArg()) {
-            if (aa->arg) {
-                parts.push_back(text(aa->arg->getText()));
-                if (auto* gd = aa->genericDef()) parts.push_back(genericDefDoc(gd));
-            } else if (aa->argNum) {
-                parts.push_back(text(aa->argNum->getText()));
-            } else if (aa->argStr) {
-                parts.push_back(text(aa->argStr->getText()));
-            } else if (aa->argTPL) {
-                parts.push_back(text("\""));
-                for (auto* tn : aa->argText)
-                    parts.push_back(text(tn->getText()));
-                parts.push_back(text("\""));
-            } else if (aa->argType) {
-                parts.push_back(typeDoc(aa->argType));
-            }
+rd::Kind Printer::kindAt(const Node& n) const {
+    const rd::Token* t = tokAt(n.tokenStart());
+    return t ? t->kind : rd::Kind::Invalid;
+}
+
+std::string Printer::rawSpan(int startIdx, int stopIdx) const {
+    const rd::Token* a = tokAt(startIdx);
+    const rd::Token* b = tokAt(stopIdx);
+    if (!a || !b) return {};
+    const auto off = static_cast<std::size_t>(a->pos.offset);
+    const auto end = static_cast<std::size_t>(b->pos.end);
+    if (off > source_.size() || end < off) return {};
+    auto n = end - off;
+    if (off + n > source_.size()) n = source_.size() - off;
+    return std::string(source_.substr(off, n));
+}
+
+std::string Printer::rawSpan(const Node& n) const {
+    if (n.tokenStart() < 0 || n.tokenStop() < n.tokenStart()) return {};
+    return rawSpan(n.tokenStart(), n.tokenStop());
+}
+
+std::string Printer::rawSpanWithoutTrailingLineEnd(const Node& n) const {
+    if (n.tokenStart() < 0 || n.tokenStop() < n.tokenStart()) return {};
+    int stop = n.tokenStop();
+    const rd::Token* last = tokAt(stop);
+    if (last && last->kind == rd::Kind::LineEnd && stop > n.tokenStart()) --stop;
+    return rawSpan(n.tokenStart(), stop);
+}
+
+std::string Printer::reindentMultilineRaw(const std::string& raw, std::size_t srcStartCol, std::size_t targetCol) {
+    std::vector<std::string> lines;
+    {
+        std::string cur;
+        for (char c : raw) {
+            if (c == '\n') {
+                lines.push_back(std::move(cur));
+                cur.clear();
+            } else if (c != '\r')
+                cur.push_back(c);
         }
-        parts.push_back(text(")"));
+        lines.push_back(std::move(cur));
     }
-    return concat(std::move(parts));
-}
-
-// letGlobal: letAnno+ Let name=ID type? (= literal)? — 当前仅合法形态 `#Cval let NAME T = literal`
-Doc Printer::letGlobalDoc(riuParser::LetGlobalContext* ctx) {
-    std::vector<Doc> parts;
-    for (auto* a : ctx->letAnnos) {
-        parts.push_back(text("#" + a->name->getText()));
-        parts.push_back(hardline());
-    }
-    parts.push_back(text("let "));
-    parts.push_back(text(ctx->name->getText()));
-    if (ctx->type() != nullptr) {
-        parts.push_back(text(" "));
-        parts.push_back(typeDoc(ctx->type()));
-    }
-    if (ctx->expr() != nullptr) {
-        parts.push_back(text(" = "));
-        parts.push_back(text(rawSpan(tokens_, ctx->expr())));
-    }
-    return concat(std::move(parts));
-}
-
-Doc Printer::aliasDeclDoc(riuParser::AliasDeclContext* ctx) {
-    std::vector<Doc> parts;
-    parts.push_back(text("type "));
-    parts.push_back(text(ctx->name->getText()));
-    parts.push_back(text(" = "));
-    parts.push_back(typeDoc(ctx->type()));
-    return concat(std::move(parts));
-}
-
-// ==================== 类型节点 ====================
-
-Doc Printer::typePathDoc(riuParser::TypePathContext* ctx) {
-    if (!ctx) return text("");
-    std::vector<Doc> parts;
-    const auto& segs = ctx->segs;
-    for (std::size_t i = 0; i < segs.size(); ++i) {
-        if (i > 0) parts.push_back(text("."));
-        parts.push_back(text(segs[i]->getText()));
-    }
-    return concat(std::move(parts));
-}
-
-Doc Printer::typeDoc(riuParser::TypeContext* ctx) {
-    auto refSuffix = [](antlr4::tree::TerminalNode* andTok) -> Doc { return andTok != nullptr ? text("&") : text(""); };
-    if (auto* n = dynamic_cast<riuParser::TypeNormalContext*>(ctx)) {
-        return concat({typePathDoc(n->typePath()), refSuffix(n->SymbolAnd())});
-    }
-    if (auto* n = dynamic_cast<riuParser::TypeSelfContext*>(ctx)) {
-        return concat({text(n->SelfType()->getText()), refSuffix(n->SymbolAnd())});
-    }
-    if (auto* n = dynamic_cast<riuParser::TypeNullableContext*>(ctx)) {
-        return concat({typeDoc(n->type()), text("?"), refSuffix(n->SymbolAnd())});
-    }
-    if (auto* n = dynamic_cast<riuParser::TypeFallibleContext*>(ctx)) {
-        return concat({typeDoc(n->base), text(" ! "), typeDoc(n->errType), refSuffix(n->SymbolAnd())});
-    }
-    if (auto* n = dynamic_cast<riuParser::TypeGenericContext*>(ctx)) {
-        return concat({
-            typePathDoc(n->typePath()),
-            genericDefWithRefDoc(n->genericDefWithRef()),
-            refSuffix(n->SymbolAnd()),
-        });
-    }
-    if (auto* n = dynamic_cast<riuParser::TypeArrayContext*>(ctx)) {
-        return concat({
-            text("["),
-            typeDoc(n->type()),
-            text(" * "),
-            text(n->INT()->getText()),
-            text("]"),
-            refSuffix(n->SymbolAnd()),
-        });
-    }
-    if (auto* n = dynamic_cast<riuParser::TypeUnitContext*>(ctx)) {
-        (void)n;
-        return text("()");
-    }
-    if (auto* n = dynamic_cast<riuParser::TypeTupleContext*>(ctx)) {
-        std::vector<Doc> parts;
-        parts.push_back(text("("));
-        for (std::size_t i = 0; i < n->types.size(); ++i) {
-            if (i > 0) parts.push_back(text(", "));
-            parts.push_back(typeDoc(n->types[i]));
-        }
-        parts.push_back(text(")"));
-        return concat(std::move(parts));
-    }
-    return text(rawSpan(tokens_, ctx));
-}
-
-Doc Printer::genericDefDoc(riuParser::GenericDefContext* ctx) {
-    std::vector<Doc> parts;
-    parts.push_back(text("<"));
-    for (std::size_t i = 0; i < ctx->params.size(); ++i) {
-        if (i > 0) parts.push_back(text(", "));
-        auto* tp = ctx->params[i];
-        // typeParam = type (: bound (+ bound)*)?；首个 type 是参数本身
-        if (!tp->type().empty()) {
-            parts.push_back(typeDoc(tp->type()[0]));
-        }
-        if (tp->bounds.size() > 0) {
-            // 仓库惯例 `T : Bound` (冒号两侧均有空格)
-            parts.push_back(text(" : "));
-            for (std::size_t b = 0; b < tp->bounds.size(); ++b) {
-                if (b > 0) parts.push_back(text(" + "));
-                parts.push_back(typeDoc(tp->bounds[b]));
-            }
+    std::string pad(targetCol, ' ');
+    std::string out;
+    for (std::size_t i = 0; i < lines.size(); ++i) {
+        if (i > 0) out.push_back('\n');
+        if (i == 0) {
+            out += lines[i];
+        } else {
+            std::size_t k = 0;
+            while (k < lines[i].size() && k < srcStartCol && lines[i][k] == ' ')
+                ++k;
+            out += pad;
+            out += lines[i].substr(k);
         }
     }
-    parts.push_back(text(">"));
-    return concat(std::move(parts));
+    return out;
 }
 
-Doc Printer::genericDefWithRefDoc(riuParser::GenericDefWithRefContext* ctx) {
-    std::vector<Doc> parts;
-    parts.push_back(text("<"));
-    for (std::size_t i = 0; i < ctx->types.size(); ++i) {
-        if (i > 0) parts.push_back(text(", "));
-        parts.push_back(typeDoc(ctx->types[i]));
-    }
-    parts.push_back(text(">"));
-    return concat(std::move(parts));
+Printer::Item Printer::itemFromTok(int tokStart) {
+    Item item;
+    item.sortTok = tokStart;
+    if (const rd::Token* t = tokAt(tokStart)) item.sortLine = t->pos.line;
+    auto idx = static_cast<std::size_t>(std::max(tokStart, 0));
+    auto blankIt = trivia_.blankBefore.find(idx);
+    item.blankBefore = (blankIt != trivia_.blankBefore.end()) && blankIt->second;
+    auto leadIt = trivia_.leadingByTokenIndex.find(idx);
+    if (leadIt != trivia_.leadingByTokenIndex.end()) item.leading = leadIt->second;
+    auto bal = trivia_.blankAfterLeading.find(idx);
+    item.blankAfterLeading = (bal != trivia_.blankAfterLeading.end()) && bal->second;
+    return item;
 }
 
-Doc Printer::fnParamsDoc(riuParser::FnParamsContext* ctx) {
-    std::vector<Doc> parts;
-    auto params = ctx->fnParam();
-    for (std::size_t i = 0; i < params.size(); ++i) {
-        if (i > 0) parts.push_back(text(", "));
-        parts.push_back(fnParamDoc(params[i]));
-    }
-    return concat(std::move(parts));
-}
-
-Doc Printer::fnParamDoc(riuParser::FnParamContext* ctx) {
-    if (ctx->fnParamStd() != nullptr) {
-        auto* n = ctx->fnParamStd();
-        return concat({text(n->ID()->getText()), text(" "), typeDoc(n->type())});
-    }
-    if (ctx->fnParamGroup() != nullptr) {
-        auto* n = ctx->fnParamGroup();
-        std::vector<Doc> parts;
-        for (std::size_t i = 0; i < n->names.size(); ++i) {
-            if (i > 0) parts.push_back(text(", "));
-            parts.push_back(text(n->names[i]->getText()));
+void Printer::attachTrailing(std::vector<Doc>& parts, int startIdx, int stopIdx) {
+    if (startIdx < 0 || stopIdx < startIdx) return;
+    for (int idx = startIdx; idx <= stopIdx; ++idx) {
+        auto it = trivia_.trailingByTokenIndex.find(static_cast<std::size_t>(idx));
+        if (it == trivia_.trailingByTokenIndex.end()) continue;
+        for (const auto& c : it->second) {
+            parts.push_back(text("  "));
+            parts.push_back(text(c.text));
         }
-        parts.push_back(text(" "));
-        parts.push_back(typeDoc(n->type()));
-        return concat(std::move(parts));
     }
-    return text(rawSpan(tokens_, ctx));
 }
 
-// ==================== 表达式 ====================
-
-// 表达式：parse ctx → ASTBuilder.visit → accept 分派
-Doc Printer::exprDoc(riuParser::ExprContext* ctx) {
-    if (!ctx) return text("");
-    try {
-        auto* n = any_cast_p<ExprNode>(builder_.visit(ctx));
-        if (n) return formatExpr(n);
-    } catch (const std::exception&) { // NOLINT(bugprone-empty-catch) — builder 未绑定名抛 E3030，回退 raw
-    }
-    return text(rawSpan(tokens_, ctx));
+void Printer::attachTrailing(Item& item, int startIdx, int stopIdx) {
+    if (!item.doc) return;
+    const rd::Token* a = tokAt(startIdx);
+    const rd::Token* b = tokAt(stopIdx);
+    if (!a || !b || a->pos.line != b->pos.line) return;
+    std::vector<Doc> withTrailing;
+    withTrailing.push_back(item.doc);
+    const std::size_t before = withTrailing.size();
+    attachTrailing(withTrailing, startIdx, stopIdx);
+    if (withTrailing.size() > before) item.doc = concat(std::move(withTrailing));
 }
 
 Doc Printer::formatExpr(ExprNode* n) {
@@ -428,11 +288,7 @@ Doc Printer::formatStmt(StatementNode* n) {
 }
 
 Doc Printer::rawNode(const Node& n) {
-    if (n.tokenStart() >= 0 && n.tokenStop() >= n.tokenStart()) {
-        return text(tokens_.getText(
-            antlr4::misc::Interval(static_cast<std::size_t>(n.tokenStart()), static_cast<std::size_t>(n.tokenStop()))));
-    }
-    return text("");
+    return text(rawSpan(n));
 }
 
 Doc Printer::binExpr(ExprNode* left, const char* op, ExprNode* right) {
@@ -532,8 +388,468 @@ Doc Printer::lambdaParamsFromSlots(const std::vector<LambdaParamSlot>& slots) {
     return concat(std::move(parts));
 }
 
+Doc Printer::specRefDoc(const SpecRef& r) {
+    if (r.typeArgs.empty()) return text(r.name);
+    std::vector<Doc> parts;
+    parts.push_back(text(r.name));
+    parts.push_back(text("<"));
+    for (std::size_t i = 0; i < r.typeArgs.size(); ++i) {
+        if (i > 0) parts.push_back(text(", "));
+        parts.push_back(text(r.typeArgs[i].getFullName()));
+    }
+    parts.push_back(text(">"));
+    return concat(std::move(parts));
+}
+
+Doc Printer::genericDefDoc(const std::vector<std::string>& names, const std::vector<std::vector<SpecRef>>& bounds) {
+    if (names.empty()) return text("");
+    std::vector<Doc> parts;
+    parts.push_back(text("<"));
+    for (std::size_t i = 0; i < names.size(); ++i) {
+        if (i > 0) parts.push_back(text(", "));
+        parts.push_back(text(names[i]));
+        if (i < bounds.size() && !bounds[i].empty()) {
+            parts.push_back(text(" : "));
+            for (std::size_t b = 0; b < bounds[i].size(); ++b) {
+                if (b > 0) parts.push_back(text(" + "));
+                parts.push_back(specRefDoc(bounds[i][b]));
+            }
+        }
+    }
+    parts.push_back(text(">"));
+    return concat(std::move(parts));
+}
+
+Doc Printer::annoDoc(const std::string& name, const std::string& arg) {
+    if (arg.empty()) return concat({text("#"), text(name)});
+    bool ident = !arg.empty() && (std::isalnum(static_cast<unsigned char>(arg[0])) || arg[0] == '_');
+    for (char c : arg) {
+        if (!(std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '.' || c == '<' || c == '>' ||
+              c == ',')) {
+            ident = false;
+            break;
+        }
+    }
+    if (ident || arg.front() == '"') return concat({text("#"), text(name), text("("), text(arg), text(")")});
+    return concat({text("#"), text(name), text("(\""), text(arg), text("\")")});
+}
+
+Doc Printer::headerAnnosDoc(const FnHeaderNode& h) {
+    std::vector<Doc> parts;
+    const auto& names = h.annos();
+    const auto& args = h.annoArgs();
+    for (std::size_t i = 0; i < names.size(); ++i) {
+        parts.push_back(annoDoc(names[i], i < args.size() ? args[i] : std::string()));
+        parts.push_back(hardline());
+    }
+    return parts.empty() ? text("") : concat(std::move(parts));
+}
+
+Doc Printer::fnParamsDoc(FnHeaderNode* h) {
+    std::vector<Doc> parts;
+    auto params = h->params();
+    for (std::size_t i = 0; i < params.size(); ++i) {
+        if (i > 0) parts.push_back(text(", "));
+        if (params[i]->isFrozen()) parts.push_back(text("#Frozen "));
+        parts.push_back(text(params[i]->name().getText()));
+        if (params[i]->type()) {
+            parts.push_back(text(" "));
+            parts.push_back(typeDocAst(params[i]->type()));
+        }
+    }
+    return concat(std::move(parts));
+}
+
+Doc Printer::fnHeaderDoc(FnHeaderNode* h) {
+    if (!h) return text("");
+    std::vector<Doc> parts;
+    parts.push_back(headerAnnosDoc(*h));
+    parts.push_back(text("fn "));
+    parts.push_back(text(h->name().getText()));
+    parts.push_back(genericDefDoc(h->typeParams(), h->typeParamBounds()));
+    parts.push_back(text("("));
+    parts.push_back(fnParamsDoc(h));
+    parts.push_back(text(")"));
+    if (h->retType() || h->fallibleErrTypeNode()) {
+        parts.push_back(text(" "));
+        if (h->retType())
+            parts.push_back(typeDocAst(h->retType()));
+        else
+            parts.push_back(text("()"));
+        if (h->fallibleErrTypeNode()) {
+            parts.push_back(text(" ! "));
+            parts.push_back(typeDocAst(h->fallibleErrTypeNode()));
+        }
+    }
+    return concat(std::move(parts));
+}
+
+bool Printer::isMultiline(const Node& n) const {
+    const rd::Token* a = tokAt(n.tokenStart());
+    int stop = n.tokenStop();
+    const rd::Token* last = tokAt(stop);
+    if (last && last->kind == rd::Kind::LineEnd && stop > n.tokenStart()) --stop;
+    const rd::Token* b = tokAt(stop);
+    return a && b && a->pos.line != b->pos.line;
+}
+
+Doc Printer::stmtInBlock(StatementNode* s, int indentLevel) {
+    if (!s) return text("");
+    if (isMultiline(*s)) {
+        const rd::Token* a = tokAt(s->tokenStart());
+        std::size_t srcCol = a ? static_cast<std::size_t>(a->pos.column) : 0;
+        return text(
+            reindentMultilineRaw(rawSpanWithoutTrailingLineEnd(*s), srcCol, static_cast<std::size_t>(indentLevel) * 2));
+    }
+    int prev = _stmtIndent;
+    _stmtIndent = indentLevel;
+    Doc d = formatStmt(s);
+    _stmtIndent = prev;
+    std::vector<Doc> parts;
+    parts.push_back(d);
+    attachTrailing(parts, s->tokenStart(), s->tokenStop());
+    return concat(std::move(parts));
+}
+
+Doc Printer::exprInBlock(ExprNode* e, int indentLevel) {
+    if (!e) return text("");
+    if (isMultiline(*e)) {
+        const rd::Token* a = tokAt(e->tokenStart());
+        std::size_t srcCol = a ? static_cast<std::size_t>(a->pos.column) : 0;
+        return text(
+            reindentMultilineRaw(rawSpanWithoutTrailingLineEnd(*e), srcCol, static_cast<std::size_t>(indentLevel) * 2));
+    }
+    std::vector<Doc> parts;
+    parts.push_back(formatExpr(e));
+    attachTrailing(parts, e->tokenStart(), e->tokenStop());
+    return concat(std::move(parts));
+}
+
+Doc Printer::blockDoc(const std::vector<StatementNode*>& stmts, ExprNode* result, int blockEndTok, int indentLevel) {
+    std::vector<Doc> inner;
+    auto emitLead = [&](int tokStart, bool first) {
+        auto idx = static_cast<std::size_t>(std::max(tokStart, 0));
+        auto blankIt = trivia_.blankBefore.find(idx);
+        bool stmtBlank = (blankIt != trivia_.blankBefore.end()) && blankIt->second;
+        auto leadIt = trivia_.leadingByTokenIndex.find(idx);
+        const std::vector<TriviaComment>* cs = nullptr;
+        if (leadIt != trivia_.leadingByTokenIndex.end()) cs = &leadIt->second;
+        bool emitBlank = (cs != nullptr && !cs->empty()) ? cs->front().blankBefore : stmtBlank;
+        inner.push_back(hardline());
+        if (!first && emitBlank) inner.push_back(hardline());
+        if (cs != nullptr) {
+            for (std::size_t k = 0; k < cs->size(); ++k) {
+                if (k > 0 && (*cs)[k].blankBefore) inner.push_back(hardline());
+                inner.push_back(text((*cs)[k].text));
+                inner.push_back(hardline());
+            }
+            auto bal = trivia_.blankAfterLeading.find(idx);
+            if (bal != trivia_.blankAfterLeading.end() && bal->second) inner.push_back(hardline());
+        }
+    };
+
+    bool first = true;
+    for (auto* s : stmts) {
+        emitLead(s->tokenStart(), first);
+        first = false;
+        inner.push_back(stmtInBlock(s, indentLevel + 1));
+    }
+    if (result) {
+        emitLead(result->tokenStart(), first);
+        first = false;
+        inner.push_back(exprInBlock(result, indentLevel + 1));
+    }
+    if (blockEndTok >= 0) {
+        auto endIdx = static_cast<std::size_t>(blockEndTok);
+        auto leadIt = trivia_.leadingByTokenIndex.find(endIdx);
+        if (leadIt != trivia_.leadingByTokenIndex.end()) {
+            for (const auto& c : leadIt->second) {
+                inner.push_back(hardline());
+                if (c.blankBefore) inner.push_back(hardline());
+                inner.push_back(text(c.text));
+            }
+        }
+        auto blankIt = trivia_.blankBefore.find(endIdx);
+        if (blankIt != trivia_.blankBefore.end() && blankIt->second && leadIt == trivia_.leadingByTokenIndex.end()) {
+            inner.push_back(hardline());
+        }
+    }
+
+    std::vector<Doc> parts;
+    parts.push_back(text("{"));
+    if (!inner.empty()) parts.push_back(indent(2, concat(std::move(inner))));
+    parts.push_back(hardline());
+    parts.push_back(text("}"));
+    return concat(std::move(parts));
+}
+
+Doc Printer::astBlockDoc(StatementBlockNode* block, int indentLevel) {
+    if (!block) return text("{}");
+    return blockDoc(block->statements(), block->hasResult() ? block->resultExpr() : nullptr, block->tokenStop(),
+                    indentLevel);
+}
+
+Doc Printer::fnBodyDoc(FnNode* fn, int indentLevel) {
+    const auto& body = fn->body();
+    if (body.empty()) return text("");
+
+    if (body.size() == 1) {
+        if (auto* ret = dynamic_cast<StatementRetNode*>(body[0])) {
+            rd::Kind k = kindAt(*ret);
+            if (k != rd::Kind::Ret && k != rd::Kind::BlockStart) {
+                return concat({text("= "), formatExpr(ret->expr())});
+            }
+        }
+    }
+
+    std::vector<StatementNode*> stmts;
+    ExprNode* result = nullptr;
+    stmts.reserve(body.size());
+    for (std::size_t i = 0; i < body.size(); ++i) {
+        auto* ret = dynamic_cast<StatementRetNode*>(body[i]);
+        if (i + 1 == body.size() && ret && kindAt(*ret) != rd::Kind::Ret) {
+            result = ret->expr();
+            break;
+        }
+        stmts.push_back(body[i]);
+    }
+    return blockDoc(stmts, result, fn->tokenStop(), indentLevel);
+}
+
+Doc Printer::fnDoc(FnNode* fn) {
+    std::vector<Doc> parts;
+    parts.push_back(fnHeaderDoc(fn->header()));
+    if (!fn->body().empty()) {
+        parts.push_back(text(" "));
+        parts.push_back(fnBodyDoc(fn, 0));
+    }
+    return concat(std::move(parts));
+}
+
+Doc Printer::enumDeclDoc(EnumDeclNode* en) {
+    std::vector<Doc> parts;
+    parts.push_back(text("enum "));
+    parts.push_back(text(en->name().getText()));
+    parts.push_back(genericDefDoc(en->typeParams(), en->typeParamBounds()));
+    parts.push_back(text(" {"));
+    std::vector<Doc> inner;
+    for (auto* v : en->variants()) {
+        inner.push_back(hardline());
+        std::vector<Doc> vp;
+        vp.push_back(text(v->name().getText()));
+        if (v->hasPayload()) {
+            vp.push_back(text("("));
+            const auto& ps = v->payloadTypes();
+            for (std::size_t i = 0; i < ps.size(); ++i) {
+                if (i > 0) vp.push_back(text(", "));
+                vp.push_back(typeDocAst(ps[i]));
+            }
+            vp.push_back(text(")"));
+        }
+        inner.push_back(concat(std::move(vp)));
+    }
+    if (!inner.empty()) parts.push_back(indent(2, concat(std::move(inner))));
+    parts.push_back(hardline());
+    parts.push_back(text("}"));
+    return concat(std::move(parts));
+}
+
+Doc Printer::aliasDeclDoc(AliasDeclNode* al) {
+    return concat({text("type "), text(al->name().getText()), text(" = "), typeDocAst(al->target())});
+}
+
+Doc Printer::letGlobalDoc(GlobalConstNode* g) {
+    std::vector<Doc> parts;
+    if (g->isInline()) {
+        parts.push_back(text("#Inline"));
+        parts.push_back(hardline());
+    }
+    parts.push_back(text("#Cval"));
+    parts.push_back(hardline());
+    parts.push_back(text("let "));
+    parts.push_back(text(g->name().getText()));
+    if (g->typeNode()) {
+        parts.push_back(text(" "));
+        parts.push_back(typeDocAst(g->typeNode()));
+    }
+    if (g->value()) {
+        parts.push_back(text(" = "));
+        parts.push_back(formatExpr(g->value()));
+    }
+    return concat(std::move(parts));
+}
+
+Doc Printer::letGlobalVarDoc(GlobalVarNode* g) {
+    std::vector<Doc> parts;
+    if (g->isMutable()) {
+        parts.push_back(text("#Mut"));
+        parts.push_back(hardline());
+    }
+    parts.push_back(text("let "));
+    parts.push_back(text(g->name().getText()));
+    if (g->typeNode()) {
+        parts.push_back(text(" "));
+        parts.push_back(typeDocAst(g->typeNode()));
+    }
+    if (g->value()) {
+        parts.push_back(text(" = "));
+        parts.push_back(formatExpr(g->value()));
+    }
+    return concat(std::move(parts));
+}
+
+Doc Printer::useDoc(const FileNode::UseSpec& u) {
+    std::vector<Doc> parts;
+    parts.push_back(text("use "));
+    parts.push_back(text(u.moduleName));
+    if (u.wildcard) parts.push_back(text(".*"));
+    return concat(std::move(parts));
+}
+
+int Printer::useTokIndex(int line) const {
+    for (const auto& t : defaultToks_) {
+        if (t.kind == rd::Kind::Use && t.pos.line == line) return t.index;
+    }
+    return -1;
+}
+
+void Printer::collectExternItems(std::vector<Item>& items) {
+    int depth = 0;
+    for (std::size_t i = 0; i < defaultToks_.size(); ++i) {
+        const rd::Kind k = defaultToks_[i].kind;
+        if (depth == 0 && k == rd::Kind::Extern) {
+            std::size_t start = i;
+            for (;;) {
+                if (start == 0) break;
+                std::size_t j = start - 1;
+                while (j > 0 && defaultToks_[j].kind == rd::Kind::LineEnd)
+                    --j;
+                if (defaultToks_[j].kind == rd::Kind::ParEnd) {
+                    int pd = 1;
+                    if (j == 0) break;
+                    --j;
+                    while (pd > 0) {
+                        if (defaultToks_[j].kind == rd::Kind::ParEnd)
+                            ++pd;
+                        else if (defaultToks_[j].kind == rd::Kind::ParStart)
+                            --pd;
+                        if (pd == 0) break;
+                        if (j == 0) break;
+                        --j;
+                    }
+                    if (pd != 0 || j == 0) break;
+                    --j;
+                }
+                if (j >= 1 && defaultToks_[j].kind == rd::Kind::ID &&
+                    defaultToks_[j - 1].kind == rd::Kind::SymbolHash) {
+                    start = j - 1;
+                    continue;
+                }
+                break;
+            }
+            int inner = 0;
+            std::size_t end = i;
+            for (std::size_t k2 = i; k2 < defaultToks_.size(); ++k2) {
+                if (defaultToks_[k2].kind == rd::Kind::BlockStart)
+                    ++inner;
+                else if (defaultToks_[k2].kind == rd::Kind::BlockEnd) {
+                    --inner;
+                    if (inner == 0) {
+                        end = k2;
+                        break;
+                    }
+                }
+            }
+            Item item = itemFromTok(defaultToks_[start].index);
+            item.raw = trimRightLineEnds(rawSpan(defaultToks_[start].index, defaultToks_[end].index));
+            items.push_back(std::move(item));
+        }
+        if (k == rd::Kind::BlockStart)
+            ++depth;
+        else if (k == rd::Kind::BlockEnd && depth > 0)
+            --depth;
+    }
+}
+
+Doc Printer::programDoc(FileNode& file) {
+    std::vector<Item> items;
+
+    auto addNode = [&](Node* n, Doc d) {
+        if (!n) return;
+        Item item = itemFromTok(n->tokenStart());
+        item.sortLine = n->getLineNumber();
+        item.doc = std::move(d);
+        attachTrailing(item, n->tokenStart(), n->tokenStop());
+        items.push_back(std::move(item));
+    };
+    auto addRaw = [&](Node* n, std::string raw) {
+        if (!n) return;
+        Item item = itemFromTok(n->tokenStart());
+        item.sortLine = n->getLineNumber();
+        item.raw = trimRightLineEnds(std::move(raw));
+        items.push_back(std::move(item));
+    };
+
+    for (const auto& u : file.useSpecs()) {
+        int tok = useTokIndex(u.line);
+        Item item = itemFromTok(tok);
+        item.sortLine = u.line;
+        item.doc = useDoc(u);
+        if (tok >= 0) attachTrailing(item, tok, tok);
+        items.push_back(std::move(item));
+    }
+    for (auto* g : file.getGlobalConsts())
+        addNode(g, letGlobalDoc(g));
+    for (auto* g : file.getGlobalVars())
+        addNode(g, letGlobalVarDoc(g));
+    for (auto* a : file.getAliasDecls())
+        addNode(a, aliasDeclDoc(a));
+    for (auto* e : file.getEnumDecls())
+        addNode(e, enumDeclDoc(e));
+    for (auto* fn : file.getFunctions())
+        addNode(fn, fnDoc(fn));
+    for (auto* s : file.getStructDecls())
+        addRaw(s, s->sourceText().empty() ? rawSpan(*s) : s->sourceText());
+    for (auto* s : file.getSpecDecls())
+        addRaw(s, s->sourceText().empty() ? rawSpan(*s) : s->sourceText());
+    collectExternItems(items);
+
+    std::ranges::stable_sort(items, [](const Item& a, const Item& b) {
+        if (a.sortLine != b.sortLine) return a.sortLine < b.sortLine;
+        return a.sortTok < b.sortTok;
+    });
+
+    std::string out;
+    RenderOptions ropt;
+    bool first = true;
+    for (auto& it : items) {
+        bool emitBlank = !it.leading.empty() ? it.leading.front().blankBefore : it.blankBefore;
+        if (!first) {
+            out.push_back('\n');
+            if (emitBlank) out.push_back('\n');
+        }
+        first = false;
+        for (std::size_t k = 0; k < it.leading.size(); ++k) {
+            const auto& c = it.leading[k];
+            if (k > 0 && c.blankBefore) out.push_back('\n');
+            out += c.text;
+            if (out.empty() || out.back() != '\n') out.push_back('\n');
+        }
+        if (!it.leading.empty() && it.blankAfterLeading) out.push_back('\n');
+        if (it.doc) {
+            out += render(it.doc, ropt);
+        } else {
+            out += it.raw;
+        }
+    }
+    if (!out.empty() && out.back() != '\n') out.push_back('\n');
+    return text(out);
+}
+
 void Printer::visitLiteral(ExprLiteralNode& node) {
-    _doc = rawNode(node);
+    std::string s = rawSpan(node);
+    if (s.empty() && node.literal()) s = node.literal()->getValue().getText();
+    _doc = text(std::move(s));
 }
 void Printer::visitParen(ExprParenNode& node) {
     _doc = concat({text("("), formatExpr(node.expr()), text(")")});
@@ -829,8 +1145,13 @@ void Printer::visitAssign(StatementAssignNode& node) {
     std::vector<Doc> parts;
     parts.push_back(text(node.obj().getText()));
     for (const auto& sub : node.subs()) {
-        parts.push_back(text("."));
-        parts.push_back(text(sub.getText()));
+        const std::string& t = sub.getText();
+        if (!t.empty() && t[0] == '.') {
+            parts.push_back(text(t));
+        } else {
+            parts.push_back(text("."));
+            parts.push_back(text(t));
+        }
     }
     const char* op = "=";
     switch (node.op()) {
@@ -873,12 +1194,7 @@ void Printer::visitSet(StatementSetNode& node) {
     _doc = concat(std::move(parts));
 }
 void Printer::visitAlias(AliasDeclNode& node) {
-    std::vector<Doc> parts;
-    parts.push_back(text("type "));
-    parts.push_back(text(node.name().getText()));
-    parts.push_back(text(" = "));
-    parts.push_back(typeDocAst(node.target()));
-    _doc = concat(std::move(parts));
+    _doc = aliasDeclDoc(&node);
 }
 void Printer::visitLoop(StatementLoopNode& node) {
     std::vector<Doc> parts;
@@ -943,550 +1259,18 @@ void Printer::visitStaticFieldSet(StatementStaticFieldSetNode& node) {
                    formatExpr(node.valueExpr())});
 }
 
-Doc Printer::astBlockDoc(StatementBlockNode* block, int indentLevel) {
-    if (!block) return text("{}");
-    std::vector<Doc> inner;
-    for (auto* s : block->statements()) {
-        inner.push_back(hardline());
-        int prev = _stmtIndent;
-        _stmtIndent = indentLevel + 1;
-        inner.push_back(formatStmt(s));
-        _stmtIndent = prev;
-    }
-    if (block->hasResult() && block->resultExpr()) {
-        inner.push_back(hardline());
-        inner.push_back(formatExpr(block->resultExpr()));
-    }
-    std::vector<Doc> parts;
-    parts.push_back(text("{"));
-    if (!inner.empty()) parts.push_back(indent(2, concat(std::move(inner))));
-    parts.push_back(hardline());
-    parts.push_back(text("}"));
-    return concat(std::move(parts));
-}
-
-// ==================== fn / extern ====================
-
-Doc Printer::fnHeaderDoc(riuParser::FnHeaderContext* ctx) {
-    std::vector<Doc> parts;
-    for (auto* anno : ctx->buildAnnos) {
-        parts.push_back(buildAnnoDoc(anno));
-        parts.push_back(hardline());
-    }
-    parts.push_back(text("fn "));
-    parts.push_back(text(ctx->name->getText()));
-    if (ctx->genericDef() != nullptr) {
-        parts.push_back(genericDefDoc(ctx->genericDef()));
-    }
-    parts.push_back(text("("));
-    if (ctx->fnParams() != nullptr) {
-        parts.push_back(fnParamsDoc(ctx->fnParams()));
-    }
-    parts.push_back(text(")"));
-    if (ctx->retType != nullptr) {
-        parts.push_back(text(" "));
-        parts.push_back(typeDoc(ctx->retType));
-    }
-    return concat(std::move(parts));
-}
-
-Doc Printer::fnBodyDoc(riuParser::FnBodyContext* ctx, int indentLevel) {
-    if (ctx->fnExprkBody() != nullptr) {
-        auto* eb = ctx->fnExprkBody();
-        return concat({text("= "), exprDoc(eb->expr())});
-    }
-    if (ctx->fnBlockBody() != nullptr) {
-        return statementBlockDoc(ctx->fnBlockBody()->statementBlock(), indentLevel);
-    }
-    return text(rawSpan(tokens_, ctx));
-}
-
-// ==================== 语句 / 块 ====================
-
-std::string Printer::reindentMultilineRaw(const std::string& raw, std::size_t srcStartCol, std::size_t targetCol) {
-    std::vector<std::string> lines;
-    {
-        std::string cur;
-        for (char c : raw) {
-            if (c == '\n') {
-                lines.push_back(std::move(cur));
-                cur.clear();
-            } else if (c != '\r')
-                cur.push_back(c);
-        }
-        lines.push_back(std::move(cur));
-    }
-    std::string pad(targetCol, ' ');
-    std::string out;
-    for (std::size_t i = 0; i < lines.size(); ++i) {
-        if (i > 0) out.push_back('\n');
-        if (i == 0) {
-            out += lines[i];
-        } else {
-            std::size_t k = 0;
-            while (k < lines[i].size() && k < srcStartCol && lines[i][k] == ' ')
-                ++k;
-            out += pad;
-            out += lines[i].substr(k);
-        }
-    }
-    return out;
-}
-
-std::string Printer::rawSpanWithoutTrailingLineEnd(antlr4::ParserRuleContext* ctx) {
-    if (ctx == nullptr || ctx->start == nullptr || ctx->stop == nullptr) return {};
-    std::size_t startIdx = ctx->start->getTokenIndex();
-    std::size_t stopIdx = ctx->stop->getTokenIndex();
-    // 末尾若为 LineEnd（默认通道）则回退一个 token
-    if (ctx->stop->getType() == riuLexer::LineEnd && stopIdx > startIdx) {
-        --stopIdx;
-    }
-    return tokens_.getText(antlr4::misc::Interval(startIdx, stopIdx));
-}
-
-Doc Printer::statementDoc(riuParser::StatementContext* ctx, int indentLevel) {
-    // 多行语句（典型：含块形 expr）一律走 raw 回退；目标列 = indentLevel*2
-    std::size_t startLine = ctx->start->getLine();
-    std::size_t stopLine = ctx->stop->getLine();
-    if (startLine != stopLine) {
-        std::size_t srcCol = ctx->start->getCharPositionInLine();
-        std::string raw = rawSpanWithoutTrailingLineEnd(ctx);
-        return text(reindentMultilineRaw(raw, srcCol, static_cast<std::size_t>(indentLevel) * 2));
-    }
-
-    try {
-        auto* n = any_cast_p<StatementNode>(builder_.visit(ctx));
-        if (n) {
-            int prev = _stmtIndent;
-            _stmtIndent = indentLevel;
-            Doc d = formatStmt(n);
-            _stmtIndent = prev;
-            return d;
-        }
-    } catch (const std::exception&) { // NOLINT(bugprone-empty-catch) — builder 未绑定名抛 E3030，回退 parse tree
-    }
-    return statementDocParse(ctx, indentLevel);
-}
-
-Doc Printer::statementDocParse(riuParser::StatementContext* ctx, int indentLevel) {
-    if (auto* n = dynamic_cast<riuParser::StatementLetContext*>(ctx)) {
-        // letAnno* let name (Type)? (= expr)?
-        std::vector<Doc> parts;
-        parts.reserve(n->letAnnos.size());
-        for (auto* a : n->letAnnos) {
-            parts.push_back(text("#" + a->name->getText() + " "));
-        }
-        parts.push_back(text("let "));
-        parts.push_back(text(n->name->getText()));
-        if (n->type() != nullptr) {
-            parts.push_back(text(" "));
-            parts.push_back(typeDoc(n->type()));
-        }
-        if (n->expr() != nullptr) {
-            parts.push_back(text(" = "));
-            parts.push_back(exprDoc(n->expr()));
-        }
-        return concat(std::move(parts));
-    }
-    if (auto* n = dynamic_cast<riuParser::StatementLetTupleContext*>(ctx)) {
-        // letAnno* let (a, b) (Type)? = expr
-        std::vector<Doc> parts;
-        parts.reserve(n->letAnnos.size());
-        for (auto* a : n->letAnnos) {
-            parts.push_back(text("#" + a->name->getText() + " "));
-        }
-        parts.push_back(text("let ("));
-        for (std::size_t i = 0; i < n->names.size(); ++i) {
-            if (i > 0) parts.push_back(text(", "));
-            parts.push_back(text(n->names[i]->getText()));
-        }
-        parts.push_back(text(")"));
-        if (n->type() != nullptr) {
-            parts.push_back(text(" "));
-            parts.push_back(typeDoc(n->type()));
-        }
-        parts.push_back(text(" = "));
-        parts.push_back(exprDoc(n->expr()));
-        return concat(std::move(parts));
-    }
-    if (auto* n = dynamic_cast<riuParser::StatementSetContext*>(ctx)) {
-        // obj[args...] = value
-        std::vector<Doc> parts;
-        parts.push_back(exprDoc(n->obj));
-        parts.push_back(text("["));
-        for (std::size_t i = 0; i < n->args.size(); ++i) {
-            if (i > 0) parts.push_back(text(", "));
-            parts.push_back(exprDoc(n->args[i]));
-        }
-        parts.push_back(text("] = "));
-        parts.push_back(exprDoc(n->value));
-        return concat(std::move(parts));
-    }
-    if (auto* n = dynamic_cast<riuParser::StatementLoopContext*>(ctx)) {
-        std::vector<Doc> parts;
-        if (n->ID()) {
-            parts.push_back(text(n->ID()->getText()));
-            parts.push_back(text(": "));
-        }
-        parts.push_back(text("loop "));
-        if (auto initCtx = n->loopInit(); initCtx) {
-            if (initCtx->name) {
-                // 单变量：loop i = expr
-                parts.push_back(text(initCtx->name->getText()));
-                if (auto t = initCtx->type(); t) {
-                    parts.push_back(text(" "));
-                    parts.push_back(typeDoc(t));
-                }
-                parts.push_back(text(" = "));
-                parts.push_back(exprDoc(initCtx->expr()));
-            } else {
-                // tuple 解构：loop (i, n) = expr
-                parts.push_back(text("("));
-                for (size_t i = 0; i < initCtx->names.size(); ++i) {
-                    if (i > 0) parts.push_back(text(", "));
-                    parts.push_back(text(initCtx->names[i]->getText()));
-                }
-                parts.push_back(text(")"));
-                if (auto t = initCtx->type(); t) {
-                    parts.push_back(text(" "));
-                    parts.push_back(typeDoc(t));
-                }
-                parts.push_back(text(" = "));
-                parts.push_back(exprDoc(initCtx->expr()));
-            }
-            parts.push_back(text(" "));
-        }
-        parts.push_back(statementBlockDoc(n->statementBlock(), indentLevel));
-        return concat(std::move(parts));
-    }
-    if (auto* n = dynamic_cast<riuParser::StatementForInContext*>(ctx)) {
-        std::vector<Doc> parts;
-        auto ids = n->ID();
-        if (n->SymbolColon() && ids.size() >= 2) {
-            parts.push_back(text(ids[0]->getText()));
-            parts.push_back(text(": "));
-            parts.push_back(text("for "));
-            parts.push_back(text(ids[1]->getText()));
-        } else {
-            parts.push_back(text("for "));
-            parts.push_back(text(ids[0]->getText()));
-        }
-        parts.push_back(text(" in "));
-        parts.push_back(exprDoc(n->expr()));
-        parts.push_back(text(" "));
-        parts.push_back(statementBlockDoc(n->statementBlock(), indentLevel));
-        return concat(std::move(parts));
-    }
-    if (auto* n = dynamic_cast<riuParser::StatementAssignContext*>(ctx)) {
-        // obj (.id|DOT_NUM)* opAssign expr
-        std::vector<Doc> parts;
-        parts.push_back(text(n->obj->getText())); // ID 或 `$`
-        for (auto* sub : n->subs) {
-            if (sub->getType() == riuLexer::DOT_NUM) {
-                parts.push_back(text(sub->getText())); // 已含 `.`
-            } else {
-                parts.push_back(text("."));
-                parts.push_back(text(sub->getText()));
-            }
-        }
-        parts.push_back(text(" "));
-        parts.push_back(text(rawSpan(tokens_, n->opAssign())));
-        parts.push_back(text(" "));
-        parts.push_back(exprDoc(n->expr()));
-        return concat(std::move(parts));
-    }
-    if (auto* n = dynamic_cast<riuParser::StatementExprContext*>(ctx)) {
-        std::vector<Doc> parts;
-        parts.push_back(exprDoc(n->expr()));
-        if (n->SymbolSemicolon() != nullptr) parts.push_back(text(";"));
-        return concat(std::move(parts));
-    }
-    if (auto* n = dynamic_cast<riuParser::StatementRetContext*>(ctx)) {
-        return concat({text("ret "), exprDoc(n->expr())});
-    }
-    if (dynamic_cast<riuParser::StatementRetVoidContext*>(ctx)) {
-        return text("ret;");
-    }
-    if (auto* n = dynamic_cast<riuParser::StatementBreakContext*>(ctx)) {
-        if (n->ID()) {
-            return concat({text("break@"), text(n->ID()->getText()), text(";")});
-        }
-        return text("break;");
-    }
-    if (auto* n = dynamic_cast<riuParser::StatementContinueContext*>(ctx)) {
-        if (n->ID()) {
-            return concat({text("continue@"), text(n->ID()->getText()), text(";")});
-        }
-        return text("continue;");
-    }
-    // 兜底（语法演化时保护）
-    std::size_t srcCol = ctx->start->getCharPositionInLine();
-    return text(
-        reindentMultilineRaw(rawSpanWithoutTrailingLineEnd(ctx), srcCol, static_cast<std::size_t>(indentLevel) * 2));
-}
-
-Doc Printer::statementBlockDoc(riuParser::StatementBlockContext* ctx, int indentLevel) {
-    // `{` 后插入 indent(2,...) 包住所有语句行；最后一个 hardline 在 indent
-    // 外面，让闭合 `}` 落到块入口列。
-    std::vector<Doc> inner;
-    auto stmts = ctx->statement();
-    bool first = true;
-    for (auto* s : stmts) {
-        std::size_t startIdx = s->start->getTokenIndex();
-        auto blankIt = trivia_.blankBefore.find(startIdx);
-        bool stmtBlank = (blankIt != trivia_.blankBefore.end()) && blankIt->second;
-        auto leadIt = trivia_.leadingByTokenIndex.find(startIdx);
-        const std::vector<TriviaComment>* cs = nullptr;
-        if (leadIt != trivia_.leadingByTokenIndex.end()) cs = &leadIt->second;
-
-        // "item 前空行" 的判定：若有 leading 注释，看首条注释自身是否处于
-        // 空行之后；否则看语句锚点的 blankBefore。这样 src 的"空行 + 注释 +
-        // 语句"就不会被吃掉
-        bool emitBlank = (cs != nullptr && !cs->empty()) ? cs->front().blankBefore : stmtBlank;
-        inner.push_back(hardline());
-        if (!first && emitBlank) inner.push_back(hardline());
-        first = false;
-
-        if (cs != nullptr) {
-            for (std::size_t k = 0; k < cs->size(); ++k) {
-                if (k > 0 && (*cs)[k].blankBefore) inner.push_back(hardline());
-                inner.push_back(text((*cs)[k].text));
-                inner.push_back(hardline());
-            }
-            auto bal = trivia_.blankAfterLeading.find(startIdx);
-            if (bal != trivia_.blankAfterLeading.end() && bal->second) {
-                inner.push_back(hardline());
-            }
-        }
-        inner.push_back(statementDoc(s, indentLevel + 1));
-
-        // 行尾注释：仅单行语句需手动接回（多行语句的 raw 回退里已包含）。
-        // trivia 把行尾注释按"该行最后一个 default token 的 tokenIndex"挂在
-        // trailingByTokenIndex；扫描该语句 token 范围即可。
-        if (s->start->getLine() == s->stop->getLine()) {
-            std::size_t a = s->start->getTokenIndex();
-            std::size_t b = s->stop->getTokenIndex();
-            for (std::size_t idx = a; idx <= b; ++idx) {
-                auto it = trivia_.trailingByTokenIndex.find(idx);
-                if (it == trivia_.trailingByTokenIndex.end()) continue;
-                for (const auto& c : it->second) {
-                    inner.push_back(text("  "));
-                    inner.push_back(text(c.text));
-                }
-            }
-        }
-    }
-    // 块尾部"独立挂在 `}` 之前"的注释 / 空行：trivia map 把它们锚在
-    // BlockEnd token 上。空块或最后一条语句之后还有注释时也走这里。
-    auto* endTok = ctx->BlockEnd();
-    if (endTok != nullptr) {
-        std::size_t endIdx = endTok->getSymbol()->getTokenIndex();
-        auto leadIt = trivia_.leadingByTokenIndex.find(endIdx);
-        if (leadIt != trivia_.leadingByTokenIndex.end()) {
-            const auto& cs = leadIt->second;
-            for (const auto& c : cs) {
-                inner.push_back(hardline());
-                if (c.blankBefore) inner.push_back(hardline());
-                inner.push_back(text(c.text));
-            }
-        }
-        auto blankIt = trivia_.blankBefore.find(endIdx);
-        if (blankIt != trivia_.blankBefore.end() && blankIt->second && leadIt == trivia_.leadingByTokenIndex.end()) {
-            // 末尾仅有空行，无注释
-            inner.push_back(hardline());
-        }
-    }
-
-    std::vector<Doc> parts;
-    parts.push_back(text("{"));
-    if (!inner.empty()) {
-        parts.push_back(indent(2, concat(std::move(inner))));
-    }
-    parts.push_back(hardline()); // 在 indent 之外，闭合 `}` 走外层缩进
-    parts.push_back(text("}"));
-    return concat(std::move(parts));
-}
-
-Doc Printer::fnDoc(riuParser::FnContext* ctx) {
-    std::vector<Doc> parts;
-    parts.push_back(fnHeaderDoc(ctx->fnHeader()));
-    if (ctx->fnBody() != nullptr) {
-        parts.push_back(text(" "));
-        parts.push_back(fnBodyDoc(ctx->fnBody(), 0));
-    }
-    return concat(std::move(parts));
-}
-
-Doc Printer::externDelcDoc(riuParser::ExternDelcContext* ctx) {
-    std::vector<Doc> parts;
-    for (auto* anno : ctx->buildAnnos) {
-        parts.push_back(buildAnnoDoc(anno));
-        parts.push_back(hardline());
-    }
-    parts.push_back(text("extern {"));
-    // 把内部所有 fn 头放进 Indent(2,...)；fnHeader 内部的 hardline (buildAnno
-    // 后) 会自动获得这个缩进
-    std::vector<Doc> inner;
-    for (auto* h : ctx->fnHeader()) {
-        inner.push_back(hardline());
-        inner.push_back(fnHeaderDoc(h));
-    }
-    if (!inner.empty()) {
-        parts.push_back(indent(2, concat(std::move(inner))));
-    }
-    parts.push_back(hardline());
-    parts.push_back(text("}"));
-    return concat(std::move(parts));
-}
-
-Doc Printer::enumDeclDoc(riuParser::EnumDeclContext* ctx) {
-    std::vector<Doc> parts;
-    parts.push_back(text("enum "));
-    parts.push_back(text(ctx->name->getText()));
-    if (ctx->genericDef() != nullptr) {
-        parts.push_back(genericDefDoc(ctx->genericDef()));
-    }
-    parts.push_back(text(" {"));
-    std::vector<Doc> inner;
-    for (auto* v : ctx->variants) {
-        inner.push_back(hardline());
-        inner.push_back(enumVariantDoc(v));
-    }
-    if (!inner.empty()) {
-        parts.push_back(indent(2, concat(std::move(inner))));
-    }
-    parts.push_back(hardline());
-    parts.push_back(text("}"));
-    return concat(std::move(parts));
-}
-
-Doc Printer::enumVariantDoc(riuParser::EnumVariantContext* ctx) {
-    std::vector<Doc> parts;
-    parts.push_back(text(ctx->name->getText()));
-    if (!ctx->payloads.empty()) {
-        parts.push_back(text("("));
-        for (std::size_t i = 0; i < ctx->payloads.size(); ++i) {
-            if (i > 0) parts.push_back(text(", "));
-            parts.push_back(typeDoc(ctx->payloads[i]));
-        }
-        parts.push_back(text(")"));
-    }
-    return concat(std::move(parts));
-}
-
-Printer::Item Printer::visitTopLevel(antlr4::tree::ParseTree* child) {
-    Item item;
-    auto* ctx = dynamic_cast<antlr4::ParserRuleContext*>(child);
-    if (ctx == nullptr) {
-        return item; // 非规则节点 (LineEnd terminal) 由调用方过滤
-    }
-    std::size_t startIdx = startTokenIndex(ctx);
-    auto blankIt = trivia_.blankBefore.find(startIdx);
-    item.blankBefore = (blankIt != trivia_.blankBefore.end()) && blankIt->second;
-    auto leadIt = trivia_.leadingByTokenIndex.find(startIdx);
-    if (leadIt != trivia_.leadingByTokenIndex.end()) {
-        item.leading = leadIt->second;
-    }
-    auto bal = trivia_.blankAfterLeading.find(startIdx);
-    item.blankAfterLeading = (bal != trivia_.blankAfterLeading.end()) && bal->second;
-
-    if (auto* imp = dynamic_cast<riuParser::ImportsContext*>(ctx)) {
-        item.doc = importsDoc(imp);
-    } else if (auto* lg = dynamic_cast<riuParser::LetGlobalContext*>(ctx)) {
-        item.doc = letGlobalDoc(lg);
-    } else if (auto* al = dynamic_cast<riuParser::AliasDeclContext*>(ctx)) {
-        item.doc = aliasDeclDoc(al);
-    } else if (auto* fn = dynamic_cast<riuParser::FnContext*>(ctx)) {
-        item.doc = fnDoc(fn);
-    } else if (auto* en = dynamic_cast<riuParser::EnumDeclContext*>(ctx)) {
-        item.doc = enumDeclDoc(en);
-    } else {
-        // 未实装：structDecl / structImpl / specDecl
-        // 直接落原文。trim 末尾 LineEnd 让顶层间换行由 program 控制
-        item.raw = trimRightLineEnds(rawSpan(tokens_, ctx));
-    }
-    // 顶层 item 单行 trailing 注释：与 statementBlock 同样从 trailingByTokenIndex
-    // 扫描；多行 item 的 trailing 已含在 raw 内
-    if (item.doc && ctx->start->getLine() == ctx->stop->getLine()) {
-        std::size_t a = ctx->start->getTokenIndex();
-        std::size_t b = ctx->stop->getTokenIndex();
-        std::vector<Doc> withTrailing;
-        withTrailing.push_back(item.doc);
-        bool any = false;
-        for (std::size_t idx = a; idx <= b; ++idx) {
-            auto it = trivia_.trailingByTokenIndex.find(idx);
-            if (it == trivia_.trailingByTokenIndex.end()) continue;
-            for (const auto& c : it->second) {
-                withTrailing.push_back(text("  "));
-                withTrailing.push_back(text(c.text));
-                any = true;
-            }
-        }
-        if (any) item.doc = concat(std::move(withTrailing));
-    }
-    return item;
-}
-
-Doc Printer::programDoc(riuParser::ProgramContext* ctx) {
-    // program 由 imports* (fn|externDelc|globalConst|aliasDecl|enumDecl|
-    // specDecl|structDecl|structImpl|LineEnd)* 组成。
-    // 我们只取 ParserRuleContext 子节点（即跳过裸 LineEnd token）。
-    std::vector<Item> items;
-    for (auto* ch : ctx->children) {
-        if (auto* rule = dynamic_cast<antlr4::ParserRuleContext*>(ch)) {
-            items.push_back(visitTopLevel(rule));
-        }
-    }
-
-    std::string out;
-    RenderOptions ropt;
-    bool first = true;
-    for (auto& it : items) {
-        // 同 statementBlockDoc：若 item 带 leading 注释，则用首条注释的
-        // blankBefore 来判定项前是否需要空行（避免源 "空行 + 注释 + item"
-        // 形态被错误压平）
-        bool emitBlank = !it.leading.empty() ? it.leading.front().blankBefore : it.blankBefore;
-        if (!first) {
-            out.push_back('\n');
-            if (emitBlank) out.push_back('\n');
-        }
-        first = false;
-        for (std::size_t k = 0; k < it.leading.size(); ++k) {
-            const auto& c = it.leading[k];
-            // 注释自身的 blankBefore：保留它与上一注释 / item 起点之间的空行；
-            // 第一个注释的 blankBefore 已由 item.blankBefore 在外层吃掉
-            if (k > 0 && c.blankBefore) out.push_back('\n');
-            out += c.text;
-            if (out.empty() || out.back() != '\n') out.push_back('\n');
-        }
-        if (!it.leading.empty() && it.blankAfterLeading) {
-            out.push_back('\n');
-        }
-        if (it.doc) {
-            out += render(it.doc, ropt);
-        } else {
-            out += it.raw;
-        }
-    }
-    if (!out.empty() && out.back() != '\n') out.push_back('\n');
-    return text(out); // 包一层 Text，外层 render 直出
-}
-
 } // namespace
 
-std::string formatAst(const std::string& source, const FormatConfig& config) {
-    antlr4::ANTLRInputStream input(source);
-    riuLexer lexer(&input);
-    antlr4::CommonTokenStream tokens(&lexer);
-    riuParser parser(&tokens);
-    parser.removeErrorListeners();
-    auto* tree = parser.program();
-    TriviaMap trivia = buildTrivia(tokens);
-
+std::string formatAst(const std::string& source, const FormatConfig& config, const std::string& filePath) {
+    const bool isTestFile = filePath.ends_with(".test.ut");
     Riu riu;
-    ASTBuilder builder(riu);
-    Printer printer(tokens, trivia, builder);
-    Doc d = printer.programDoc(tree);
+    auto builder = std::make_unique<RdBuilder>(riu, source, /*moduleName=*/"", isTestFile, filePath);
+    builder->setExpandImports(false);
+    FileNode* file = builder->build();
+
+    TriviaScan scan = scanTrivia(source);
+    Printer printer(source, scan.map, scan.defaultToks);
+    Doc d = printer.programDoc(*file);
 
     RenderOptions ropt;
     ropt.lineWidth = config.lineWidth;

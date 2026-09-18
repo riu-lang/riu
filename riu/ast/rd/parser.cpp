@@ -664,7 +664,9 @@ NodeId Parser::parseParenLambdaOrTuple() {
             appendIf(kids, parseBlock());
         else
             appendIf(kids, parseExpr());
-        return ast_.add(NodeKind::Lambda, start, {}, kids);
+        Pos end = start;
+        if (!kids.empty()) end = ast_.at(kids.back()).pos;
+        return ast_.add(NodeKind::Lambda, spanPos(start, end), {}, kids);
     }
     next(); // (
     NodeId first = parseExpr();

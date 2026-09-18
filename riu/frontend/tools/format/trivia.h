@@ -3,22 +3,19 @@
 
 // 格式化 trivia (注释 / 空行) 预扫描
 //
-// ANTLR 把行注释 / 块注释 / 空白放进 HIDDEN 通道，AST 只看 default 通道。
-// 我们用一次线性扫描把 trivia 按"出现在第几行 / 紧跟在哪个 default token 之后"
+// Scanner 把行注释 / 空白放进 hidden（nextRaw 仍吐出）。AST 只看 default 通道。
+// 一次线性扫描把 trivia 按"出现在第几行 / 紧跟在哪个 default token 之后"
 // 索引起来；printer 在拼 Doc 时按需查询，把注释和空行映射回输出。
-//
-// 当前规模较小，仅暴露最小接口；Phase 2+ 会逐步增加查询方法。
 
 #ifndef RIU_LANG_FORMAT_TRIVIA_H
 #define RIU_LANG_FORMAT_TRIVIA_H
 
+#include "ast/rd/token.h"
+
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
-
-namespace antlr4 {
-class CommonTokenStream;
-}
 
 namespace riu::format {
 
@@ -45,8 +42,15 @@ public:
     std::unordered_map<std::size_t, bool> blankAfterLeading;
 };
 
-// 扫描 token stream 的 HIDDEN 通道，构建 TriviaMap
-TriviaMap buildTrivia(antlr4::CommonTokenStream& stream);
+struct TriviaScan {
+    TriviaMap map;
+    // default 通道（含 LineEnd），下标 = Token.index
+    std::vector<rd::Token> defaultToks;
+};
+
+// 吃 rd nextRaw() 流构建 TriviaMap；可选带出 default token 表
+TriviaScan scanTrivia(std::string_view src);
+TriviaMap buildTrivia(std::string_view src);
 
 } // namespace riu::format
 

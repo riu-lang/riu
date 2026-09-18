@@ -147,12 +147,12 @@ void RdBuilder::indexDefaultTokens() {
 std::pair<int, int> RdBuilder::tokenRange(const rd::Pos& pos) const {
     if (_defaultToks.empty()) return {-1, -1};
     // 按 offset 升序；找第一个不完全落在 pos.offset 之前的 token。
-    auto first = std::lower_bound(_defaultToks.begin(), _defaultToks.end(), pos.offset,
+    auto first = std::lower_bound(_defaultToks.begin(), _defaultToks.end(), pos.offset, // NOLINT(modernize-use-ranges)
                                   [](const rd::Token& t, rd::i32 off) { return t.pos.end <= off; });
     if (first == _defaultToks.end()) return {-1, -1};
     auto last = first;
     if (pos.end > pos.offset) {
-        last = std::lower_bound(first, _defaultToks.end(), pos.end,
+        last = std::lower_bound(first, _defaultToks.end(), pos.end, // NOLINT(modernize-use-ranges)
                                 [](const rd::Token& t, rd::i32 off) { return t.pos.offset < off; });
         if (last == first) return {-1, -1};
         --last;
@@ -162,7 +162,7 @@ std::pair<int, int> RdBuilder::tokenRange(const rd::Pos& pos) const {
 
 size_t RdBuilder::tokenIndexAt(rd::i32 offset) const {
     if (_defaultToks.empty()) return 0;
-    auto it = std::lower_bound(_defaultToks.begin(), _defaultToks.end(), offset,
+    auto it = std::lower_bound(_defaultToks.begin(), _defaultToks.end(), offset, // NOLINT(modernize-use-ranges)
                                [](const rd::Token& t, rd::i32 off) { return t.pos.end <= off; });
     if (it == _defaultToks.end()) return static_cast<size_t>(_defaultToks.back().index);
     return static_cast<size_t>(it->index);
@@ -608,6 +608,7 @@ void RdBuilder::addUse(rd::NodeId id) {
     file->addUseSpec(spec);
     file->addImport(modName);
 
+    if (!_expandImports) return;
     if (modName == "riu.core" || modName == file->moduleName()) return;
 
     modName = _riu.resolvePkgPath(file, modName, line);

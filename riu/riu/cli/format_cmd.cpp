@@ -88,7 +88,7 @@ int runFormatCommand(const FormatCmdOptions& opts) {
     }
 
     try {
-        std::string formatted = riu::format::formatAst(source, config);
+        std::string formatted = riu::format::formatAst(source, config, filePath);
 
         if (opts.inPlace && !filePath.empty()) {
             std::ofstream outFile(filePath);

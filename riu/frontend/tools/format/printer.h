@@ -15,8 +15,8 @@
 
 namespace riu::format {
 
-// 用 AST 引擎格式化 source；Phase 1 fallback 为返回原文
-std::string formatAst(const std::string& source, const FormatConfig& config);
+// 用 AST 引擎格式化 source。filePath 给 #Test 识别（`.test.ut`）；可空。
+std::string formatAst(const std::string& source, const FormatConfig& config, const std::string& filePath = {});
 
 } // namespace riu::format
 
