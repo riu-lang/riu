@@ -30,7 +30,7 @@ public:
         _isPrivate = !name.getText().empty() && name.getText()[0] == '_';
     }
 
-    [[nodiscard]] Token name() const { return _name; }
+    [[nodiscard]] const Token& name() const { return _name; }
     [[nodiscard]] TypeNode* type() const { return _type; }
     [[nodiscard]] TypeInfo getType() const { return _type->getType(); }
     [[nodiscard]] bool isPrivate() const { return _isPrivate; }

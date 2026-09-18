@@ -13,6 +13,8 @@
 #include "spec_node.h"
 #include "struct_node.h"
 
+#include <unordered_map>
+
 class Riu;
 
 class FileNode : public ScopeNode {
@@ -21,16 +23,16 @@ class FileNode : public ScopeNode {
     vector<StructImplNode*> _structImpls;
     // 与 _enumMap / _aliasMap 同：按名索引。Sema 每个类型注解都会 lookupStruct，
     // 线性扫 _structDecls / _functions 在大文件上是平方。
-    map<string, StructDeclNode*> _structMap;
-    map<string, StructImplNode*> _implMap;
-    map<string, vector<FnNode*>> _fnsByName;
+    unordered_map<string, StructDeclNode*> _structMap;
+    unordered_map<string, StructImplNode*> _implMap;
+    unordered_map<string, vector<FnNode*>> _fnsByName;
     vector<GlobalConstNode*> _globalConsts;
     vector<GlobalVarNode*> _globalVars; // DRAFT-static-vars Phase 1: 运行期初始化全局变量
     vector<SpecDeclNode*> _specDecls;
     vector<AliasDeclNode*> _aliasDecls;
-    map<string, AliasDeclNode*> _aliasMap;
+    unordered_map<string, AliasDeclNode*> _aliasMap;
     vector<EnumDeclNode*> _enumDecls;
-    map<string, EnumDeclNode*> _enumMap;
+    unordered_map<string, EnumDeclNode*> _enumMap;
     string _moduleName;
     string _sourcePath; // 该 FileNode 对应的源文件绝对路径；空壳 SDK 父作用域可空
     bool _fromDecl = false;

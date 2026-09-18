@@ -6,6 +6,7 @@
 
 #include "node.h"
 
+#include <memory>
 #include <utility>
 #include <vector>
 
@@ -23,8 +24,10 @@ protected:
     // ast/name_lookup 上的已加载模块图查找）。codegen 的 resolvedOrInferredType
     // 在泛型 subst 帧里读 structuralType()，避免复用模板 AST 时槽停留在上一次实例。
     //
-    // 空 optional = 尚未解析（区别于 TypeInfo::empty() 表示的 void 类型）。
-    std::optional<TypeInfo> _resolvedType;
+    // 空指针 = 尚未解析（区别于 TypeInfo::empty() 表示的 void 类型）。
+    // 标量 intern 单例不占节点内 TypeInfo（~200B）；复杂类型才 heap 一份。
+    const TypeInfo* _resolvedType = nullptr;
+    std::unique_ptr<TypeInfo> _resolvedOwned;
 
     // Phase 2.3 Sema/Codegen 拆分：表达式解析到的符号（变量符号 / 函数符号 / 空）。
     // 详见 node.h ResolvedSymbol 注释。当前过渡期：仅在 compile<Foo>Expr 现场已经查到
@@ -35,8 +38,16 @@ protected:
 public:
     ExprNode(Node* parent) : Node(parent) {}
 
-    void setResolvedType(TypeInfo t) { _resolvedType = std::move(t); }
-    [[nodiscard]] bool hasResolvedType() const { return _resolvedType.has_value(); }
+    void setResolvedType(TypeInfo t) {
+        if (const TypeInfo* p = internTypePtr(t)) {
+            _resolvedType = p;
+            _resolvedOwned.reset();
+            return;
+        }
+        _resolvedOwned = std::make_unique<TypeInfo>(std::move(t));
+        _resolvedType = _resolvedOwned.get();
+    }
+    [[nodiscard]] bool hasResolvedType() const { return _resolvedType != nullptr; }
     [[nodiscard]] const TypeInfo& resolvedType() const {
         return *_resolvedType; // NOLINT(bugprone-unchecked-optional-access)
     }

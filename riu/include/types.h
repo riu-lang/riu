@@ -11,12 +11,14 @@
 #include <exception>
 #include <functional>
 #include <iostream>
+#include <iterator>
 #include <map>
 #include <memory>
 #include <optional>
 #include <set>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -106,24 +108,50 @@ using Token = TokenInfo;
 
 // 源码限定类型路径 `a.b.T`（riu.bnf typePath）。身份是 TypeInfo.ownerModule + 短名；
 // TypeInfo.name 只用末段短名，路径不进 name。
+// 一段名（`i32`）不进 heap：混测几乎全是裸名，vector<Token> 在 debug CRT 上按节点一份头。
 struct TypePath {
-    vector<Token> segs;
+    Token first;
+    vector<Token> rest; // segs[1..]
 
     TypePath() = default;
-    explicit TypePath(Token bare) { segs.push_back(std::move(bare)); }
-    explicit TypePath(vector<Token> s) : segs(std::move(s)) {}
+    explicit TypePath(Token bare) : first(std::move(bare)) {}
+    explicit TypePath(vector<Token> s) {
+        if (s.empty()) return;
+        first = std::move(s[0]);
+        if (s.size() > 1) {
+            rest.assign(std::make_move_iterator(s.begin() + 1), std::make_move_iterator(s.end()));
+        }
+    }
 
-    [[nodiscard]] bool empty() const { return segs.empty(); }
-    [[nodiscard]] bool isBare() const { return segs.size() == 1; }
-    [[nodiscard]] const Token& last() const { return segs.back(); }
-    [[nodiscard]] string lastName() const { return empty() ? string() : segs.back().getText(); }
+    [[nodiscard]] bool empty() const { return first.empty() && rest.empty(); }
+    [[nodiscard]] size_t size() const { return empty() ? 0 : 1 + rest.size(); }
+    [[nodiscard]] bool isBare() const { return rest.empty() && !first.empty(); }
+    [[nodiscard]] const Token& last() const { return rest.empty() ? first : rest.back(); }
+    [[nodiscard]] const Token& operator[](size_t i) const { return i == 0 ? first : rest[i - 1]; }
+    [[nodiscard]] const string& lastName() const {
+        static const string kEmpty;
+        return empty() ? kEmpty : last().getText();
+    }
     [[nodiscard]] string dotted() const {
-        string s;
-        for (size_t i = 0; i < segs.size(); ++i) {
-            if (i > 0) s += '.';
-            s += segs[i].getText();
+        if (empty()) return {};
+        string s = first.getText();
+        for (const auto& t : rest) {
+            s += '.';
+            s += t.getText();
         }
         return s;
+    }
+    void push_back(Token t) {
+        if (empty())
+            first = std::move(t);
+        else
+            rest.push_back(std::move(t));
+    }
+    void pop_back() {
+        if (!rest.empty())
+            rest.pop_back();
+        else
+            first = {};
     }
 };
 
@@ -303,7 +331,7 @@ struct FnTag {};
 
 // 根据内置泛型包装名称返回对应 TypeKind；非内置名返回 TypeKind::Generic
 // 用于 TypeInfo(string, vector<sp<TypeInfo>>) 构造函数自动分发，消除字符串比对
-inline TypeKind kindForBuiltinWrapper(const string& name) {
+inline TypeKind kindForBuiltinWrapper(string_view name) {
     if (name == "Rc") return TypeKind::Rc;
     if (name == "Ref") return TypeKind::Ref;
     if (name == "Weak") return TypeKind::Weak;
@@ -779,7 +807,20 @@ struct TypeInfo {
             return *elementType == *other.elementType;
         }
         if (kind == TypeKind::Normal || kind == TypeKind::Ptr) {
-            if (withoutFallible().name != other.withoutFallible().name) return false;
+            // fallibleErr 已相等。热路径两边都是 `i32`：直接比 name，不要
+            // withoutFallible() 整份拷 TypeInfo（含 vector/shared_ptr）。
+            if (name != other.name) {
+                auto strip = [](const TypeInfo& t) -> string_view {
+                    if (t.fallibleErr.empty()) return t.name;
+                    const size_t n = t.fallibleErr.size() + 1;
+                    if (t.name.size() >= n && t.name[t.name.size() - n] == '!' &&
+                        string_view(t.name).substr(t.name.size() - t.fallibleErr.size()) == t.fallibleErr) {
+                        return string_view(t.name).substr(0, t.name.size() - n);
+                    }
+                    return t.name;
+                };
+                if (strip(*this) != strip(other)) return false;
+            }
             if (!sameOwner(other)) return false;
         } else if (!hasGenericArgs() && kind != TypeKind::Tuple) {
             if (name != other.name) return false;
@@ -862,10 +903,150 @@ inline TypeInfo TypeInfo::fromFullName(const string& s) {
     return t;
 }
 
-inline bool isBuiltinType(const string& typeName) {
-    static const vector<string> builtinTypes = {"bool", "i8",  "i16", "i32", "i64",   "u8",   "u16",
-                                                "u32",  "u64", "f32", "f64", "isize", "usize"};
-    return std::ranges::find(builtinTypes, typeName) != builtinTypes.end();
+inline bool isBuiltinType(string_view typeName) {
+    switch (typeName.size()) {
+    case 2:
+        return typeName == "i8" || typeName == "u8";
+    case 3:
+        return typeName == "i16" || typeName == "u16" || typeName == "i32" || typeName == "u32" || typeName == "i64" ||
+               typeName == "u64" || typeName == "f32" || typeName == "f64";
+    case 4:
+        return typeName == "bool";
+    case 5:
+        return typeName == "isize" || typeName == "usize";
+    default:
+        return false;
+    }
+}
+
+// 语言内建具名类型：标量 / Ptr / Self / Function / Rc·Ref 等包装名（无实参时仍是这个名字）。
+inline bool isLanguageNamedType(string_view n) {
+    if (n.empty()) return false;
+    if (isBuiltinType(n) || n == "Ptr" || n == "Self" || n == "Function") return true;
+    return kindForBuiltinWrapper(n) != TypeKind::Generic;
+}
+
+// 语言具名类型的进程内单例。只对 isLanguageNamedType 有定义；指针可挂 AST 槽。
+inline const TypeInfo& internNamedType(string_view name) {
+    switch (name.size()) {
+    case 2:
+        if (name == "i8") {
+            static const TypeInfo t{"i8"};
+            return t;
+        }
+        if (name == "u8") {
+            static const TypeInfo t{"u8"};
+            return t;
+        }
+        if (name == "Rc") {
+            static const TypeInfo t{"Rc"};
+            return t;
+        }
+        break;
+    case 3:
+        if (name == "i16") {
+            static const TypeInfo t{"i16"};
+            return t;
+        }
+        if (name == "u16") {
+            static const TypeInfo t{"u16"};
+            return t;
+        }
+        if (name == "i32") {
+            static const TypeInfo t{"i32"};
+            return t;
+        }
+        if (name == "u32") {
+            static const TypeInfo t{"u32"};
+            return t;
+        }
+        if (name == "i64") {
+            static const TypeInfo t{"i64"};
+            return t;
+        }
+        if (name == "u64") {
+            static const TypeInfo t{"u64"};
+            return t;
+        }
+        if (name == "f32") {
+            static const TypeInfo t{"f32"};
+            return t;
+        }
+        if (name == "f64") {
+            static const TypeInfo t{"f64"};
+            return t;
+        }
+        if (name == "Ptr") {
+            static const TypeInfo t{"Ptr"};
+            return t;
+        }
+        if (name == "Dyn") {
+            static const TypeInfo t{"Dyn"};
+            return t;
+        }
+        if (name == "Ref") {
+            static const TypeInfo t{"Ref"};
+            return t;
+        }
+        break;
+    case 4:
+        if (name == "bool") {
+            static const TypeInfo t{"bool"};
+            return t;
+        }
+        if (name == "Self") {
+            static const TypeInfo t{"Self"};
+            return t;
+        }
+        if (name == "Heap") {
+            static const TypeInfo t{"Heap"};
+            return t;
+        }
+        if (name == "Weak") {
+            static const TypeInfo t{"Weak"};
+            return t;
+        }
+        break;
+    case 5:
+        if (name == "isize") {
+            static const TypeInfo t{"isize"};
+            return t;
+        }
+        if (name == "usize") {
+            static const TypeInfo t{"usize"};
+            return t;
+        }
+        if (name == "Array") {
+            static const TypeInfo t{"Array"};
+            return t;
+        }
+        break;
+    case 8:
+        if (name == "Function") {
+            static const TypeInfo t{"Function"};
+            return t;
+        }
+        if (name == "Nullable") {
+            static const TypeInfo t{"Nullable"};
+            return t;
+        }
+        break;
+    default:
+        break;
+    }
+    static const TypeInfo kEmpty;
+    return kEmpty;
+}
+
+// 无实参 / 无 fallible / 无 owner 的语言具名类型 → intern 单例；其余 nullptr。
+inline const TypeInfo* internTypePtr(const TypeInfo& t) {
+    if (!t.fallibleErr.empty() || t.fnNullable || t.elementType || !t.genericArgs.empty() || t.arraySize != 0) {
+        return nullptr;
+    }
+    if (!t.ownerModule.empty()) return nullptr;
+    if (t.kind != TypeKind::Normal && t.kind != TypeKind::Ptr) return nullptr;
+    if (!isLanguageNamedType(t.name)) return nullptr;
+    return &internNamedType(t.name);
 }
 
 // E4025: Rc / Weak / Array 禁止直接内嵌 Heap（§8.3a.5.1）。递归下钻，覆盖

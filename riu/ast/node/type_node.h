@@ -6,6 +6,9 @@
 
 #include "node.h"
 
+#include <memory>
+#include <optional>
+
 class TypeNode : public Node {
 public:
     explicit TypeNode(Node* parent) : Node(parent) {}
@@ -46,6 +49,8 @@ public:
 
 class TypeNormalNode : public TypeNode {
     TypePath _path;
+    mutable const TypeInfo* _cachedType = nullptr;
+    mutable std::unique_ptr<TypeInfo> _ownedType;
 
 public:
     TypeNormalNode(Node* parent, Token typeName) : TypeNormalNode(parent, TypePath(std::move(typeName))) {}

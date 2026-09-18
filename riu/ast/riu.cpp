@@ -196,6 +196,7 @@ FileNode* Riu::_parseFile(const string& absPath, const string& moduleName, int e
     // 测试文件按文件名后缀识别（spec §11.3.3.1）
     bool isTestFile = absPath.ends_with(".test.ut");
     auto builder = std::make_unique<RdBuilder>(*this, std::move(src), moduleName, isTestFile, absPath);
+    builder->setIndexTokens(false);
     auto fileNode = builder->build();
     if (fileNode) fileNode->setSourcePath(absPath);
     keepRdBuilder(std::move(builder));

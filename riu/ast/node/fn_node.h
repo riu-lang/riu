@@ -27,7 +27,7 @@ public:
     explicit FnParamNode(Node* parent, Token name, TypeNode* type)
         : Node(parent), _name(std::move(name)), _type(type) {}
 
-    [[nodiscard]] Token name() const;
+    [[nodiscard]] const Token& name() const;
     [[nodiscard]] TypeNode* type() const;
 
     void setFrozen(bool v) { _isFrozen = v; }
@@ -61,9 +61,9 @@ public:
     void setTypeParamBounds(vector<vector<SpecRef>> bounds) { _typeParamBounds = std::move(bounds); }
     [[nodiscard]] const vector<vector<SpecRef>>& typeParamBounds() const { return _typeParamBounds; }
 
-    [[nodiscard]] Token name() const override;
+    [[nodiscard]] const Token& name() const override;
     [[nodiscard]] TypeNode* retType() const;
-    [[nodiscard]] vector<FnParamNode*> params() const;
+    [[nodiscard]] const vector<FnParamNode*>& params() const;
     [[nodiscard]] TypeInfo getType() const override;
 
     // 构造模型重构：`#Static fn` 是关联函数（无 receiver $），调用形态 `Type::name(...)`

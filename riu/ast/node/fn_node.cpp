@@ -3,7 +3,7 @@
 
 #include "fn_node.h"
 
-Token FnParamNode::name() const {
+const Token& FnParamNode::name() const {
     return _name;
 }
 
@@ -15,7 +15,7 @@ void FnHeaderNode::addParam(FnParamNode* param) {
     _params.push_back(param);
 }
 
-Token FnHeaderNode::name() const {
+const Token& FnHeaderNode::name() const {
     return _name;
 }
 
@@ -23,7 +23,7 @@ TypeNode* FnHeaderNode::retType() const {
     return _retType;
 }
 
-vector<FnParamNode*> FnHeaderNode::params() const {
+const vector<FnParamNode*>& FnHeaderNode::params() const {
     return _params;
 }
 

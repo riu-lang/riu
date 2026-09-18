@@ -163,7 +163,7 @@ StatementNode* RdBuilder::buildLet(rd::NodeId id, bool global) {
                 throw RiuError(n.pos.line, n.pos.column + 1, ErrorCode::E3155, nameTok.getText());
             }
             auto* globalVar = create<GlobalVarNode>(id, file, nameTok, type, expr, true);
-            globalVar->setSourceText(srcSlice(n.pos));
+            if (_keepSourceText) globalVar->setSourceText(srcSlice(n.pos));
             file->addGlobalVar(globalVar);
             return nullptr;
         }
@@ -172,7 +172,7 @@ StatementNode* RdBuilder::buildLet(rd::NodeId id, bool global) {
             if (!expr) throw RiuError(n.pos.line, n.pos.column + 1, ErrorCode::E3114, nameTok.getText());
             inferFlexibleIntForType(expr, type->getType());
             auto* globalConst = create<GlobalConstNode>(id, file, nameTok, type, expr, flags.isInline);
-            globalConst->setSourceText(srcSlice(n.pos));
+            if (_keepSourceText) globalConst->setSourceText(srcSlice(n.pos));
             file->addGlobalConst(globalConst);
             return nullptr;
         }
@@ -184,7 +184,7 @@ StatementNode* RdBuilder::buildLet(rd::NodeId id, bool global) {
             throw RiuError(n.pos.line, n.pos.column + 1, ErrorCode::E3155, nameTok.getText());
         }
         auto* globalVar = create<GlobalVarNode>(id, file, nameTok, type, expr);
-        globalVar->setSourceText(srcSlice(n.pos));
+        if (_keepSourceText) globalVar->setSourceText(srcSlice(n.pos));
         file->addGlobalVar(globalVar);
         return nullptr;
     }

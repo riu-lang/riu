@@ -13,6 +13,9 @@
 #include "node/file_node.h"
 #include "riu.h"
 
+#include <cstddef>
+#include <memory>
+#include <new>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -47,18 +50,30 @@ class RdBuilder {
     rd::FlatAst _ast;
     vector<rd::ParseError> _errors;
     vector<rd::Token> _defaultToks;
+    // 节点 bump：debug CRT 每 new 一份头，100 万行会把 FileNode 树撑到数 GB。
+    vector<std::unique_ptr<char[]>> _arenaBlocks; // NOLINT(modernize-avoid-c-arrays)
+    char* _arenaCur = nullptr;
+    size_t _arenaCap = 0;
+    size_t _arenaUsed = 0;
     vector<Node*> _nodes;
     vector<ScopeNode*> _scopeStack;
     FileNode* _targetFile = nullptr;
     bool _expandImports = true;
+    bool _indexTokens = true;
+    bool _keepSourceText = false;
+
+    void* arenaAlloc(size_t size, size_t align);
+    void releaseParseTemps();
 
     template <typename T, typename... Args>
     T* create(const rd::Pos& pos, Args&&... args) {
-        auto* node = new T(std::forward<Args>(args)...);
+        auto* node = ::new (arenaAlloc(sizeof(T), alignof(T))) T(std::forward<Args>(args)...);
         _nodes.push_back(node);
         node->setLocation(pos.line, pos.column + 1);
-        auto [ts, te] = tokenRange(pos);
-        if (ts >= 0) node->setTokenRange(ts, te);
+        if (_indexTokens) {
+            auto [ts, te] = tokenRange(pos);
+            if (ts >= 0) node->setTokenRange(ts, te);
+        }
         return node;
     }
 
@@ -131,6 +146,8 @@ public:
     void setTargetFile(FileNode* file) { _targetFile = file; }
     // 格式化只记 UseSpec，不 loadModule（单文件、无工程根）。
     void setExpandImports(bool v) { _expandImports = v; }
+    // check / compile 不需要 formatter 的 default-channel 下标，跳过第二次词法。
+    void setIndexTokens(bool v) { _indexTokens = v; }
     [[nodiscard]] const vector<rd::ParseError>& errors() const { return _errors; }
 
     FileNode* build();

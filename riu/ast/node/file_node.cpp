@@ -245,7 +245,7 @@ void FileNode::addSpecDecl(SpecDeclNode* specDecl) {
 
 void FileNode::addAliasDecl(AliasDeclNode* aliasDecl) {
     _aliasDecls.push_back(aliasDecl);
-    // 注意：aliasDecl->name() 返回 Token 值类型，需复制为 string，避免 .getText() 引用绑定到临时对象悬空
+    // aliasDecl->name() 是成员 Token 引用；map 键仍要自有 string。
     string key = aliasDecl->name().getText();
     _aliasMap[key] = aliasDecl;
 }
@@ -321,7 +321,8 @@ const vector<FnNode*>& FileNode::getFunctions() const {
 }
 
 namespace {
-StructDeclNode* structFromMap(const map<string, StructDeclNode*>& m, const string& name, bool includeBuiltin) {
+template <typename Map>
+StructDeclNode* structFromMap(const Map& m, const string& name, bool includeBuiltin) {
     auto it = m.find(name);
     if (it == m.end()) return nullptr;
     StructDeclNode* decl = it->second;
@@ -331,12 +332,14 @@ StructDeclNode* structFromMap(const map<string, StructDeclNode*>& m, const strin
     return decl;
 }
 
-StructImplNode* implFromMap(const map<string, StructImplNode*>& m, const string& name) {
+template <typename Map>
+StructImplNode* implFromMap(const Map& m, const string& name) {
     auto it = m.find(name);
     return it != m.end() ? it->second : nullptr;
 }
 
-FnNode* firstFnByName(const map<string, vector<FnNode*>>& m, const string& name) {
+template <typename Map>
+FnNode* firstFnByName(const Map& m, const string& name) {
     auto it = m.find(name);
     if (it == m.end() || it->second.empty()) return nullptr;
     return it->second[0];
@@ -401,7 +404,8 @@ bool isOwnModuleName(const FileNode* file, const string& moduleName) {
     return file && moduleName == file->moduleName();
 }
 
-FnNode* firstGenericFn(const map<string, vector<FnNode*>>& m, const string& name) {
+template <typename Map>
+FnNode* firstGenericFn(const Map& m, const string& name) {
     auto it = m.find(name);
     if (it == m.end()) return nullptr;
     for (auto* fn : it->second) {
@@ -410,8 +414,8 @@ FnNode* firstGenericFn(const map<string, vector<FnNode*>>& m, const string& name
     return nullptr;
 }
 
-void collectGenericFnsIn(const map<string, vector<FnNode*>>& m, FileNode* owner, const string& name,
-                         vector<pair<FnNode*, FileNode*>>& out) {
+template <typename Map>
+void collectGenericFnsIn(const Map& m, FileNode* owner, const string& name, vector<pair<FnNode*, FileNode*>>& out) {
     auto it = m.find(name);
     if (it == m.end()) return;
     for (auto* fn : it->second) {

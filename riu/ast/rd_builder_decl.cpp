@@ -169,7 +169,7 @@ void RdBuilder::addFn(rd::NodeId id) {
     auto* header = buildFnHeader(id, file, annos, generic, params, ret);
     auto* fn = create<FnNode>(id, file, header);
     fn->setParentScope(file);
-    fn->setSourceText(srcSlice(n.pos));
+    if (_keepSourceText) fn->setSourceText(srcSlice(n.pos));
     file->addFunction(fn);
     checkNoReturnHeader(header);
 
@@ -463,7 +463,7 @@ void RdBuilder::addStruct(rd::NodeId id) {
         auto* draft = create<SpecDeclNode>(locPos, file, makeTok(id));
         draft->setAnnos(annos.names, annos.args);
         draft->setTypeParams(typeParams);
-        draft->setSourceText(srcSlice(n.pos));
+        if (_keepSourceText) draft->setSourceText(srcSlice(n.pos));
         _scopeStack.push_back(draft);
         for (auto& tp : draft->typeParams())
             draft->registerSymbol(tp, {SymbolKind::TypeParam, tp, TypeInfo(tp)});
@@ -547,7 +547,7 @@ void RdBuilder::addStruct(rd::NodeId id) {
 
     auto* structDecl = create<StructDeclNode>(locPos, file, makeTok(id));
     structDecl->setAnnos(annos.names, annos.args);
-    structDecl->setSourceText(srcSlice(n.pos));
+    if (_keepSourceText) structDecl->setSourceText(srcSlice(n.pos));
     structDecl->setTypeParams(typeParams);
     _scopeStack.push_back(structDecl);
     for (auto& tp : structDecl->typeParams())
@@ -842,7 +842,7 @@ FileNode* RdBuilder::build() {
     auto parsed = rd::parseProgram(_src);
     _ast = std::move(parsed.ast);
     _errors = std::move(parsed.errors);
-    indexDefaultTokens();
+    if (_indexTokens) indexDefaultTokens();
     for (const auto& e : _errors) {
         SyntaxDiag d;
         d.is_lexer = e.is_lexer;
@@ -872,5 +872,6 @@ FileNode* RdBuilder::build() {
     }
     file->syncFnSymbolsFromAst();
     _scopeStack.pop_back();
+    releaseParseTemps();
     return file;
 }

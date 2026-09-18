@@ -59,7 +59,7 @@ public:
     [[nodiscard]] bool isConst() const { return _isConst; }
     void setFrozen(bool v) { _isFrozen = v; }
     [[nodiscard]] bool isFrozen() const { return _isFrozen; }
-    [[nodiscard]] Token name() const;
+    [[nodiscard]] const Token& name() const;
     [[nodiscard]] TypeNode* varType() const;
     void accept(AstVisitor& v) override;
 };
@@ -81,7 +81,7 @@ public:
     [[nodiscard]] bool isConst() const { return _isConst; }
     void setFrozen(bool v) { _isFrozen = v; }
     [[nodiscard]] bool isFrozen() const { return _isFrozen; }
-    [[nodiscard]] Token name() const;
+    [[nodiscard]] const Token& name() const;
     [[nodiscard]] TypeNode* varType() const;
     void accept(AstVisitor& v) override;
 };

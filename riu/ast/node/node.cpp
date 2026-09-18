@@ -13,7 +13,7 @@ Node* Node::parent() const {
     return _parent;
 }
 
-Token Named::name() const {
+const Token& Named::name() const {
     return _name;
 }
 

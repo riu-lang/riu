@@ -11,12 +11,6 @@
 
 namespace {
 
-bool isLanguageNamedType(const string& n) {
-    if (n.empty()) return false;
-    if (isBuiltinType(n) || n == "Ptr" || n == "Self" || n == "Function") return true;
-    return kindForBuiltinWrapper(n) != TypeKind::Generic;
-}
-
 FileNode* parentFileOf(FileNode* file) {
     if (!file) return nullptr;
     auto* ps = file->parentScope();
@@ -58,12 +52,14 @@ TypePathResult pickUniqueOrAmbiguous(const string& name, vector<TypePathResult> 
 
 TypePathResult bindTypeInFile(FileNode* target, const string& typeName) {
     TypePathResult r;
-    r.type = TypeInfo(typeName);
-    if (!target || typeName.empty()) return r;
+    if (typeName.empty()) return r;
     if (isLanguageNamedType(typeName)) {
+        r.type = internNamedType(typeName);
         r.resolved = true;
         return r;
     }
+    r.type = TypeInfo(typeName);
+    if (!target) return r;
     if (auto* s = target->localStructDecl(typeName, /*includeBuiltin=*/true)) {
         r.structDecl = s;
         r.owner = target;
@@ -94,13 +90,14 @@ TypePathResult resolveTypePath(FileNode* file, Riu* riu, const TypePath& path, i
     if (!riu && file) riu = file->riu();
     TypePathResult r;
     if (path.empty()) return r;
-    const string last = path.lastName();
-    r.type = TypeInfo(last);
-
+    const string& last = path.lastName();
     if (path.isBare() && isLanguageNamedType(last)) {
+        r.type = internNamedType(last);
         r.resolved = true;
         return r;
     }
+
+    r.type = TypeInfo(last);
 
     if (path.isBare()) {
         if (file) {
@@ -151,7 +148,7 @@ TypePathResult resolveTypePath(FileNode* file, Riu* riu, const TypePath& path, i
 
     // 限定路径：只走已登记前缀，禁止 loadModule
     if (!file) return r;
-    const string first = path.segs[0].getText();
+    const string first = path[0].getText();
     auto* aliasSym = file->lookupSymbol(first);
     if (aliasSym && (aliasSym->kind == SymbolKind::Package || aliasSym->kind == SymbolKind::Module) &&
         file->isAmbiguousAlias(first)) {
@@ -160,24 +157,24 @@ TypePathResult resolveTypePath(FileNode* file, Riu* riu, const TypePath& path, i
 
     FileNode* target = nullptr;
     if (aliasSym && aliasSym->kind == SymbolKind::Package) {
-        if (path.segs.size() >= 3) {
+        if (path.size() >= 3) {
             string childKey;
-            for (size_t i = 1; i + 1 < path.segs.size(); ++i) {
+            for (size_t i = 1; i + 1 < path.size(); ++i) {
                 if (!childKey.empty()) childKey += '.';
-                childKey += path.segs[i].getText();
+                childKey += path[i].getText();
             }
             if (riu) (void)riu->resolvePkgPath(file, childKey, line, aliasSym->moduleName);
             target = file->packageChild(first, childKey);
         }
     } else if (aliasSym && aliasSym->kind == SymbolKind::Module) {
-        if (path.segs.size() == 2) {
+        if (path.size() == 2) {
             target = file->moduleAlias(first);
             if (!target && riu) target = riu->module(aliasSym->moduleName);
-        } else if (path.segs.size() > 2) {
+        } else if (path.size() > 2) {
             string childKey;
-            for (size_t i = 1; i + 1 < path.segs.size(); ++i) {
+            for (size_t i = 1; i + 1 < path.size(); ++i) {
                 if (!childKey.empty()) childKey += '.';
-                childKey += path.segs[i].getText();
+                childKey += path[i].getText();
             }
             target = file->packageChild(first, childKey);
         }

@@ -12,7 +12,7 @@ bool StatementExprNode::hasSemicolon() const {
     return _hasSemicolon;
 }
 
-Token StatementDeclareNode::name() const {
+const Token& StatementDeclareNode::name() const {
     return _name;
 }
 
@@ -20,7 +20,7 @@ TypeNode* StatementDeclareNode::varType() const {
     return _type;
 }
 
-Token StatementDeclareAssignNode::name() const {
+const Token& StatementDeclareAssignNode::name() const {
     return _name;
 }
 

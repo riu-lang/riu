@@ -503,6 +503,7 @@ bool parseSkeletonInto(Riu& riu, FileNode* file, const string& src, const string
     if (src.empty() || onlyWs(src)) return true;
     auto builder = std::make_unique<RdBuilder>(riu, src, file->moduleName(), false, absPath);
     builder->setTargetFile(file);
+    builder->setIndexTokens(false);
     try {
         builder->build();
     } catch (const std::exception& e) {

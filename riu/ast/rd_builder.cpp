@@ -17,6 +17,8 @@
 #include "node/type_node.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <new>
 #include <set>
 
 namespace {
@@ -47,12 +49,12 @@ bool hasPublicType(FileNode* f, const string& name) {
 }
 
 void registerFqPrefix(FileNode* file, const TypePath& path, FileNode* target) {
-    if (!file || !target || path.segs.size() < 2) return;
-    string first = path.segs[0].getText();
+    if (!file || !target || path.size() < 2) return;
+    string first = path[0].getText();
     string childKey;
-    for (size_t i = 1; i < path.segs.size(); ++i) {
+    for (size_t i = 1; i < path.size(); ++i) {
         if (i > 1) childKey += '.';
-        childKey += path.segs[i].getText();
+        childKey += path[i].getText();
     }
     auto* firstSym = file->lookupSymbol(first);
     if (firstSym && firstSym->kind == SymbolKind::Package) {
@@ -126,11 +128,42 @@ string dottedJoin(const string& prefix, const string& name) {
 
 RdBuilder::RdBuilder(Riu& riu, string src, string moduleName, bool isTestFile, string sourcePath)
     : _riu(riu), _isTestFile(isTestFile), _moduleName(std::move(moduleName)), _sourcePath(std::move(sourcePath)),
-      _src(std::move(src)) {}
+      _src(std::move(src)) {
+    // 无 riu.toml 的单文件 check 不写 .ud，不必再拷一份 item 原文。
+    _keepSourceText = !_riu.projectName().empty();
+}
 
 RdBuilder::~RdBuilder() {
-    for (auto* node : _nodes)
-        delete node;
+    for (auto it = _nodes.rbegin(); it != _nodes.rend(); ++it)
+        (*it)->~Node();
+}
+
+void* RdBuilder::arenaAlloc(size_t size, size_t align) {
+    if (align < 1) align = 1;
+    const size_t mask = align - 1;
+    constexpr size_t kBlock = size_t{1} << 20u;
+    size_t used = (_arenaUsed + mask) & ~mask;
+    if (!_arenaCur || used + size > _arenaCap) {
+        size_t cap = kBlock;
+        if (size + align + 16 > cap) cap = size + align + 16;
+        auto block = std::make_unique<char[]>(cap); // NOLINT(modernize-avoid-c-arrays)
+        _arenaCur = block.get();
+        _arenaCap = cap;
+        _arenaBlocks.push_back(std::move(block));
+        used = 0;
+    }
+    _arenaUsed = used + size;
+    return _arenaCur + used;
+}
+
+void RdBuilder::releaseParseTemps() {
+    _ast = {};
+    _defaultToks.clear();
+    _defaultToks.shrink_to_fit();
+    _errors.clear();
+    _errors.shrink_to_fit();
+    _src.clear();
+    _src.shrink_to_fit();
 }
 
 void RdBuilder::indexDefaultTokens() {
@@ -197,7 +230,7 @@ TypePath RdBuilder::pathFromDotted(std::string_view dotted, const rd::Pos& pos) 
     for (size_t i = 0; i <= dotted.size(); ++i) {
         if (i != dotted.size() && dotted[i] != '.') continue;
         auto seg = dotted.substr(start, i - start);
-        if (!seg.empty()) p.segs.push_back(makeTok(seg, pos));
+        if (!seg.empty()) p.push_back(makeTok(seg, pos));
         start = i + 1;
     }
     return p;
@@ -634,12 +667,12 @@ void RdBuilder::addUse(rd::NodeId id) {
             file->registerSymbol(alias, aliasSym);
             file->addPackageAlias(alias, modName);
             preloadPackageChildren(file, alias, modName, "", line);
-            if (path.segs.size() > 1) {
-                string first = path.segs.front().getText();
+            if (path.size() > 1) {
+                string first = path[0].getText();
                 string childKey;
-                for (size_t i = 1; i < path.segs.size(); ++i) {
+                for (size_t i = 1; i < path.size(); ++i) {
                     if (!childKey.empty()) childKey += '.';
-                    childKey += path.segs[i].getText();
+                    childKey += path[i].getText();
                 }
                 auto* firstSym = file->lookupSymbol(first);
                 if (!firstSym) {
@@ -655,11 +688,11 @@ void RdBuilder::addUse(rd::NodeId id) {
             }
             return;
         }
-        if (path.segs.size() >= 2 && pathKind == Riu::ModulePathKind::NotFound) {
+        if (path.size() >= 2 && pathKind == Riu::ModulePathKind::NotFound) {
             TypePath parentPath = path;
-            parentPath.segs.pop_back();
+            parentPath.pop_back();
             string parentMod = _riu.resolvePkgPath(file, parentPath.dotted(), line);
-            string typeName = path.lastName();
+            const string& typeName = path.lastName();
             FileNode* parent = _riu.module(parentMod);
             auto parentKind = _riu.modulePathKind(parentMod);
             if (parentKind == Riu::ModulePathKind::NotFound && parent) parentKind = Riu::ModulePathKind::File;

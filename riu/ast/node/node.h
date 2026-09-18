@@ -193,7 +193,7 @@ public:
 
     virtual ~Named() = default;
 
-    [[nodiscard]] virtual Token name() const;
+    [[nodiscard]] virtual const Token& name() const;
 };
 
 class Typed {
