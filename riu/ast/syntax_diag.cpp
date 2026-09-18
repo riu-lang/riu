@@ -14,13 +14,12 @@ namespace {
 
 bool isRiuKeyword(const std::string& s) {
     static const std::unordered_set<std::string> kws = {
-        "break", "catch", "continue", "draft", "elif",  "else", "enum", "extern", "false", "fn",  "for",
-        "if",    "in",    "let",      "loop",  "match", "null", "ret",  "struct", "true",  "try", "use",
+        "break", "catch", "continue", "elif", "else", "enum", "extern", "false", "fn",  "for",  "if",  "in",
+        "let",   "loop",  "match",    "null", "ret",  "Self", "struct", "true",  "try", "type", "use",
     };
     return kws.count(s) > 0;
 }
 
-// lexer 困在非默认 mode 后对 '\n' / '\r' 的 token recognition 几乎全是噪声。
 // Tab 不是空白：Space 只认 ' '，缩进 Tab 是真 E1001（diag_lexer_tab）。
 bool isWhitespaceLexerNoise(const std::string& msg) {
     auto pos = msg.find("token recognition error at: '");

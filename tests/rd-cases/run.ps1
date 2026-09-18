@@ -2,7 +2,7 @@
 #Requires -Version 5.1
 # rd 金样：有 *.tokens.txt 则 --rd-tokens 对金样；有 *.rd.txt 则 --rd dump 对金样。
 # 有 *.diag.txt 则 --rd stderr（紧凑 E1001/E1002）对金样；无则 stderr 须空。
-# 不再要求 --rd-tokens 与旧 ANTLR --tokens 逐字节一致（Pos 用 UTF-8 字节，词法按分流而非 g4 最长匹配）。
+# Pos 用 UTF-8 字节；词法按首字节分流。
 $ErrorActionPreference = 'Stop'
 $Here = $PSScriptRoot
 $fail = 0

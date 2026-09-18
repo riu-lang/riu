@@ -125,7 +125,7 @@ void SemaPass::visitSet(StatementSetNode& node) {
     for (auto& idx : set->indices())
         visitExpr(idx);
     // 与 compileArraySetStatement 同序：空下标 E3060 → 非 lvalue E3061 → 非数组 E3062。
-    // E3060：g4 强制 args+=expr，死防御。E3061 与 T 无关，模板期也报。
+    // E3060：文法强制 args+=expr，死防御。E3061 与 T 无关，模板期也报。
     if (set->indices().empty()) {
         throw RiuError(set->getLineNumber(), set->getColumn(), ErrorCode::E3060, "assignment");
     }

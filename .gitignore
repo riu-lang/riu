@@ -10,7 +10,6 @@
 /.vscode/
 /bin/
 .cursor/
-.antlr/
 
 .claude/settings.local.json
 /BUGS.md

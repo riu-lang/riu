@@ -3,10 +3,6 @@
   "bin_dir": "bin",
   "download_dir": ".cache/deps",
   "binaries": {
-    "antlr4-jar": {
-      "url": "https://www.antlr.org/download/antlr-4.13.2-complete.jar",
-      "version": "4.13.2"
-    },
     "cloc": {
       "url": "https://github.com/AlDanial/cloc/releases/download/v2.10/cloc-2.10.exe",
       "version": "2.10"
@@ -19,10 +15,6 @@
     }
   },
   "dependencies": {
-    "antlr4": {
-      "url": "https://github.com/antlr/antlr4.git",
-      "commit": "cc82115a4e7f53d71d9d905caa2c2dfa4da58899"
-    },
     "cli11": {
       "url": "https://github.com/CLIUtils/CLI11.git",
       "commit": "cbd58a3696887b34c70949aef21a71735a0c2ad5"

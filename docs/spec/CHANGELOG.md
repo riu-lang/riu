@@ -15,6 +15,11 @@
 
 ---
 
+## 2026-09-18 —— 附录 D 诊断入口改为 rd
+
+- **修改 附录 D**：E1xxx 由 rd Scanner / Parser + `syntax_diag` 报；`col` 为 1-based UTF-8 字节（与 `rd::Pos` 一致），插入符按该处显示宽度对齐。不再引用 ANTLR / `SyntaxErrorListener` / `ASTBuilder`。
+- **冲突 / 兼容**：纯文档与渲染对齐。ASCII 下列号不变。
+
 ## 2026-09-18 —— 语法权威从 g4 换成 `riu.bnf`
 
 - **修改 §1 / §2 / 附录 A / 附录 B / index**：权威改为 [`riu/ast/riu.bnf`](../../riu/ast/riu.bnf) + 编译器。删 `riuLexer.g4` / `riuParser.g4`。语言语义不变。

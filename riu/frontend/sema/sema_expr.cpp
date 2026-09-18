@@ -1621,7 +1621,7 @@ void SemaPass::visitGet(ExprGetNode& node) {
     visitExpr(n->arrayExpr());
     for (auto& i : n->indices())
         visitExpr(i);
-    // 与 compileArrayGetExpr 同款：空下标 E3060（g4 死防御）。读路径不要求 lvalue。
+    // 与 compileArrayGetExpr 同款：空下标 E3060（文法死防御）。读路径不要求 lvalue。
     if (n->indices().empty()) {
         throw RiuError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3060, "access");
     }

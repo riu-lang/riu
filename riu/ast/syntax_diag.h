@@ -11,7 +11,7 @@
 #include <iosfwd>
 #include <string>
 
-// 一条 E1001 / E1002。line 1-based；col 1-based（与 Diagnostic 一致）。
+// 一条 E1001 / E1002。line 1-based；col 1-based UTF-8 字节（与 Diagnostic 一致）。
 // message 是错误码模板 `{}` 的实参（rd 生成的 mismatched / no viable）。
 struct SyntaxDiag {
     bool is_lexer = false;

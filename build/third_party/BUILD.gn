@@ -21,26 +21,3 @@ static_library("zlib") {
                         ],
                         "list lines")
 }
-
-config("antlr4_public") {
-  include_dirs =
-      [ "//third_party/antlr4/runtime/Cpp/runtime/src" ]
-  defines = [ "ANTLR4CPP_STATIC" ]
-  libs = [ "shlwapi.lib" ]
-}
-
-static_library("antlr4_static") {
-  public_configs = [ ":antlr4_public" ]
-  configs -= [ "//build/config:language_cxx" ]
-  configs += [
-    "//build/config:language_cxx17",
-    "//build/config:antlr_internal",
-  ]
-  sources = exec_script("//build/glob.py",
-                        [
-                          _repo,
-                          "third_party/antlr4/runtime/Cpp/runtime/src",
-                          ".cpp",
-                        ],
-                        "list lines")
-}

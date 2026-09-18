@@ -242,7 +242,7 @@ public:
 
     // 索引基类型：subst + peelRef 后须是 [N]T / Array<T>，否则 E3062。
     // 模板形参 / 取类型失败跳过。与 ExprGetNode::getType / compileArraySet 对齐。
-    // 赋值另查形态：空下标 E3060（g4 死防御）；非变量 / 非 obj.field → E3061。
+    // 赋值另查形态：空下标 E3060（文法死防御）；非变量 / 非 obj.field → E3061。
     void tryValidateIndexBase(ExprNode* arrayExpr, int line, int col);
 
     // 成员链：subst + peelAutoDeref 后查字段。已知 struct 缺字段 → E3040；

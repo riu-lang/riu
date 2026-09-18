@@ -15,7 +15,7 @@ namespace rd {
 
 using i32 = std::int32_t;
 
-// 词法规则名 → Kind。第二列是 dump 用的 symbolic name（EOF / INVALID 例外）。
+// 词法规则名 → Kind。只列 Scanner 会发射的 token（含 hidden）；fragment 不占 Kind。
 #define RD_KIND_LIST(X)                                                                                                \
     X(Invalid, "INVALID")                                                                                              \
     X(Eof, "EOF")                                                                                                      \
@@ -89,15 +89,6 @@ using i32 = std::int32_t;
     X(STR_TPL_OPEN, "STR_TPL_OPEN")                                                                                    \
     X(STR_LINE_RAW, "STR_LINE_RAW")                                                                                    \
     X(CODE_POINT, "CODE_POINT")                                                                                        \
-    X(INT_SUFFIX, "INT_SUFFIX")                                                                                        \
-    X(INT_10, "INT_10")                                                                                                \
-    X(INT_2, "INT_2")                                                                                                  \
-    X(INT_8, "INT_8")                                                                                                  \
-    X(INT_16, "INT_16")                                                                                                \
-    X(FLOAT_SUFFIX, "FLOAT_SUFFIX")                                                                                    \
-    X(FLOAT_DOT, "FLOAT_DOT")                                                                                          \
-    X(FLOAT_EXP, "FLOAT_EXP")                                                                                          \
-    X(NUN_SIGN, "NUN_SIGN")                                                                                            \
     X(DOT_NUM, "DOT_NUM")                                                                                              \
     X(STR_TPL_INTERP_OPEN, "STR_TPL_INTERP_OPEN")                                                                      \
     X(STR_TPL_DOLLAR_ID, "STR_TPL_DOLLAR_ID")                                                                          \

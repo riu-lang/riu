@@ -148,29 +148,22 @@ int displayWidthOfCodepoint(char32_t cp) {
     return 1;
 }
 
-// 把列号 col（1-based）转成插入符 padding 字符串
-//
-// `col` 与 ANTLR 的 `getCharPositionInLine() + 1` 同源，按 Unicode codepoint 计数
-// （而非字节）。规则：扫描 srcLine 前 (col-1) 个 codepoint：
-//   - tab 原样保留（让终端按与源码行一致的 tab stop 扩展）
-//   - 其他按 displayWidthOfCodepoint 输出对应数量的空格
-// 这样 `<srcLine>` 与下一行的 `<padding>^` 在终端里视觉对齐，
-// 中文 / emoji / 全角符号都不会让 ^ 偏移（D.1.1 + D.7）。
-//
-// 解码失败（损坏的 utf-8 序列）按 1 codepoint / 1 字节跳过，避免抛异常打断诊断输出。
+// 把列号 col（1-based UTF-8 字节，rd::Pos.column + 1）转成插入符 padding。
+// 扫描 srcLine 前 (col-1) 个字节：tab 原样保留；其余按 codepoint 显示宽度填空格。
+// 解码失败按 1 字节 / 宽度 1 跳过。
 string caretPaddingFromCol(const string& srcLine, int col) {
     string out;
     if (col <= 1) return out;
-    auto targetCp = static_cast<size_t>(col - 1);
+    const auto targetBytes = static_cast<size_t>(col - 1);
 
     const char* it = srcLine.data();
     const char* end = it + srcLine.size();
-    size_t cpCount = 0;
-    while (it < end && cpCount < targetCp) {
+    size_t bytes = 0;
+    while (it < end && bytes < targetBytes) {
         if (*it == '\t') {
             out.push_back('\t');
             ++it;
-            ++cpCount;
+            ++bytes;
             continue;
         }
         const char* prev = it;
@@ -178,16 +171,15 @@ string caretPaddingFromCol(const string& srcLine, int col) {
         try {
             cp = utf8::next(it, end);
         } catch (...) {
-            // 损坏字节：当作宽度 1 跳过 1 字节，继续渲染
             it = prev + 1;
             out.push_back(' ');
-            ++cpCount;
+            ++bytes;
             continue;
         }
+        bytes += static_cast<size_t>(it - prev);
         int w = displayWidthOfCodepoint(cp);
         for (int i = 0; i < w; ++i)
             out.push_back(' ');
-        ++cpCount;
     }
     return out;
 }

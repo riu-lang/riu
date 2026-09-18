@@ -2,7 +2,7 @@
 // MPL-2.0
 //
 // 结构参考 V scanner（MIT）。语言可见 token 跟 riu（关键字、`;` 注释、StrTpl），
-// 扫描按 UTF-8 字节分流，不模拟 ANTLR 最长匹配 / code point 下标。
+// 扫描按 UTF-8 字节分流；hidden 就地跳过。
 
 #ifndef RIU_LANG_RD_SCANNER_H
 #define RIU_LANG_RD_SCANNER_H

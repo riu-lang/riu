@@ -74,8 +74,8 @@ public:
     // 合成 Token：解糖时没有源 token 的节点（如 T? → Nullable<T> 的 "Nullable"）
     TokenInfo(string text, size_t line) : _text(std::move(text)), _line(line) {}
 
-    // 从 rd::Pos 填行列与字节区间。charPositionInLine 0-based；start/stop 为 UTF-8 字节，
-    // stop 是闭区间（半开 end-1）。
+    // 从 rd::Pos 填行列与字节区间。charPositionInLine 是 0-based 行内 UTF-8 字节
+    // （rd::Pos.column）；start/stop 为 UTF-8 字节，stop 是闭区间（半开 end-1）。
     TokenInfo(string text, size_t line, size_t charPositionInLine, size_t tokenIndex, size_t startIndex,
               size_t stopIndex)
         : _text(std::move(text)), _line(line), _charPositionInLine(charPositionInLine), _tokenIndex(tokenIndex),
@@ -88,7 +88,7 @@ public:
 
     [[nodiscard]] const string& getText() const { return _text; }
     [[nodiscard]] size_t getLine() const { return _line; }
-    [[nodiscard]] size_t getCharPositionInLine() const { return _charPositionInLine; }
+    [[nodiscard]] size_t getCharPositionInLine() const { return _charPositionInLine; } // 0-based 行内 UTF-8 字节
     [[nodiscard]] size_t getTokenIndex() const { return _tokenIndex; }
     [[nodiscard]] size_t getStartIndex() const { return _startIndex; }
     [[nodiscard]] size_t getStopIndex() const { return _stopIndex; }
@@ -104,7 +104,7 @@ public:
 
 using Token = TokenInfo;
 
-// 源码限定类型路径 `a.b.T`（g4 typePath）。身份是 TypeInfo.ownerModule + 短名；
+// 源码限定类型路径 `a.b.T`（riu.bnf typePath）。身份是 TypeInfo.ownerModule + 短名；
 // TypeInfo.name 只用末段短名，路径不进 name。
 struct TypePath {
     vector<Token> segs;

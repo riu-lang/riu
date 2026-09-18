@@ -47,14 +47,6 @@ config("language_c99") {
   cflags_c = [ "/clang:-std=c99" ]
 }
 
-config("language_cxx17") {
-  cflags_cc = [
-    "/clang:-std=c++17",
-    "/EHsc",
-    "/GR",
-  ]
-}
-
 config("executable") {
   ldflags = [
     "/SUBSYSTEM:CONSOLE",
@@ -67,8 +59,4 @@ config("no_autolink") {
     "-Xclang",
     "-fno-autolink",
   ]
-}
-
-config("antlr_internal") {
-  cflags_cc = [ "/FIchrono" ]
 }

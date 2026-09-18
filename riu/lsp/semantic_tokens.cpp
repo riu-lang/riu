@@ -99,15 +99,6 @@ int classify(rd::Kind type) {
     case rd::Kind::INT:
     case rd::Kind::FLOAT:
     case rd::Kind::DOT_NUM:
-    case rd::Kind::INT_10:
-    case rd::Kind::INT_2:
-    case rd::Kind::INT_8:
-    case rd::Kind::INT_16:
-    case rd::Kind::INT_SUFFIX:
-    case rd::Kind::FLOAT_SUFFIX:
-    case rd::Kind::FLOAT_DOT:
-    case rd::Kind::FLOAT_EXP:
-    case rd::Kind::NUN_SIGN:
         return static_cast<int>(TT::Number);
 
     case rd::Kind::STR_TPL_OPEN:

@@ -287,7 +287,7 @@ void SemaPass::run() {
     }
     for (auto& ed : _file->getEnumDecls()) {
         if (!ed) continue;
-        // 简单切片：头上 `<T : D>` 语义拒（g4 复用 genericDef 会收下）。
+        // 简单切片：头上 `<T : D>` 语义拒（genericDef 会收下）。
         const auto& bounds = ed->typeParamBounds();
         const auto& tps = ed->typeParams();
         for (size_t i = 0; i < bounds.size(); ++i) {

@@ -1,7 +1,7 @@
 # 附录 D：诊断与错误码
 
 > 权威来源：[`riu/include/error_code.h`](../../riu/include/error_code.h) 的 `ErrorCode::E####` 与
-> [`riu/frontend/tools/diagnostic.{h,cpp}`](../../riu/frontend/tools/diagnostic.cpp) 的 `Diagnostic` / `DiagnosticEngine`。
+> [`riu/ast/diagnostic.h`](../../riu/ast/diagnostic.h) 的 `Diagnostic` / `DiagnosticEngine`。
 > 本附录是规范化摘录，与上述源码冲突时**应当**修订本附录。
 
 本附录约定编译器面向用户输出的诊断信息形态、错误码段位与全量码表。运行时诊断（panic、栈回溯等）不在本附录范围。
@@ -22,8 +22,8 @@ N | <源码行原文>
 约束：
 
 - `file` 为出错节点所属源文件的相对或绝对路径（跨文件 AST，如 spec 默认体 fall-through，**应当**指向节点 `enclosingFile`，而不是正在编译的入口文件）；未知时回退到命令行入口路径；仍缺失时回退为 `line N` 或省略。
-- `line` 为 1-based 行号；`col` 为 1-based **字符**列号（按 Unicode codepoint 计数，与 ANTLR `getCharPositionInLine() + 1` 同源）。一个 CJK 字 / 一个 emoji 计 1 列；BMP 外的码点（如组合表情 + 变体选择子）按各自的 codepoint 数计列。
-- 源码片段下的插入符（`^`）按**显示列宽**对齐：插入符前的 padding 不再是单纯的列号空格，而是按源码行中各 codepoint 的视觉宽度展开（CJK / 全角 / 常见 emoji 计 2 列宽，组合标记 / 零宽字符计 0 列宽，Tab 原样保留以让终端按相同 tab stop 扩展）。这样 `^` 在等宽终端中始终落在出错字符的正下方，不受多字节字符前缀影响。
+- `line` 为 1-based 行号；`col` 为 1-based **UTF-8 字节**列号（`rd::Pos.column + 1`）。ASCII 下与「字符列」同值；一个 CJK 字占 3 列号。
+- 源码片段下的插入符（`^`）按**显示列宽**对齐：把 `col` 当作行内字节下标，解码到该处的 codepoint，再按视觉宽度填 padding（CJK / 全角 / 常见 emoji 计 2 列宽，组合标记 / 零宽字符计 0 列宽，Tab 原样保留）。这样 `^` 在等宽终端中落在出错字符正下方。
 - `code` 形如 `EXXXX`，与 `ErrorCode::EXXXX.code` 同字面值；占位错误码 `E0000` 表示尚未挂码的位置，迁移完成后**不应**再出现。
 - `severity` 取 `note` / `warning` / `error` 之一；每个错误码挂默认严重度，CLI `--warn` / `--allow` / `--deny` / `--Werror` 可在策略允许范围内调整。详见 D.5。
 - `message` 为消息模板用具体参数渲染后的结果，模板见 D.3。
@@ -45,7 +45,7 @@ N | <源码行原文>
 | 段位  | 主题                | 语义层 | 备注                                                |
 |-------|---------------------|--------|-----------------------------------------------------|
 | E0000 | 占位                | —      | 兼容用，迁移完成后不再使用                          |
-| E1xxx | 词法 / 文法（ANTLR）| §1 §2  | 由 `SyntaxErrorListener` 接管 lexer / parser 报错   |
+| E1xxx | 词法 / 文法         | §1 §2  | rd Scanner / Parser 报 E1001 / E1002                |
 | E2xxx | 语法 / AST 结构     | §2     | 文法接受但语义级 AST 构造拒绝；纯文法错误归 E1xxx   |
 | E3xxx | 类型                | §3 §4  | 类型不匹配 / 符号查找 / 字段访问 / 泛型实参等       |
 | E4xxx | 所有权 / 借用       | §8     | `T&` 借用合法性、`$` 字段 DA/DAA、构造器返回限制    |
@@ -58,20 +58,20 @@ N | <源码行原文>
 
 ## D.3 错误码表
 
-下表列出当前所有已分配的错误码及其消息模板。模板使用 `std::vformat` 占位符 `{}`，按 `throw RiuError(loc, ec, args...)` 站点（或 `SyntaxErrorListener::syntaxError`）提供的实参顺序填入。
+下表列出当前所有已分配的错误码及其消息模板。模板使用 `std::vformat` 占位符 `{}`，按 `throw RiuError(loc, ec, args...)` 站点（或 rd `ParseError.message`）提供的实参顺序填入。
 
 > 表中的"模板"列与 [`include/error_code.h`](../../include/error_code.h) 的 `DEF_ERR(code, msg)` 字面同步；任何修改**应当**两处一并完成。
 
-### D.3.1 E1xxx — 词法 / 文法（ANTLR）
+### D.3.1 E1xxx — 词法 / 文法
 
-由 `SyntaxErrorListener`（`riu/frontend/tools/syntax_error_listener.{h,cpp}`）接管 ANTLR 默认 ConsoleErrorListener，按 `recognizer` 是否为 `antlr4::Lexer` 派发：
+由 rd Scanner / Parser 填 `ParseError`，经 `syntax_diag` 渲成 E1001 / E1002：
 
 | 码     | 模板                  | 触发                                  |
 |--------|-----------------------|---------------------------------------|
 | E1001 | `lexer error: {}`     | 词法 token 识别失败（如非法字符）     |
-| E1002 | `syntax error: {}`    | 文法层 mismatched / no viable / 等     |
+| E1002 | `syntax error: {}`    | 期望失败 / 未知 item                   |
 
-`{}` 为 ANTLR 给出的原始消息文本。每条 syntaxError **应当**即时渲染（不延后），随后的 E5010 充当"aborting due to N previous errors"汇总；**不得**因为存在 E5010 而抑制单条 E1xxx 输出。
+`{}` 为 Scanner / Parser 给出的消息文本。每条 **应当**即时渲染（不延后），随后的 E5010 充当"aborting due to N previous errors"汇总；**不得**因为存在 E5010 而抑制单条 E1xxx 输出。
 
 ### D.3.2 E2xxx — 语法 / AST 结构
 
@@ -452,8 +452,8 @@ Array 内置方法（E6042）：
 
 | 阶段                | 入口                                | 是否上诊断 |
 |---------------------|-------------------------------------|------------|
-| 词法 / 文法         | `SyntaxErrorListener`（替换 ANTLR 默认 ConsoleErrorListener） | 已接入（E1001 / E1002） |
-| AST 构造            | `ASTBuilder`                        | 已接入（E2xxx 主体） |
+| 词法 / 文法         | rd Scanner / Parser → `syntax_diag` | 已接入（E1001 / E1002） |
+| AST 构造            | `RdBuilder`                         | 已接入（E2xxx 主体） |
 | 借用检查            | `BorrowChecker` / 构造器 DAA        | 已接入（E4xxx）       |
 | 类型检查 / 代码生成 | `Compiler*`                         | 已接入（E3xxx / E6xxx 主体） |
 | 模块加载            | `Riu::loadModule` 等                | 已接入（E5xxx）       |
@@ -492,7 +492,7 @@ Array 内置方法（E6042）：
   - **A 阶段（已落地）**：诊断渲染支持 `= help: ...` 与 `= note: ...`；`RiuError` 通过链式 `withHint` / `withNote` 携带。
     已在 E2001（`Weak<T>?`）、E3078（`Weak == / !=`）、E3017 / E3018 / E3019 / E4001 / E4004（`T&`
     初始化与借用形态）、E2006 / E2007（缺函数体 vs `#Builtin`）、E6010 / E6011（泛型实参个数）以及
-    E1002（`SyntaxErrorListener` 对常见 `';'` / `mismatched input` / `extraneous input` 等模式）站点附了简单 hint。
+    E1002（`syntax_diag` 对关键字当 ID、`ret;` / `break;` / `continue;`、mismatched / no viable 等模式）站点附了简单 hint。
     回归位于 `tests/cases/diag_*.ut`。
   - **B 阶段（已落地）**：未声明标识符的拼写近似建议（Levenshtein ≤ 2）。`riu/analyzer/symbol_suggest.{h,cpp}` 沿
     `ScopeNode` 父链汇总可见变量与函数名，对 E3030 / E3031 / E3032 抛出处给出最近 1–3 个候选，组装为
@@ -514,4 +514,4 @@ Array 内置方法（E6042）：
 - E3099 采用包装上下文的双行模板，长期看应当替换为结构化 `note` 而非内嵌换行。
 - E6027 已统一承载内置 intrinsic / Array 方法 / 算子方法 arity 检查（原 E6020-E6022/E6025/E6040/E6043-E6045）；若未来需要细分场景加 note，在 E6027 基础上加结构化 diagnostic note 即可，不再拆分独立码。
 
-> 已收口：原"列号按字节计算导致多字节字符插入符偏移"的 Open Issue（v0.4.x）已实现 —— `col` 改为 codepoint 列号、插入符按显示列宽对齐，详见 D.1.1。
+> 列号是 UTF-8 字节（`rd::Pos.column + 1`）；插入符按该字节处 codepoint 的显示宽度对齐，见 D.1.1。
