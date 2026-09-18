@@ -36,7 +36,7 @@ namespace {
 
 namespace fs = std::filesystem;
 
-constexpr std::array<char, 4> kMagic{'Y', 'U', 'X', 'D'};
+constexpr std::array<char, 4> kMagic{'R', 'I', 'U', 'D'};
 
 // ==================== 二进制读写 ====================
 
