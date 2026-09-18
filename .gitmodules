@@ -1,3 +1,9 @@
 [submodule "scripts/ps-sync-deps"]
 	path = scripts/ps-sync-deps
 	url = https://github.com/Yin-Jinlong/ps-sync-deps.git
+[submodule "plugins/riu-vscode"]
+	path = plugins/riu-vscode
+	url = https://github.com/riu-lang/riu-vscode.git
+[submodule "plugins/riu-idea"]
+	path = plugins/riu-idea
+	url = https://github.com/riu-lang/riu-idea.git
