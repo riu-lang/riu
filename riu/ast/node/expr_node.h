@@ -858,7 +858,7 @@ public:
 };
 
 // §4.9.1.4 / §4.9.3.5：调用点是 `#NoReturn` 时该表达式流终止，不参与 if / match / try 类型合并。
-// 只认顶层身份引用（`panic("x")` / `exit(1)`）；方法调用暂不参与（与 E7014 同一保守策略）。
+// 只认顶层身份引用（`panic("x")` / `abort()` / `exit(1)`）；方法调用暂不参与（与 E7014 同一保守策略）。
 bool callIsNoReturn(ScopeNode* scope, ExprCallNode* call);
 bool exprTerminatesFlow(ScopeNode* scope, ExprNode* expr);
 bool blockTerminatesFlow(ScopeNode* scope, StatementBlockNode* block);

@@ -618,14 +618,14 @@ llvm::Value* Compiler::compileArrayMethodCall(ExprCallNode* callNode, ExprNode* 
         return _builder.CreateICmpEQ(cmp, _builder.getInt32(0), (string(tag) + ".eq").c_str());
     };
 
-    auto emitOobExit = [&](llvm::Value* oob, const char* okName) {
+    auto emitOobAbort = [&](llvm::Value* oob, const char* okName) {
         auto* fn = _builder.GetInsertBlock()->getParent();
         auto* dieBB = llvm::BasicBlock::Create(_context, "arr.oob", fn);
         auto* okBB = llvm::BasicBlock::Create(_context, okName, fn);
         _builder.CreateCondBr(oob, dieBB, okBB);
         _builder.SetInsertPoint(dieBB);
-        auto exitFn = runtime::getOrCreateWindowsAPI(_module, _builder, "ExitProcess");
-        _builder.CreateCall(exitFn, {_builder.getInt32(1)});
+        auto abortFn = runtime::getRiurtAbortFn(_module, _builder);
+        _builder.CreateCall(abortFn);
         _builder.CreateUnreachable();
         _builder.SetInsertPoint(okBB);
     };
@@ -725,7 +725,7 @@ llvm::Value* Compiler::compileArrayMethodCall(ExprCallNode* callNode, ExprNode* 
         auto ptr = getReadPtr();
         auto lenVal = loadLen(ptr);
         auto idx = _builder.CreateZExtOrTrunc(args[0], sizeTy, "get.i");
-        emitOobExit(_builder.CreateICmpUGE(idx, lenVal, "get.oob"), "get.ok");
+        emitOobAbort(_builder.CreateICmpUGE(idx, lenVal, "get.oob"), "get.ok");
         auto dataPtr = loadData(ptr);
         auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {idx}, "get.elem.ptr");
         if (elemType) {
@@ -738,7 +738,7 @@ llvm::Value* Compiler::compileArrayMethodCall(ExprCallNode* callNode, ExprNode* 
         auto ptr = getReadPtr();
         auto lenVal = loadLen(ptr);
         auto zeroSize = llvm::ConstantInt::get(sizeTy, 0);
-        emitOobExit(_builder.CreateICmpEQ(lenVal, zeroSize, "first.empty"), "first.ok");
+        emitOobAbort(_builder.CreateICmpEQ(lenVal, zeroSize, "first.empty"), "first.ok");
         auto dataPtr = loadData(ptr);
         auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {zeroSize}, "first.elem.ptr");
         if (elemType) {
@@ -751,7 +751,7 @@ llvm::Value* Compiler::compileArrayMethodCall(ExprCallNode* callNode, ExprNode* 
         auto ptr = getReadPtr();
         auto lenVal = loadLen(ptr);
         auto zeroSize = llvm::ConstantInt::get(sizeTy, 0);
-        emitOobExit(_builder.CreateICmpEQ(lenVal, zeroSize, "last.empty"), "last.ok");
+        emitOobAbort(_builder.CreateICmpEQ(lenVal, zeroSize, "last.empty"), "last.ok");
         auto oneSize = llvm::ConstantInt::get(sizeTy, 1);
         auto lastIdx = _builder.CreateSub(lenVal, oneSize, "last.idx");
         auto dataPtr = loadData(ptr);
@@ -766,7 +766,7 @@ llvm::Value* Compiler::compileArrayMethodCall(ExprCallNode* callNode, ExprNode* 
         auto lenFieldPtr = arrayLenFieldPtr(arrayPtr, "arr");
         auto lenVal = _builder.CreateLoad(sizeTy, lenFieldPtr, "a.len");
         auto zeroSize = llvm::ConstantInt::get(sizeTy, 0);
-        emitOobExit(_builder.CreateICmpEQ(lenVal, zeroSize, "pop.empty"), "pop.ok");
+        emitOobAbort(_builder.CreateICmpEQ(lenVal, zeroSize, "pop.empty"), "pop.ok");
         auto oneSize = llvm::ConstantInt::get(sizeTy, 1);
         auto lastIdx = _builder.CreateSub(lenVal, oneSize, "pop.idx");
 
@@ -797,7 +797,7 @@ llvm::Value* Compiler::compileArrayMethodCall(ExprCallNode* callNode, ExprNode* 
             DEBUG_LOG("    Expr: Array.set_len()");
             auto newLen = _builder.CreateZExtOrTrunc(args[0], sizeTy, "set_len.n");
             auto oldLen = _builder.CreateLoad(sizeTy, lenFieldPtr, "set_len.old_len");
-            emitOobExit(_builder.CreateICmpUGT(newLen, oldLen, "set_len.grow"), "set_len.ok");
+            emitOobAbort(_builder.CreateICmpUGT(newLen, oldLen, "set_len.grow"), "set_len.ok");
             releaseArrayElements(arrayPtr, arrType, newLen, oldLen);
             _builder.CreateStore(newLen, lenFieldPtr);
             return voidResult();
@@ -1464,7 +1464,7 @@ llvm::Value* Compiler::compileArrayMethodCall(ExprCallNode* callNode, ExprNode* 
         }
         auto lenVal = _builder.CreateLoad(sizeTy, lenFieldPtr, "a.len");
         auto oob = _builder.CreateICmpUGT(idx, lenVal, "ins.oob");
-        emitOobExit(oob, "ins.ok");
+        emitOobAbort(oob, "ins.ok");
 
         auto capVal = _builder.CreateLoad(sizeTy, capFieldPtr, "a.cap");
         auto needGrow = _builder.CreateICmpUGE(lenVal, capVal, "ins.need_grow");
@@ -1539,7 +1539,7 @@ llvm::Value* Compiler::compileArrayMethodCall(ExprCallNode* callNode, ExprNode* 
         auto idx = _builder.CreateZExtOrTrunc(args[0], sizeTy, "rm.i");
         auto lenVal = _builder.CreateLoad(sizeTy, lenFieldPtr, "a.len");
         auto oob = _builder.CreateICmpUGE(idx, lenVal, "rm.oob");
-        emitOobExit(oob, "rm.ok");
+        emitOobAbort(oob, "rm.ok");
 
         auto dataPtr = _builder.CreateLoad(ptrTy, dataFieldPtr, "rm.data");
         auto idxI64 = _builder.CreateZExtOrTrunc(idx, _builder.getInt64Ty(), "rm.i64");

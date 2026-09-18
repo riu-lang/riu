@@ -1,10 +1,17 @@
-; riu SDK - 公开 exit(code u32) stdlib 函数（DRAFT-错误.md §8.7 / spec §11.5.1）
+; riu SDK - 进程终止：exit(code) / abort()（spec §10.4.1.6）
 ;
-; #NoReturn 注解：编译器流终止分析复用（10d-2）。
-; 直接调 Win32 ExitProcess（已标 #NoReturn），不经 _exit 包装：u32 与 ExitProcess
-; 形参类型一致，省一次 to_i32() / to_u32() 来回。
+; exit：业务正常终止，退出码由调用方指定，不打模板。
+; abort：不变式破坏 / 越界 / OOM 等不可恢复路径；无消息、无退出码约定。
+;   实施走 riurt_abort（RaiseException 0xE0AB0710）。#Test 的 SEH wrapper 可接住；
+;   普通 riu build 无 handler → OS 终止。
+; #NoReturn：流终止分析复用（10d-2）。
 
 use riu.core.helper.*
+
+#NoReturn
+fn abort() {
+  riurt_abort();
+}
 
 #NoReturn
 fn exit(code u32) {

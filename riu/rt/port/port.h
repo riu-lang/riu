@@ -13,13 +13,13 @@ extern "C" {
 
 // ---- 内存分配（平台层实现）----
 
-// 分配 size 字节未初始化内存。失败时终止进程。
+// 分配 size 字节未初始化内存。失败时 abort。
 void* riurt_plat_alloc(size_t size);
 
-// 分配 size 字节零填充内存。失败时终止进程。
+// 分配 size 字节零填充内存。失败时 abort。
 void* riurt_plat_alloc_zeroed(size_t size);
 
-// 重新分配内存块。失败时终止进程。
+// 重新分配内存块。失败时 abort。
 void* riurt_plat_realloc(void* ptr, size_t new_size);
 
 // 释放内存块。ptr 为 NULL 时无操作。

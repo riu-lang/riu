@@ -42,6 +42,7 @@ llvm::Function* getSetConsoleCPFn(llvm::Module* module, llvm::IRBuilder<>& build
 llvm::Function* getRiurtAllocFn(llvm::Module* module, llvm::IRBuilder<>& builder);
 llvm::Function* getRiurtReallocFn(llvm::Module* module, llvm::IRBuilder<>& builder);
 llvm::Function* getRiurtFreeFn(llvm::Module* module, llvm::IRBuilder<>& builder);
+llvm::Function* getRiurtAbortFn(llvm::Module* module, llvm::IRBuilder<>& builder);
 
 // riurt ffi：Rc 计数协议（riu_rc_*）。alloc/retain/release 不再 emit IR 体。
 llvm::Function* getRiuRcReleaseNeedDtorFn(llvm::Module* module, llvm::IRBuilder<>& builder);

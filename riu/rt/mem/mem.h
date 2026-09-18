@@ -15,6 +15,12 @@ void* riurt_alloc_zeroed(size_t size);
 void* riurt_realloc(void* ptr, size_t new_size);
 void riurt_free(void* ptr);
 
+// 不可恢复终止。SEH 码 0xE0AB0710（客户位 0xE + ABORT 谐音），
+// 与 assert 0xE0FA17ED / panic 0xE0FA1750 区分。#Test 可接住；普通进程无 handler 则 OS 终止。
+// 分配失败 / 越界等内部路径走这里，不走 ExitProcess(1)。
+#define RIURT_ABORT_CODE 0xE0AB0710u
+void riurt_abort(void);
+
 // ---- 内存块操作 ----
 
 // 从 src 复制 size 字节到 dst。源和目标不得重叠。

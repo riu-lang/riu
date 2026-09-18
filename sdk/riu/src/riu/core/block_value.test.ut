@@ -345,7 +345,7 @@ fn test_nested_if_try_match() {
 
 #NoReturn
 fn die_noreturn() {
-  exit(1)
+  abort()
 }
 
 fn give_or_die(ok bool) String ! BlockErr {
@@ -358,7 +358,7 @@ fn give_or_die(ok bool) String ! BlockErr {
 fn match_or_die(p Pick) String {
   ret match p {
     Pick::A => "a"
-    Pick::B => exit(1)
+    Pick::B => abort()
     Pick::C => {
       die_noreturn()
     }
@@ -368,14 +368,14 @@ fn match_or_die(p Pick) String {
 ; 验证：#NoReturn 臂不参与 if / match / try 类型合并，也不要 dummy 尾值
 #Test
 fn test_noreturn_arm_if_match_try() {
-  let a String = if true { "yes" } else { exit(1) }
+  let a String = if true { "yes" } else { abort() }
   assert_eq(a, "yes")
   let b String = if false { die_noreturn() } else { "no" }
   assert_eq(b, "no")
   let c String = if true {
     "blk"
   } else {
-    exit(1);
+    abort();
   }
   assert_eq(c, "blk")
   let d String = match_or_die(Pick::A)
@@ -383,7 +383,7 @@ fn test_noreturn_arm_if_match_try() {
   let e String = try {
     give_or_die(true)
   } catch e BlockErr {
-    exit(1)
+    abort()
   }
   assert_eq(e, "ok")
   let f String = try {

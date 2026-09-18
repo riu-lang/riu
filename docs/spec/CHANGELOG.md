@@ -15,6 +15,12 @@
 
 ---
 
+## 2026-09-19 —— `abort()` 与越界 / OOM / 空 `get` 终止通道
+
+- **新增 §10.4.1.6**：`abort()`（`#NoReturn`）。与 `exit(code)` 分档：`exit` 是业务退出码；`abort` 是不可恢复（无消息、无退出码约定）。`panic(msg)` 仍先打 `panic: …` 再走同一终止通道。
+- **修改 §3.6.2 / §9.2.3 / §9.8.2**：空 `Nullable.get()`、数组越界 / 空 `pop` 等由 `_exit(1)` 改为 `abort()`。OOM（`riurt` 分配失败）同通道。
+- **冲突 / 兼容**：原这些路径 `ExitProcess(1)`，现 SEH `0xE0AB0710`（无 handler 则 OS 终止）。依赖退出码 `1` 区分「越界」与「业务 `exit(1)`」的脚本不再成立；要退出码仍调 `exit`。
+
 ## 2026-09-18 —— 附录 D 诊断入口改为 rd
 
 - **修改 附录 D**：E1xxx 由 rd Scanner / Parser + `syntax_diag` 报；`col` 为 1-based UTF-8 字节（与 `rd::Pos` 一致），插入符按该处显示宽度对齐。不再引用 ANTLR / `SyntaxErrorListener` / `ASTBuilder`。

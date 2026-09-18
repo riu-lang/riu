@@ -10,6 +10,8 @@ extern {
   fn riurt_alloc_zeroed(size u64) Ptr
   fn riurt_realloc(ptr Ptr, new_size u64) Ptr
   fn riurt_free(ptr Ptr)
+  #NoReturn
+  fn riurt_abort()
   fn riurt_memcpy(dst Ptr, src Ptr, size u64) Ptr
   fn riurt_memset(dst Ptr, val i32, size u64) Ptr
   fn riurt_memcmp(a Ptr, b Ptr, size u64) i32
@@ -423,10 +425,10 @@ struct Nullable<T> {
   ; 是否持有值
   fn has() bool = $._has
 
-  ; 取值。空时调用 exit(1) 终止进程（语言尚无 panic 设施）
+  ; 取值。空时 abort（bug / 不变式破坏，不走业务 exit 码）
   fn get() T {
     if !$._has {
-      exit(1);
+      abort();
     }
     $._value
   }

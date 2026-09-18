@@ -2,6 +2,7 @@
 // 使用 HeapAlloc / HeapFree（kernel32），不依赖 CRT malloc/free。
 // 编译时不得链接 msvcrt（riu 程序走自身运行时）。
 #include "port.h"
+#include "../mem/mem.h"
 
 #if defined(_WIN32) || defined(_WIN64)
 
@@ -54,13 +55,18 @@
 #define HEAP_ZERO_MEMORY 0x00000008
 #endif
 
+void riurt_abort(void) {
+    // 不依赖 CRT abort。#Test SEH 接住后本函数不会回到调用方；
+    // 无 handler 时 OS 终止。若被 continue 执行，再 ExitProcess(3)（传统 abort 退出码）。
+    RaiseException((DWORD)RIURT_ABORT_CODE, 0, 0, NULL);
+    ExitProcess(3);
+}
+
 void* riurt_plat_alloc(size_t size) {
     HANDLE heap = GetProcessHeap();
     void* ptr = HeapAlloc(heap, 0, (SIZE_T)size);
     if (!ptr) {
-        // 分配失败：终止进程（不依赖 CRT abort/printf）
-        // 调 ExitProcess 不依赖 stdout/stderr 初始化
-        ExitProcess(1);
+        riurt_abort();
     }
     return ptr;
 }
@@ -69,7 +75,7 @@ void* riurt_plat_alloc_zeroed(size_t size) {
     HANDLE heap = GetProcessHeap();
     void* ptr = HeapAlloc(heap, HEAP_ZERO_MEMORY, (SIZE_T)size);
     if (!ptr) {
-        ExitProcess(1);
+        riurt_abort();
     }
     return ptr;
 }
@@ -81,7 +87,7 @@ void* riurt_plat_realloc(void* ptr, size_t new_size) {
     HANDLE heap = GetProcessHeap();
     void* new_ptr = HeapReAlloc(heap, 0, ptr, (SIZE_T)new_size);
     if (!new_ptr) {
-        ExitProcess(1);
+        riurt_abort();
     }
     return new_ptr;
 }

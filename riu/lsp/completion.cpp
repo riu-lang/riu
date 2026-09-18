@@ -107,7 +107,9 @@ const std::vector<CompletionItem>& buildItems() {
         fn("upgrade", "弱升强 upgrade:<T>(w Weak<T>) Rc<T>?");
         fn("heap_some", "构造非空可空堆句柄 heap_some:<T>(v T) Heap<T>?");
         fn("heap_null", "构造空可空堆句柄 heap_null:<T>() Heap<T>?");
-        fn("panic", "不可恢复终止 panic(msg String) —— 走 abort 通道，不入错误模型");
+        fn("panic", "不可恢复终止 panic(msg String) —— 打 panic: 后走 abort 通道，不入错误模型");
+        fn("abort", "不可恢复终止 abort() —— 无消息；越界 / 空 get / OOM 同通道");
+        fn("exit", "立即终止进程 exit(code u32) —— 业务退出码，不打模板");
 
         // TYPE_CONVERSION_FUNCTIONS
         for (const char* t :

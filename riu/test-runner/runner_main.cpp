@@ -60,6 +60,8 @@ RunnerOptions parseArgs(int argc, char* argv[]) { // NOLINT(modernize-avoid-c-ar
 
 // riu 测试断言失败码 (spec §11.3.5)
 constexpr unsigned long ASSERT_FAILED_CODE = 0xE0FA17ED;
+// 与 riu/rt/mem/mem.h RIURT_ABORT_CODE 同步
+constexpr unsigned long ABORT_CODE = 0xE0AB0710;
 
 // SEH 包裹单次测试调用。返回 0=pass；非 0=GetExceptionCode()
 // 必须 extern "C" + 无 C++ 析构对象
@@ -75,6 +77,7 @@ extern "C" unsigned long runTestSEH(void (*fn)()) noexcept {
 // 把 SEH 异常码翻译为可读名字
 const char* sehExceptionName(unsigned long code) {
     if (code == ASSERT_FAILED_CODE) return "ASSERT_FAILED";
+    if (code == ABORT_CODE) return "ABORT";
     switch (code) {
     case EXCEPTION_ACCESS_VIOLATION:
         return "ACCESS_VIOLATION";

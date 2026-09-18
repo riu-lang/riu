@@ -97,6 +97,17 @@ llvm::Function* getRiurtFreeFn(llvm::Module* module, llvm::IRBuilder<>& builder)
     return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, fnName, module);
 }
 
+// riurt_abort() -> void #NoReturn
+llvm::Function* getRiurtAbortFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
+    string fnName = "riurt_abort";
+    auto func = module->getFunction(fnName);
+    if (func) return func;
+    auto fnType = llvm::FunctionType::get(builder.getVoidTy(), {}, false);
+    auto fn = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, fnName, module);
+    fn->addFnAttr(llvm::Attribute::NoReturn);
+    return fn;
+}
+
 // 获取 SetConsoleOutputCP 函数
 llvm::Function* getSetConsoleOutputCPFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
     return getOrCreateWindowsAPI(module, builder, "SetConsoleOutputCP");

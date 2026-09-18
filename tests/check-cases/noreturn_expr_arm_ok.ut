@@ -16,21 +16,21 @@ fn give() String ! Boom {
 
 #NoReturn
 fn die() {
-  exit(1)
+  abort()
 }
 
 fn main() {
-  let a String = if true { "a" } else { exit(1) }
+  let a String = if true { "a" } else { abort() }
   let b String = if true { "b" } else { die() }
   let c String = if true {
     "c"
   } else {
-    exit(1);
+    abort();
   }
   let k Color = Color::Red
   let d String = match k {
     Color::Red => "d"
-    Color::Green => exit(1)
+    Color::Green => abort()
   }
   let e String = match k {
     Color::Red => "e"
@@ -41,7 +41,7 @@ fn main() {
   let f String = try {
     give()
   } catch e Boom {
-    exit(1)
+    abort()
   }
   println(a)
   println(b)
