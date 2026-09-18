@@ -27,7 +27,7 @@ llvm::Value* Compiler::compileArrayGetExpr(ExprGetNode* node) {
 
     auto& indices = node->indices();
     if (indices.empty()) {
-        // Phase 3.4.g: riu*.g4 强制 indices >= 1, 该分支不可达; 保留作 dead 防御。
+        // 文法强制 indices >= 1, 该分支不可达; 保留作 dead 防御。
         throwSemaGap(node->getLineNumber(), node->getColumn());
     }
 

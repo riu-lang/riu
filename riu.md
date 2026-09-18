@@ -2,7 +2,7 @@
 
 本文件汇总 riu-lang 仓库的关键架构图，便于快速上手与跨模块讨论。图示用 Mermaid，配合 [RULES.md](RULES.md) / [rules/sema-codegen.md](rules/sema-codegen.md) 阅读。
 
-权威源：`riu/ast/riu*.g4`（对照）+ `riu/ast/rd/`（词法/语法）+ `riu/` C++ 源码、`BUILD.gn` / `build/`（构建拓扑）。图与代码冲突时以代码为准，**回头更新本文档**而非反过来。
+权威源：`riu/ast/riu.bnf`（语法）+ `riu/ast/rd/`（词法/语法实现）+ `riu/` C++ 源码、`BUILD.gn` / `build/`（构建拓扑）。图与代码冲突时以代码为准，**回头更新本文档**而非反过来。
 
 ---
 

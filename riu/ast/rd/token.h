@@ -1,7 +1,7 @@
 // Copyright (c) 2026. Yin-Jinlong@github
 // MPL-2.0
 //
-// 结构参考 V token/position（MIT）。Kind 名沿用 g4 规则名，不是 V 关键字。
+// 结构参考 V token/position（MIT）。Kind 名沿用 riu.bnf 规则名，不是 V 关键字。
 // rd.9 起编译 / check 主路；rd.10 format；rd.11 LSP。
 
 #ifndef RIU_LANG_RD_TOKEN_H
@@ -138,7 +138,7 @@ struct ParseError {
 
 [[nodiscard]] std::string_view kindName(Kind k);
 
-// 精确匹配 g4 关键字；非关键字返回 Invalid。
+// 精确匹配关键字；非关键字返回 Invalid。
 [[nodiscard]] Kind keywordKind(std::string_view ident);
 
 // dump 一行：KIND  line:col  offset-end  "escaped"\n（offset 为字节）。

@@ -436,7 +436,7 @@ let d Dyn<D>     = Dyn:<D>(b)        ; Rc<U> → Dyn<D>，移交 RC
 let r Dyn<D&>    = Dyn:<D&>(ref)     ; U& 或 Rc<U> → Dyn<D&>，借用
 ```
 
-§12.9.5.2 调用站语法**应当**带 `:`（`Dyn:<D>(x)`）；无 `:` 写法 `Dyn<D>(x)` 仅在**类型位**有效（§B.2 / §B.2a）。`:` 前缀见 `riuParser.g4` `exprCall` 形态。
+§12.9.5.2 调用站语法**应当**带 `:`（`Dyn:<D>(x)`）；无 `:` 写法 `Dyn<D>(x)` 仅在**类型位**有效（§B.2 / §B.2a）。`:` 前缀见 `riu.bnf` `exprCall` 形态。
 
 §12.9.5.3 构造检查：
 

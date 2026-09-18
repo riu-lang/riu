@@ -1,7 +1,7 @@
 // Copyright (c) 2026. Yin-Jinlong@github
 // MPL-2.0
 //
-// 结构参考 V parser（MIT）。产生式跟 riuParser.g4，不搬 V 的 ASI / import。
+// 结构参考 V parser（MIT）。产生式跟 riu.bnf，不搬 V 的 ASI / import。
 // rd.8 起 FileNode 主路走本栈。
 
 #ifndef RIU_LANG_RD_PARSER_H

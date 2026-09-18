@@ -2,7 +2,7 @@
 
 每会话入口（`AGENTS.md` → 本文件）。不要擅自改任务方向；卡住就停下来问。规范没写 = 不允许。不要用 Rust / C++ / Go 语义套 riu。
 
-`riu/ast/riu*.g4` **只读**（rd.13 换成 `riu.bnf` 前仍留着对照）。任务看起来要改语法 → 立刻停，列问题给用户。权威：手写 Scanner/Parser + g4 > docs（冲突时改 docs）。路径 / 测试名 / 命令参数查实际文件，不凭命名猜。
+`riu/ast/riu.bnf` **只读**。任务看起来要改语法 → 立刻停，列问题给用户。权威：`riu.bnf` + 编译器源码 > docs（冲突时改 docs）。路径 / 测试名 / 命令参数查实际文件，不凭命名猜。
 
 ## 工作文件
 
@@ -103,7 +103,7 @@ riu/                 构建子系统（各自 BUILD.gn）
   riu/cli/           build / test / format
   include/           公共头（error_code.h 等）
   rt/                C99 运行时 riurt.lib
-  ast/               rd Scanner/Parser + FileNode；riu*.g4 只读对照
+  ast/               rd Scanner/Parser + FileNode；riu.bnf 语法权威
   analyzer/          语义分析器
   frontend/          sema + tools + formatter（0 LLVM）
   check/             riu-check

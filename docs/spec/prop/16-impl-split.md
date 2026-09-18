@@ -6,13 +6,13 @@
 | 开 | 2026-09-17 |
 | 旧档 | [DRAFT-draft.md](../draft/DRAFT-draft.md) `Type : D { }`；[DRAFT-spec-unify.md](../draft/DRAFT-spec-unify.md) [#1.B] 合一 / [#1.M] `extend` |
 
-[#15](15-spec-generic.md) 单 Impl 不依赖本条。本条是 15 里「不同实参并存」的前置。形态已拍（A）；改 g4 等本条 `待实施`。不绑版本。
+[#15](15-spec-generic.md) 单 Impl 不依赖本条。本条是 15 里「不同实参并存」的前置。形态已拍（A）；改 `riu.bnf` 等本条 `待实施`。不绑版本。
 
 ## 提议
 
 把 spec 实现从 `structDecl` 体里拆回独立顶层块，每块一个 `(类型, spec)`，自己的方法 namespace。
 
-v0.5 本来就是分离的：`struct S { 字段 }` + `S { 固有方法 }` + `S : D { spec 方法 }`。2026-05-19 spec-unify [#1.B] 并进单一 `structDecl`，理由是「找类型行为只看一个地方」。AST 没真正合一——`visitStructDecl` 仍同时造 `StructDeclNode` + `StructImplNode`。合一的是 g4 表面和共享 method namespace（§7.8.2 / §12.2.3.3）。
+v0.5 本来就是分离的：`struct S { 字段 }` + `S { 固有方法 }` + `S : D { spec 方法 }`。2026-05-19 spec-unify [#1.B] 并进单一 `structDecl`，理由是「找类型行为只看一个地方」。AST 没真正合一——`visitStructDecl` 仍同时造 `StructDeclNode` + `StructImplNode`。合一的是文法表面和共享 method namespace（§7.8.2 / §12.2.3.3）。
 
 [#15](15-spec-generic.md) 要把 `#Impl(To<i32>)` 与 `#Impl(To<String>)` 做成不同实现位。共享 namespace 下两份 `to()` 签不同 → E1137。所以 15 先单 Impl；并存要先拆块。
 
@@ -29,7 +29,7 @@ v0.5 本来就是分离的：`struct S { 字段 }` + `S { 固有方法 }` + `S :
   - 顶层块写在 D 包就能给 SDK 类型补本包 spec，[#1.M] `extend` 主场景被覆盖，不必另开关键字。
 - 反对：
   - 推翻 [#1.B]。固有方法还在 struct 里，spec 实现要按 `(S, D)` 找块——这本来就是 registry 的键。
-  - 必改 g4；SDK `#Impl(D) struct T` 全量迁一次。
+  - 必改 `riu.bnf`；SDK `#Impl(D) struct T` 全量迁一次。
 - 未决：无（2026-09-17 已收：A / 不留糖 / `@D<A>` / `extend` 不动）
 
 ## 决定
@@ -86,7 +86,7 @@ Counter {
 ### 调用
 
 - 仅固有、或仅一块 spec 提供 `m`：`obj.m()` 照旧。
-- 两块 spec 都提供 `m`（典型：`To<i32>` 与 `To<String>` 的 `to`）：`obj.to()` 歧义，必须 `obj.to@To<i32>()`。`@` 后接 `ID genericDef?`（现 `@ID` 不够，本条改 g4）。
+- 两块 spec 都提供 `m`（典型：`To<i32>` 与 `To<String>` 的 `to`）：`obj.to()` 歧义，必须 `obj.to@To<i32>()`。`@` 后接 `ID genericDef?`（现 `@ID` 不够，本条改 `riu.bnf`）。
 - `$.m@D()` 仍是 escape hatch，指向该 spec 默认体（§12.10.8）；带实参时指向那一份。
 
 ### 不做
@@ -100,4 +100,4 @@ Counter {
 
 ## 落地
 
-- （未开始。建议切片：g4 收独立块 + 禁 `#Impl` 贴 struct → E1103 改键 → E1102 收回 → `@D<A>` → SDK 迁 ToString/Eq/Ord。15 的单 Impl 可先落地，本条再打开并存。）
+- （未开始。建议切片：`riu.bnf` 收独立块 + 禁 `#Impl` 贴 struct → E1103 改键 → E1102 收回 → `@D<A>` → SDK 迁 ToString/Eq/Ord。15 的单 Impl 可先落地，本条再打开并存。）

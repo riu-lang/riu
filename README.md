@@ -194,7 +194,7 @@ riu test --verbose          # 打印每个测试 stdout/stderr
 riu test --test-mod riu.core.array  # 只测指定模块
 ```
 
-语法以 `riu/ast/riu*.g4`、手写 parser 和 [文档](docs/index.md) 为准，用例需符合这三者。
+语法以 [`riu/ast/riu.bnf`](riu/ast/riu.bnf)、手写 parser 和 [文档](docs/index.md) 为准，用例需符合这三者。
 
 测试逻辑：`./build.ps1 test` 定义在 [tests/run.ps1](tests/run.ps1)；`riu test` 流程为 `riu build --test` → 并行 spawn `riu-test-runner` 子进程加载 DLL 执行。
 

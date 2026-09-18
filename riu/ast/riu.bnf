@@ -1,0 +1,462 @@
+; Copyright (c) 2026. Yin-Jinlong@github
+; MPL-2.0
+;
+; riu 语法权威（词法 + 文法）。实现：`riu/ast/rd/` Scanner / Parser。
+; 冲突时以本文件 + 编译器为准，回写 docs/spec。
+; 产生式名沿用历史规则名，便于对照 Sema / 附录 B。
+;
+; 记号：A B 串联；A | B 分支；A? 0/1；A* 0+；A+ 1+；(…) 分组；'…' 字面；
+; UPPER 词法 token；lower 语法非终结符；# name 分支标签。
+; 词法 fragment 不发射。Space / LineComment / LineEndComment 走 hidden，parser 看不见。
+
+; ============================================================
+; 词法
+; ============================================================
+
+; --- hidden ---
+;
+; LineComment：列 0 时 Space* ';' 吃到含 LineEnd（含文件末 EOF）。
+; LineEndComment：非列 0 的 Space+ ';'，不吃换行。
+; Space：仅 ' '。\t 等非法字符报 E1001，跳过 1 个 UTF-8 字符。
+
+LineComment     ::= {col=0} Space* ';' ~[\r\n]* LineEnd     ; hidden
+LineEndComment  ::= Space+ ';' ~[\r\n]*                     ; hidden
+Space           ::= ' '                                     ; hidden
+LineEnd         ::= '\r'? '\n' | '\n'                       ; 空文件额外一条 EOF 处 LineEnd
+
+; --- 关键字（先于 ID）---
+
+Break     ::= 'break'
+Catch     ::= 'catch'
+Continue  ::= 'continue'
+Elif      ::= 'elif'
+Else      ::= 'else'
+Enum      ::= 'enum'
+Extern    ::= 'extern'
+False     ::= 'false'
+Fn        ::= 'fn'
+For       ::= 'for'
+If        ::= 'if'
+In        ::= 'in'
+Let       ::= 'let'
+Loop      ::= 'loop'
+Match     ::= 'match'
+Null      ::= 'null'
+Ret       ::= 'ret'
+SelfType  ::= 'Self'
+Struct    ::= 'struct'
+True      ::= 'true'
+Try       ::= 'try'
+TypeKw    ::= 'type'
+Use       ::= 'use'
+
+; --- 符号（最长匹配）---
+;
+; 词法预合成：== != && || += -= *= /= %= :: => <-
+; 语法层拼合（仍是单字符 token）：<= >= ?? ?. ...
+; | ^ 不是 token；整数位运算走方法。~ 仅 fn ~()。
+
+SymbolAdd       ::= '+'
+SymbolAddEq     ::= '+='
+SymbolAnd       ::= '&'
+SymbolAndAnd    ::= '&&'
+SymbolAt        ::= '@'
+SymbolColon     ::= ':'
+SymbolColonColon ::= '::'
+SymbolComma     ::= ','
+SymbolDiv       ::= '/'
+SymbolDivEq     ::= '/='
+SymbolDot       ::= '.'
+SymbolEq        ::= '='
+SymbolEqEq      ::= '=='
+SymbolEqMt      ::= '=>'
+SymbolExcl      ::= '!'
+SymbolExclEq    ::= '!='
+SymbolHash      ::= '#'
+SymbolLt        ::= '<'
+SymbolLtSub     ::= '<-'
+SymbolMod       ::= '%'
+SymbolModEq     ::= '%='
+SymbolMt        ::= '>'
+SymbolMul       ::= '*'
+SymbolMulEq     ::= '*='
+SymbolOrOr      ::= '||'
+SymbolQuest     ::= '?'
+SymbolRev       ::= '~'
+SymbolSemicolon ::= ';'
+SymbolSub       ::= '-'
+SymbolSubEq     ::= '-='
+SymbolThis      ::= '$'
+ParStart        ::= '('
+ParEnd          ::= ')'
+GetStart        ::= '['
+GetEnd          ::= ']'
+BlockStart      ::= '{'
+BlockEnd        ::= '}'
+
+; --- 标识符 / 数字 / 字符串 ---
+;
+; ID 首字符：非 U+0021..U+0040、U+005B..U+005E、U+0060、U+007B..U+007F、White_Space。
+; 后续再排除数字与部分符号，使 '_' 可出现在后续位置。Unicode 非空白可作 ID。
+
+ID            ::= ID_HEAD ID_TAIL*
+INT           ::= NUN_SIGN? (INT_10 | INT_2 | INT_8 | INT_16) INT_SUFFIX?
+FLOAT         ::= NUN_SIGN? (INT_10 | FLOAT_DOT | FLOAT_EXP) FLOAT_SUFFIX?
+STR_LINE_RAW  ::= 'r' '"' ~[\r\n]*? '"'
+CODE_POINT    ::= 'c' '\'' ( '\\' [bnrtv0\\'] | ~[\r\n\\'] ) '\''
+DOT_NUM       ::= '.' INT_10                    ; 元组成员 t.0；优先于 FLOAT_DOT
+
+; fragment（不发射）
+ID_HEAD       ::= ; 见上
+ID_TAIL       ::= ; 见上
+INT_SUFFIX    ::= [iu] ('8' | '16' | '32' | '64' | 'size')
+INT_10        ::= [0-9] ('_'? [0-9]+)*
+INT_2         ::= '0b' [01] ('_'? [01]+)*
+INT_8         ::= '0o' [0-7] ('_'? [0-7]+)*
+INT_16        ::= '0x' [0-9a-fA-F] ('_'? [0-9a-fA-F]+)*
+FLOAT_SUFFIX  ::= 'f' ('32' | '64')
+FLOAT_DOT     ::= INT_10 '.' INT_10
+FLOAT_EXP     ::= FLOAT_DOT 'e' '-'? INT_10
+NUN_SIGN      ::= '-' | '+'
+
+; --- 字符串模板 StrTpl ---
+;
+; '"' 进入模板模式。${ 压 default 模式并记括号深度 0；该深度内 { ++、} --，
+; 到 0 的 } 结束插值回到模板。$ident 复用 ID 字符集。不写 ANTLR action。
+
+STR_TPL_OPEN         ::= '"'                    ; push StrTpl
+STR_TPL_INTERP_OPEN  ::= '${'                   ; push default；深度 0
+STR_TPL_DOLLAR_ID    ::= '$' ID_HEAD ID_TAIL*
+STR_TPL_CLOSE        ::= '"'                    ; pop StrTpl
+STR_TPL_TEXT         ::= ('\\' . | ~["\\$\r\n])+
+
+; ============================================================
+; 优先级 / 结合性（expr）
+;
+; 左结合：lbp < rbp（Pratt）。右结合：?? 与 <- 的 rbp = lbp。
+; 一元、postfix 高于二元。数字越小越紧（贴近操作数）。
+;
+;  1  postfix：() [] . ?. DOT_NUM 尾随 lambda  调用末 !     左
+;  2  unary：-e !e                                            右
+;  3  * / %                                                   左
+;  4  + -                                                     左
+;  5  < <= > >=                                               左
+;  6  == !=                                                   左
+;  7  && ||                                                   左
+;  8  ??                                                      右
+;  9  <-                                                      右
+;
+; x <- y ?? z  =  x <- (y ?? z)
+;
+; 谓词（不写进产生式，实现按前瞻）：
+; - struct lit：Self / typePath 后的 '{'，但 '{' 后若是 '(' 则让给尾随 lambda。
+; - if 条件 / for-in 容器 / match 目标 / loop init RHS：解析 expr 时不允许
+;   随后 '{' 当 struct lit 或尾随 lambda（块属于该语句）。
+; - 换行后 '.' / '?.' / DOT_NUM 按 LineEnd* 续行；'.name =' 是字段 / 下一语句。
+; ============================================================
+
+; ============================================================
+; 文法
+; ============================================================
+
+program ::=
+    LineEnd*
+    imports*
+    ( fn | externDelc | letGlobal | aliasDecl | enumDecl | structDecl | LineEnd )*
+    EOF
+    ;
+
+imports ::=
+    Use typePath (SymbolDot SymbolMul)? LineEnd
+    ;
+
+externDelc ::=
+    buildAnno* Extern BlockStart LineEnd
+    ( fnHeader LineEnd | LineEnd )*
+    BlockEnd LineEnd
+    ;
+
+letGlobal ::=
+    letAnno* Let ID type? (SymbolEq expr)? LineEnd
+    ;
+
+letAnno ::=
+    SymbolHash ID LineEnd?
+    ;
+
+aliasDecl ::=
+    TypeKw ID SymbolEq type LineEnd
+    ;
+
+; --- 注解 ---
+
+buildAnno ::=
+    SymbolHash ID (ParStart annoArg ParEnd)? LineEnd
+    ;
+
+annoArg ::=
+      ID genericDef?
+    | INT
+    | FLOAT
+    | STR_LINE_RAW
+    | STR_TPL_OPEN STR_TPL_TEXT* STR_TPL_CLOSE      ; 无插值 "..."
+    | type
+    ;
+
+; --- 字面量 ---
+
+literal ::=
+      number
+    | True | False
+    | ID
+    | stringTemplate
+    | STR_LINE_RAW
+    | CODE_POINT
+    | Null
+    ;
+
+stringTemplate ::=
+    STR_TPL_OPEN templatePart* STR_TPL_CLOSE
+    ;
+
+templatePart ::=
+      STR_TPL_TEXT
+    | STR_TPL_DOLLAR_ID
+    | STR_TPL_INTERP_OPEN expr BlockEnd
+    ;
+
+number   ::= numInt | numFloat
+numInt   ::= INT
+numFloat ::= FLOAT
+
+; --- 类型 ---
+;
+; typeFallible 紧于 typeNullable 之前，以支持 i32? ! E。
+; 尾部可选 &。持有位裸 T& 由 sema E4039 拒。
+
+typePath ::=
+    ID (SymbolDot ID)*
+    ;
+
+type ::=
+      type SymbolExcl type SymbolAnd?                         # typeFallible
+    | type SymbolQuest SymbolAnd?                             # typeNullable
+    | typePath genericDefWithRef SymbolAnd?                   # typeGeneric
+    | typePath SymbolAnd?                                     # typeNormal
+    | SelfType SymbolAnd?                                     # typeSelf
+    | GetStart type SymbolMul INT GetEnd SymbolAnd?           # typeArray
+    | ParStart ParEnd                                         # typeUnit
+    | ParStart type (SymbolComma type)+ ParEnd                # typeTuple
+    ;
+
+typeParam ::=
+    type (SymbolColon type (SymbolAdd type)*)?
+    ;
+
+genericDef ::=
+    SymbolLt typeParam (SymbolComma typeParam)* SymbolMt
+    ;
+
+genericDefWithRef ::=
+    SymbolLt type (SymbolComma type)* SymbolMt
+    ;
+
+; --- 枚举 ---
+
+enumDecl ::=
+    Enum ID genericDef? BlockStart
+    ( LineEnd | enumVariant )*
+    BlockEnd
+    ;
+
+enumVariant ::=
+    ID (ParStart type (SymbolComma type)* ParEnd)? LineEnd
+    ;
+
+; --- 函数 ---
+
+fnClean ::=
+    Fn SymbolRev ParStart ParEnd fnBody
+    ;
+
+fn ::=
+    fnHeader fnBody?
+    ;
+
+fnHeader ::=
+    buildAnno* Fn ID genericDef?
+    ParStart LineEnd* fnParams? ParEnd
+    ( type (SymbolExcl type)? | SymbolExcl type )?
+    ;
+
+fnParams ::=
+    fnParam (SymbolComma LineEnd* fnParam)* SymbolComma? LineEnd*
+    ;
+
+fnParam ::=
+    fnParamStd | fnParamGroup
+    ;
+
+paramAnno ::=
+    SymbolHash ID LineEnd?
+    ;
+
+fnParamStd ::=
+    paramAnno* ID type
+    ;
+
+fnParamGroup ::=
+    paramAnno* (ID SymbolComma)* ID type
+    ;
+
+lambdaParams ::=
+    lambdaParam (SymbolComma LineEnd* lambdaParam)* SymbolComma? LineEnd*
+    ;
+
+lambdaParam ::=
+      (ID SymbolComma LineEnd*)+ ID type?                     # lambdaParamGroup
+    | ID type?                                                # lambdaParamStd
+    ;
+
+lambdaBody ::=
+    expr
+    ;
+
+; 尾随 lambda：形参必须带括号（0 参写 ()）。
+trailingLambda ::=
+    BlockStart LineEnd*
+      ParStart lambdaParams? ParEnd
+      ( type (SymbolExcl type)? | SymbolExcl type )?
+      SymbolEqMt LineEnd*
+      (statement | LineEnd)*
+    BlockEnd
+    ;
+
+fnBody      ::= fnExprkBody | fnBlockBody
+fnExprkBody ::= LineEnd? SymbolEq expr LineEnd?
+fnBlockBody ::= statementBlock
+
+; --- 结构体 ---
+
+structType ::=
+    ID (SymbolLt type (SymbolComma type)* SymbolMt)?
+    ;
+
+structDecl ::=
+    buildAnno* Struct structType
+    BlockStart LineEnd
+        (filedDecl | aliasDecl | LineEnd)*
+        fnClean?
+        (fn LineEnd | LineEnd)*
+    BlockEnd
+    ;
+
+filedDecl ::=
+    buildAnno* ID type (SymbolEq expr)? LineEnd
+    ;
+
+fieldInit ::=
+    SymbolDot ID SymbolEq expr LineEnd
+    ;
+
+; --- 表达式 ---
+
+expr ::=
+      ParStart lambdaParams? ParEnd
+      ( type (SymbolExcl type)? | SymbolExcl type )?
+      SymbolEqMt (statementBlock | lambdaBody)                # exprLambdaParen
+    | {struct-lit} (SelfType | typePath) BlockStart
+        ( LineEnd (fieldInit | LineEnd)* | expr )
+      BlockEnd                                                # exprStructLit
+    | ParStart expr ParEnd                                    # exprParen
+    | SymbolAnd (ID | SymbolThis) (LineEnd* SymbolDot ID)*    # exprGetRef
+    | expr GetStart LineEnd* expr (SymbolComma LineEnd* expr)* SymbolComma? LineEnd* GetEnd
+                                                              # exprGet
+    | Try statementBlock catchArm+                            # exprTryCatch
+    | If expr BlockStart expr BlockEnd Else BlockStart expr BlockEnd
+                                                              # exprOneLineIfElse
+    | If expr statementBlock exprElIf* exprElse?              # exprIfElse
+    | Match expr BlockStart LineEnd
+        ( (matchArm LineEnd) | LineEnd )+
+      BlockEnd                                                # exprMatch
+    | (typePath | SelfType)
+      (SymbolColon genericDefWithRef)?
+      SymbolColonColon ID
+      (SymbolColon genericDefWithRef)?
+      ( ParStart LineEnd* (expr (SymbolComma LineEnd* expr)* SymbolComma? LineEnd*)? ParEnd )?
+      SymbolExcl?                                             # exprEnumCtor
+    | GetStart literal SymbolDot SymbolDot SymbolDot type? GetEnd
+                                                              # exprArrayInit
+    | expr LineEnd* SymbolQuest? SymbolDot ID (SymbolAt ID)?  # exprDot
+    | expr LineEnd* DOT_NUM                                   # exprTupleMember
+    | GetStart LineEnd* (expr (SymbolComma LineEnd* expr)* SymbolComma? LineEnd*)? GetEnd
+                                                              # exprArray
+    | expr (SymbolColon genericDefWithRef)? ParStart LineEnd*
+        (expr (SymbolComma LineEnd* expr)* SymbolComma? LineEnd*)?
+      ParEnd trailingLambda? SymbolExcl?                      # exprCall
+    | expr (SymbolColon genericDefWithRef)? trailingLambda SymbolExcl?
+                                                              # exprCallTrailingOnly
+    | (SymbolSub | SymbolExcl) expr                           # exprUnary
+    | expr (SymbolMul | SymbolDiv | SymbolMod) expr           # exprMulDivMod
+    | expr (SymbolAdd | SymbolSub) expr                       # exprAddSub
+    | expr opCompare expr                                     # exprCompare
+    | expr opEq expr                                          # exprEq
+    | expr opBool expr                                        # exprBool
+    | expr SymbolQuest SymbolQuest expr                       # exprNullElse     ; 右结合
+    | expr SymbolLtSub expr                                   # exprMoveAssign   ; 右结合
+    | literal                                                 # exprLiteral
+    | ParStart ParEnd                                         # exprUnit
+    | ParStart expr (SymbolComma expr)+ ParEnd                # exprTuple
+    | SymbolThis                                              # exprThis
+    ;
+
+exprElIf ::= Elif expr statementBlock
+exprElse ::= Else statementBlock
+
+catchArm ::=
+    Catch ID type statementBlock
+    ;
+
+opCompare ::= SymbolMt | SymbolMt SymbolEq | SymbolLt | SymbolLt SymbolEq
+opBool    ::= SymbolOrOr | SymbolAndAnd
+opEq      ::= SymbolEqEq | SymbolExclEq
+opAssign  ::= SymbolEq | SymbolAddEq | SymbolSubEq | SymbolMulEq | SymbolDivEq | SymbolModEq
+
+matchArm ::=
+    enumPattern SymbolEqMt (statementBlock | expr)
+    ;
+
+enumPattern ::=
+      typePath SymbolColonColon ID (ParStart ID (SymbolComma ID)* ParEnd)?  # patternEnum
+    | Else                                                                  # patternElse
+    ;
+
+; --- 语句 ---
+
+statement ::=
+      letAnno* Let ID type? (SymbolEq expr)? LineEnd?         # statementLet
+    | letAnno* Let ParStart ID (SymbolComma ID)+ ParEnd type? SymbolEq expr LineEnd?
+                                                              # statementLetTuple
+    | expr GetStart expr (SymbolComma expr)* GetEnd SymbolEq expr LineEnd?
+                                                              # statementSet
+    | typePath SymbolColonColon ID SymbolEq expr LineEnd?     # statementStaticFieldSet
+    | (ID SymbolColon)? Loop loopInit? statementBlock LineEnd? # statementLoop
+    | (ID SymbolColon)? For ID In expr statementBlock LineEnd? # statementForIn
+    | (ID | SymbolThis) (SymbolDot ID | DOT_NUM)* opAssign expr LineEnd?
+                                                              # statementAssign
+    | expr SymbolSemicolon? LineEnd?                          # statementExpr
+    | Ret expr LineEnd?                                       # statementRet
+    | Ret SymbolSemicolon LineEnd?                            # statementRetVoid
+    | Break (SymbolAt ID)? SymbolSemicolon LineEnd?           # statementBreak
+    | Continue (SymbolAt ID)? SymbolSemicolon LineEnd?        # statementContinue
+    | aliasDecl                                               # statementAlias
+    ;
+
+statementBlock ::=
+    BlockStart LineEnd* (statement | LineEnd)* BlockEnd
+    ;
+
+loopInit ::=
+      ID type? SymbolEq expr
+    | ParStart ID (SymbolComma ID)+ ParEnd type? SymbolEq expr
+    ;

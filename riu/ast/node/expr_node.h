@@ -105,7 +105,7 @@ protected:
     vector<ExprNode*> _args;
     vector<TypeNode*> _typeArgs;
     // DRAFT-错误.md [#4.B]：调用点是否带后缀 `!`（错误传播）。
-    // 由 ast_builder 从 g4 `errPropagate=SymbolExcl?` 槽位读入。Phase 10e 仅做语义校验
+    // 由 RdBuilder 从 errPropagate=`!` 槽位读入。Phase 10e 仅做语义校验
     // （E7001 / E7004 / E7006），实际错误通道路由 codegen 推 10f / 10g。
     bool _errPropagate = false;
     // 源码是尾随 lambda 糖（`f(args){ ... }` / `f { ... }`），不是括号里的 lambda 实参。
@@ -563,7 +563,7 @@ public:
 };
 
 // 元组构造表达式 (e1, e2, ...)
-// 至少 2 个元素（g4 保证）；类型由各元素类型组合而成的 Tuple TypeInfo
+// 至少 2 个元素（文法保证）；类型由各元素类型组合而成的 Tuple TypeInfo
 class ExprTupleNode : public ExprNode {
     vector<ExprNode*> _elements;
 

@@ -1,7 +1,7 @@
 // Copyright (c) 2026. Yin-Jinlong@github
 // MPL-2.0
 //
-// 结构参考 V flat（MIT）。NodeKind 按 riuParser.g4 构造，不是 V 的 key_go / payload 表。
+// 结构参考 V flat（MIT）。NodeKind 按 riu.bnf 构造，不是 V 的 key_go / payload 表。
 // rd.8 起 FileNode 主路走本栈。
 
 #ifndef RIU_LANG_RD_FLAT_H
@@ -20,7 +20,7 @@ using NodeId = i32;
 
 constexpr NodeId kEmptyNode = -1;
 
-// g4 构造名 → NodeKind。dump 印枚举名。
+// 产生式名 → NodeKind。dump 印枚举名。
 #define RD_NODE_KIND_LIST(X)                                                                                           \
     X(Empty)                                                                                                           \
     X(Program)                                                                                                         \

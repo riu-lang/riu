@@ -1,6 +1,6 @@
 # 附录 B：语法汇总
 
-> 权威来源：[`riu/ast/riuParser.g4`](../../riu/ast/riuParser.g4)。本附录是规范化摘录（简化记号见 §2.1.1），不得与 `.g4` 冲突；当 `.g4` 与本附录不一致时**应当**修订本附录。
+> 权威来源：[`riu/ast/riu.bnf`](../../riu/ast/riu.bnf)。本附录是规范化摘录（简化记号见 §2.1.1），不得与 `riu.bnf` 冲突；当 `riu.bnf` 与本附录不一致时**应当**修订本附录。
 
 ## B.1 顶层
 
@@ -69,7 +69,7 @@ draftBound        ::= modulePath? ID genericDef?     # 例：ToString / pkg.Disp
 - `typeParam` 的 spec 边界仅出现在**声明位**（`fn` / `struct` / `#Spec struct` 头部的 `genericDef` 槽位）；调用点 turbofish 走 `genericDefWithRef`，不得写边界（§6.4.4.3）。声明头 `fn f<T&>` 本轮不支持。enum 头复用同一 `genericDef`，`<T : D>` 语法收下、语义拒 **E2037**（§3.10.1.4）。
 - `Rc<T&>` / 用户 `Foo<T&>` / 用户 fn `f:<i32&>` 由语义层拒（E4037）。`Array<T&>` 仅临时位合法。`Dyn<D&>` 出现在 owned 位报 E4038。
 
-> 上述边界产生式 spec-unify v1 已落地 `riu/ast/riu.g4`；`draftBound` 产生式名沿用历史 token 名，语义为"spec 边界"（§12）。
+> 上述边界产生式 spec-unify v1 已落地 `riu/ast/riu.bnf`；`draftBound` 产生式名沿用历史 token 名，语义为"spec 边界"（§12）。
 
 ## B.2a `Dyn<D>` / `Dyn<D&>`（v0.5+）
 
@@ -196,7 +196,7 @@ struct D {
 
 历史 `draftDecl` 产生式 spec-unify v1 已删除（参 [CHANGELOG 2026-05-19](CHANGELOG.md)）。
 
-## B.6 表达式（按 `riu.g4` 中 `expr` 的分支顺序，决定优先级）
+## B.6 表达式（按 `riu.bnf` 优先级表）
 
 ```
 expr ::=
@@ -279,7 +279,7 @@ enumPattern    ::= ID '::' ID ( '(' ID (',' ID)* ')' )?          # patternEnum
 - `exprMatch`：arm 体为 `=> expr` 或 `=> { stmts }`（块可单行，值规则同 §5.4.4）；arm 顺序对穷尽语义无影响，仅 `else` **应当**为最后一条；穷尽性 / binding arity / 重复 variant 由语义层校验。
 - `enumPattern` 的 binding 位仅接受 ID（不可变值绑定）；不支持 `_` 通配、字面量、嵌套、多模式合并 `|`、守卫 `if`、`@` 绑定（§3.10 / 草案 §5.3）。
 
-> 优先级与结合性由 ANTLR4 在 `expr` 中按分支出现顺序自上而下决定。规范层语义见 §4。
+> 优先级与结合性见 `riu.bnf` 优先级表。规范层语义见 §4。
 
 ## B.7 语句
 
@@ -311,7 +311,7 @@ letAnno        ::= '#' ID codeLineEnd?   ; #Mut / #Cval / #Frozen（let 声明�
 
 ## B.8 词法 token（节录）
 
-完整定义见 `riu.g4` 末尾。下表只列规范常引用的 token：
+完整定义见 `riu.bnf` 词法段。下表只列规范常引用的 token：
 
 | token | 形态 |
 |---|---|
@@ -328,8 +328,8 @@ letAnno        ::= '#' ID codeLineEnd?   ; #Mut / #Cval / #Frozen（let 声明�
 | `Space` | `' '`，HIDDEN 通道 |
 | `EmptyLine` | 行首列的纯空白行，HIDDEN 通道 |
 
-## B.9 与 `riu.g4` 不一致时
+## B.9 与 `riu.bnf` 不一致时
 
-- §B 中条目过时**应当**修订本附录，**不得**反向修改 `riu.g4`（参见 `RULES.md` 的规则）。
+- §B 中条目过时**应当**修订本附录，**不得**反向修改 `riu.bnf`（参见 `RULES.md` 的规则）。
 - 出现产生式新增 / 重命名时，请在 §B 对应小节追加，并同步 §2.5 的总览列表。
-- 本附录是手工摘录，**不**提供与 `riu.g4` 的自动一致性脚本；细节与分支顺序以 `.g4` 为准（§2.1.2）。
+- 本附录是手工摘录，**不**提供与 `riu.bnf` 的自动一致性脚本；细节与优先级以 `riu.bnf` 为准（§2.1.2）。

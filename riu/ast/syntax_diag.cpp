@@ -21,7 +21,7 @@ bool isRiuKeyword(const std::string& s) {
 }
 
 // lexer 困在非默认 mode 后对 '\n' / '\r' 的 token recognition 几乎全是噪声。
-// Tab 不是空白：g4 的 Space 只认 ' '，缩进 Tab 是真 E1001（diag_lexer_tab）。
+// Tab 不是空白：Space 只认 ' '，缩进 Tab 是真 E1001（diag_lexer_tab）。
 bool isWhitespaceLexerNoise(const std::string& msg) {
     auto pos = msg.find("token recognition error at: '");
     if (pos == std::string::npos) return false;

@@ -12,10 +12,10 @@
 | 标识符 | identifier | §1.4 / `ID` | Unicode 标识符 token |
 | 字面量 | literal | §1.6 | 数值 / 布尔 / 字符串 / 码点 / `null` |
 | 码点 | code point | §1.6.5 / `CODE_POINT` | `c'<ch>'`，类型 `u32` |
-| 产生式 | production | §2.1 | EBNF / ANTLR 文法规则 |
+| 产生式 | production | §2.1 | EBNF 文法规则 |
 | 拼合运算符 | composed operator | §2.4 | 词法单字符、语法层拼出的多字符算符（`<=` `??` `?.` 等） |
 | 显式换行槽 | explicit line-break slot | §2.3.2 | 产生式写明的 `LineEnd*`；不是隐式续行 |
-| 关键字 | keyword | §A.1 | `riu.g4` 独立 lexer token |
+| 关键字 | keyword | §A.1 | `riu.bnf` 独立 lexer token |
 | 上下文标识符 | contextual identifier | §A.2 | 内置类型名等非关键字保留名 |
 | 注解 | build annotation | §11 | `#Name` 形态的编译期标签 |
 
@@ -153,7 +153,7 @@
 
 | 术语 | 英文 | 出处 | 简述 |
 |---|---|---|---|
-| ANTLR4 | ANTLR4 | §2.1 / `riu.g4` | 文法工具与左递归优先级 |
+| Pratt | Pratt | §2.1 / `riu.bnf` | 手写表达式优先级（结合性见优先级表） |
 | 优先级 | precedence | §4.2 | 由 `expr` 分支顺序决定 |
 | 单态化 | monomorphization | §6.4 | 泛型按实参实例化 |
 | informative | informative | §index | 非规范性说明 |

@@ -45,7 +45,7 @@ riu 是一门独立的编译型语言，具有以下特性：
 
 ### 更多资源
 
-- [语法文件](../riu/ast/riuParser.g4) / [词法文件](../riu/ast/riuLexer.g4) - 权威的 ANTLR4 语法定义
+- [语法文件](../riu/ast/riu.bnf) - 权威词法 / 文法（手写 Scanner / Parser 实现）
 - [RULES.md](../RULES.md) - 编译器开发规则
 - [README.md](../README.md) - 项目概述
 

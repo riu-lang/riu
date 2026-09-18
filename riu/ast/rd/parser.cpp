@@ -406,7 +406,7 @@ bool Parser::aheadIsLineDotContinue() {
     } else if (k != Kind::SymbolDot) {
         return false;
     }
-    // `.name =` 是 fieldInit / 下一语句，不能接到上一表达式（§4.7.2.5 / g4）。
+    // `.name =` 是 fieldInit / 下一语句，不能接到上一表达式（§4.7.2.5 / riu.bnf）。
     return !(la(dot_i + 1).kind == Kind::ID && la(dot_i + 2).kind == Kind::SymbolEq);
 }
 
@@ -915,7 +915,7 @@ NodeId Parser::parseExpr(int min_bp, bool allow_brace) {
     if (left == kEmptyNode) return left;
     for (;;) {
         if (at(Kind::LineEnd)) {
-            // g4 `expr LineEnd* '.' ID`：列号不能当续行条件（`let v = a\n    .b()` 的 `.` 在 `a` 左侧）。
+            // `expr LineEnd* '.' ID`：列号不能当续行条件（`let v = a\n    .b()` 的 `.` 在 `a` 左侧）。
             if (!aheadIsLineDotContinue()) break;
             skipLineEnds();
         }
