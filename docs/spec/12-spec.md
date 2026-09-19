@@ -1,6 +1,6 @@
 # §12 spec（接口与约束）
 
-本章规范 riu 的 **spec**（接口契约）机制：通过 `#Spec` 注解声明方法签名与静态字段契约、通过 `#Impl(D)` 顶行注解在 struct 声明上宣告实现关系、泛型边界 `<T : D1 + D2>`、跨包 orphan 限制，以及内置 `ToString` / `Number` / `copy_of`。本章对应草案 [`draft/DRAFT-spec-unify.md`](draft/DRAFT-spec-unify.md)（v1 已落地）。
+本章规范 riu 的 **spec**（接口契约）机制：通过 `#Spec` 注解声明方法签名与静态字段契约、通过 `#Impl(D)` 顶行注解在 struct 声明上宣告实现关系、泛型边界 `<T : D1 + D2>`、跨包 orphan 限制，以及内置 `ToString` / `Number` / `copy_of` / `Indexed` / `Iter`。本章对应草案 [`draft/DRAFT-spec-unify.md`](draft/DRAFT-spec-unify.md)（v1 已落地）。
 
 > 设计基调：**默认严格 / 显式优先 / 零运行时开销**。spec 是封闭契约，必须由 `#Impl(D)` 显式宣告并由 struct body 提供方法实现。v1 一律单态化静态分发，无 vtable、无隐式签名表参数。运行时多态形态另由 §12.9 `Dyn<D>` 提供。
 
@@ -356,6 +356,41 @@ struct Number {
 §12.7.5.3 `to_bool` 不属于 `Number`；它是具体数字类型的便利转换，不作为数值泛型契约。`to_string` 由独立 `ToString` spec 承担；`to_bits` / `to_isize` / `to_usize` 及位运算方法不是全部内置数字的交集，也不进入 `Number`。
 
 §12.7.5.4 在 `<T : Number>` 中可使用 `T::MIN` / `T::MAX`、上述转换方法及运算方法；单态化时 `Self` 替换为具体数字类型。
+
+### §12.7.6 `Indexed` / `Iter` / `End` / `IterItem`
+
+§12.7.6.1 SDK 在 `base.ut` 声明遍历契约（扁平进 `riu.core`，#2）。只有签名；**不**在 spec 上放 `filter` / `map` / `collect`（E1104）。`at` 不叫 `get`：`Map` 已有 `get(key K&) V?`。
+
+```riu
+#Spec
+struct Indexed<T> {
+  fn len() usize
+  fn at(i usize) T&
+}
+
+enum End {
+  End
+}
+
+enum IterItem<T, E> {
+  Item(T)
+  End
+  Error(E)
+}
+
+#Spec
+struct Iter<T, E> {
+  fn next() IterItem<T, E>
+}
+```
+
+§12.7.6.2 `Indexed`：按索引遍历。for-in 第二档认 `#Impl(Indexed<U>)`（§5.5.4.4）。`item` = `U&`；入口拍 `len`。无失败通道。
+
+§12.7.6.3 `Iter`：消费型遍历。`next` 写游标，返回值枚举：`ret IterItem::Item(v)` 交出 `T`；`ret IterItem::End` 结束；`ret IterItem::Error(e)` 业务失败。`next` 本身**不是** `T ! E`（成功类型就是 `IterItem<T, E>`）。结束不是失败，不进 `!`。手写 `loop { match it.next() }` 与 for-in 同一条 `next`。不用 `T?` 当结束（`T = U?` 时是双层可空）。`#Impl(Iter<i32?, End>)` 合法：`null` 是 item。
+
+§12.7.6.4 `E` **应当**是 enum（与 §6.7.1.1 同一档：`for` 透传 / 手写 `ret e` 要进失败通道）。无业务失败时用 SDK `End`。`enum End` 与 variant `IterItem::End` 不同名空间：前者是占位错误类型，后者是「没有下一项」。`E = End` 且实现不 `Error` 时，for-in **不可失败**，不必空 `catch End`。
+
+§12.7.6.5 关联类型 / `IntoIter`：**不做**。短名走 §3.9 的文件 / 块内 `type`，不是 `Iter::Item`。不拆第二基名 `TryIter`。`#Impl` 按 `(S, D)` 基名（§12.2）：同一类型对 `Iter` 只能一条。`Dyn<Iter<T, E>>` 不是 for-in 目标（§5.5.4.2）。
 
 ## §12.8 不在范围
 

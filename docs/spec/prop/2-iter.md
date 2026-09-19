@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| 状态 | 实施中 |
+| 状态 | 已落地 |
 | 开 | 2026-09-13 |
 | 旧档 | 无。现 `for-in` 只 lower Array / `[T*N]`（§5.5.4）。草案 `#Spec struct Iter<T> { fn next() T? }` 见 [DRAFT-spec-unify.md](../draft/DRAFT-spec-unify.md) §3.1 / [#1.R]；**本条不用那份签名**。 |
 
@@ -50,7 +50,7 @@ Iter 的 `next()` 返回三态值枚举，**不**走 `T ! E`。结束不是失�
 
 ## 规范要点
 
-待本条实施后回写 §5.5.4 / §9 / §10.4.1.5 / §12.7 / 附录 C/D。
+已回写 §5.5.4 / §9.2.3.6 / §10.4.1.5 / §12.7.6 / 附录 C/D。
 
 ### spec / SDK
 
@@ -165,3 +165,4 @@ loop {
 - 2026-09-19（`notes/0.23`）：2.1 SDK `Indexed<T>`；for-in 第二档 `#Impl(Indexed<U>)` 隐藏索引 loop，`item = U&`，入口拍 `len`。回归：`for_in_indexed_*` / `diag_for_in_not_indexed`、`tests/projects/for_in_indexed`、`control_flow.test` Indexed。
 - 2026-09-19（`notes/0.23`）：2.2 `Map` `#Impl(Indexed<K>)` 加 `at`；`Set` 转发 `$._items.at(i)`；E3160 文案扩 Indexed。回归：`map.test` / `set.test` 直接 for。Iter / spec 回写未做。
 - 2026-09-19（`notes/0.23`）：2.3 SDK `End` / `IterItem<T, E>` / `Iter<T, E>`；for-in 第三档 match `next`。`E = End` 无 `!`；其它 E 须 try / 同型 `!`。回归：`for_in_iter_*`、`tests/projects/for_in_iter`、`control_flow.test` Iter。spec 回写未做。
+- 2026-09-19（`notes/0.23`）：2.4 三套回归；回写 §5.5.4 / §9.2.3.6 / §10.4.1.5 / §12.7.6 / 附录 C/D；提案标已落地。

@@ -261,7 +261,9 @@ for-in（E3160；§5.5.4）：
 
 | 码 | 模板 |
 |---|---|
-| E3160 | `` `for-in` iterable must be Array<T> or [T*N], got '{}' `` |
+| E3160 | `` `for-in` iterable must be Array<T>, [T*N], Indexed, or Iter, got '{}' `` |
+
+`#Impl(Iter<U, E>)` 且 `E` 不是 SDK `End` 时，这条 `for` 走既有失败通道：**E7006**（外层既无 `try` 也无同型 `!`）、**E7004**（`!` 的 E 与 Iter 的 E 不一）。`E = End` 不报。手写 `it.next()` 本身不触发 E7006。
 
 构造模型重构（E3120..E3129；引入自 [draft/DRAFT-static-fn.md](draft/DRAFT-static-fn.md)，落地章节 §7.10）：
 
@@ -396,9 +398,9 @@ Array 内置方法（E6042）：
 | E7001  | `` `!` used outside of `#Fallible(E)` function and outside of `try` block — wrap call in `try { ... } catch e E { ... }` or declare the enclosing function with `#Fallible(E)` `` | 表达式后缀 `!` 写在无 `#Fallible` 注解的函数内、且不在 `try` 块内 |
 | E7002  | `` non-exhaustive `try` block: error type `{}` thrown by callee `{}` is not handled by any `catch` clause — add `catch e {} {{ ... }}` `` | `try` 块内调用的可失败函数错误类型未被任一 `catch` 子句覆盖 |
 | E7003  | `` redundant `catch` clause: error type `{}` cannot be thrown by any call in the `try` block — promoted to error if `--strict-catch`，否则同 E7015 `` | 与 E7015 同触发；启用 `--strict-catch` 时升级为 error |
-| E7004  | `` cannot propagate error of type `{}` through `!`: caller declares `#Fallible({})`, types differ — wrap the call in `try { ... } catch e {} {{ ret {}::Variant... }}` `` | `!` 后缀作用于 callee 错误类型与外层 `#Fallible(E)` 不一致的调用，且不在 `try` 域内 |
+| E7004  | `` cannot propagate error of type `{}` through `!`: caller declares `#Fallible({})`, types differ — wrap the call in `try { ... } catch e {} {{ ret {}::Variant... }}` `` | `!` 后缀作用于 callee 错误类型与外层 `#Fallible(E)` 不一致的调用，且不在 `try` 域内；亦：Iter for-in 的 E 与外层 `!` 不一（§5.5.4.5） |
 | E7005  | `` duplicate `catch` clause: error type `{}` is handled by more than one `catch` in the same `try` — merge into a single `catch e {} {{ match e {{ ... }} }}` `` | 同一 `try` 内多个 `catch` 子句指向同一错误 enum 类型 |
-| E7006  | `` call to fallible function `{}` outside `try` block must propagate via `!` (same error type) — bare call is forbidden outside `try` (inside `try`, bare call is correct; `!` would be redundant) `` | 调用 `#Fallible` 函数但未加 `!` 且不在 `try` 块内 |
+| E7006  | `` call to fallible function `{}` outside `try` block must propagate via `!` (same error type) — bare call is forbidden outside `try` (inside `try`, bare call is correct; `!` would be redundant) `` | 调用 `#Fallible` 函数但未加 `!` 且不在 `try` 块内；亦：`#Impl(Iter<U, E>)` 且 E 非 SDK `End` 的 for-in 不在 `try` / 同型 `!` 内 |
 | E7007  | `` `ret` of error type `{}` does not match `#Fallible({})` — wrap the error in a `{}` variant or change the function's `#Fallible` `` | 函数体内 `ret` 表达式类型属于错误通道但与声明 `#Fallible(E)` 的 `E` 不匹配 |
 | E7008  | `` function return type `{}` cannot equal its `#Fallible` type `{}` (the compiler cannot disambiguate `ret` between success and error channels) — split into two enums and rethrow / wrap explicitly `` | 函数成功值类型 `T` 与 `#Fallible(E)` 的 `E` 相等（声明阶段或单态化阶段） |
 | E7009  | `` `try` block must be followed by at least one `catch` clause — bare `try {{ ... }}` is forbidden `` | `try` 块未跟 `catch` 子句 |

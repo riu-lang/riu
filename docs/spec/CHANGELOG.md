@@ -15,6 +15,14 @@
 
 ---
 
+## 2026-09-19 —— `Indexed` / `Iter` 泛型 for-in（#2）
+
+- **修改 §5.5.4 / §5.5.1.3 / §5.5.5**：`for item in expr` 剥一层 `T&` 后按序认 `Array<T>` / `[T*N]`、`#Impl(Indexed<U>)`、`#Impl(Iter<U, E>)`；否则 **E3160**。Indexed：`item = U&`，入口拍 `len`。Iter：每轮 match `next` 的 `IterItem`（Item / End / Error）；`E = End` 不可失败；其它 E 须 `try` / 同型 `!`（E7006 / E7004）。同一类型 Indexed + Iter 走 Indexed。形态不变（仍无 item 标注 / tuple 解构 / `while` / `0..n`）。
+- **新增 §12.7.6**：SDK `Indexed<T>` / `Iter<T, E>` / `enum End` / `enum IterItem<T, E>`。`next` 不是 `T ! E`；结束不是失败。无关联类型 / `IntoIter` / `TryIter`。`Dyn<Iter<…>>` 不是 for-in 目标。
+- **修改 §9.2.3.6 / §10.4.1.5**：Array 不 `#Impl(Iter)`，急切 `filter` / `map` 不变。`Map` `#Impl(Indexed<K>)`、`Set` `#Impl(Indexed<T>)`，可直接 `for`；`keys()` 仍是克隆快照。
+- **附录 C / D**：术语 Indexed / Iter / IterItem / End；E3160 文案扩到 Indexed / Iter；E7004 / E7006 触发覆盖 Iter for-in。
+- **冲突 / 兼容**：纯增。原先只认数组的 for-in 行为不变。`String` 仍 E3160。
+
 ## 2026-09-19 —— `abort()` 与越界 / OOM / 空 `get` 终止通道
 
 - **新增 §10.4.1.6**：`abort()`（`#NoReturn`）。与 `exit(code)` 分档：`exit` 是业务退出码；`abort` 是不可恢复（无消息、无退出码约定）。`panic(msg)` 仍先打 `panic: …` 再走同一终止通道。

@@ -64,7 +64,7 @@
 | 声明语句 | declaration statement | §5.1 | `let`（默认 / `#Mut` / `#Cval` / `#Frozen` 档位） |
 | 控制流 | control flow | §5.4 / §5.5 | `if` / `loop` / `for-in` / `break` / `continue` / `ret` |
 | continue | continue | §5.5.3 | 跳到最近一层（或 `@label`）`loop` / `for` 的下一轮 |
-| for-in | for-in | §5.5.4 | `for item in expr`；仅 `Array<T>` / `[T*N]`；`item` 为元素 `T&` |
+| for-in | for-in | §5.5.4 | `for item in expr`；按序认 `Array<T>` / `[T*N]`、`Indexed<U>`、`Iter<U, E>` |
 | 作用域 | scope | §5.7 | 词法块；析构按声明逆序 |
 
 ## C.4 函数
@@ -148,6 +148,10 @@
 | `as_ref` | as_ref | §8.3.5.5 | `Rc<T> → T&` builtin |
 | `copy_of` | copy_of | §12.7.3 | `T& → T` 显式拷贝 builtin |
 | `ToString` | to_string spec | §12.7.1 | 内置 `fn to_string() String` 契约； |
+| `Indexed` | indexed spec | §12.7.6 / §5.5.4.4 | `len` / `at`；for-in 第二档，`item` 为 `T&` |
+| `Iter` | iterator spec | §12.7.6 / §5.5.4.5 | `next() IterItem<T, E>`；结束不是失败 |
+| `IterItem` | iterator item | §12.7.6 | 三态值：`Item(T)` / `End` / `Error(E)` |
+| `End` | iter end sentinel | §12.7.6 | 无业务失败时 Iter 的 E 占位；与 `IterItem::End` 不同名空间 |
 
 ## C.7 编译期 / 实现
 
