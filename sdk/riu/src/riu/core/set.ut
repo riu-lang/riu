@@ -1,8 +1,9 @@
 ; riu SDK - Set<T>
 ; 纯 riu：内嵌 Map<T, bool> 去重。T 与 Map 键相同（标量或 String）。
-; keys() 返回克隆的 Array<T>；遍历不借出 Set 内部存储。
+; keys() 返回克隆的 Array<T>（快照）；直接 for-in 走 Indexed，不 clone。
 
 #NoCopy
+#Impl(Indexed<T>)
 struct Set<T> {
   _items Map<T, bool>
 
@@ -25,6 +26,10 @@ struct Set<T> {
 
   fn len() usize {
     $._items.len()
+  }
+
+  fn at(i usize) T& {
+    ret $._items.at(i)
   }
 
   fn is_empty() bool {

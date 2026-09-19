@@ -6,7 +6,7 @@
 ;   - i32 → String：值句柄复制
 ;   - get_or：命中复制值，未命中返回 default
 ;   - 空 Map、未命中 get/remove、len / is_empty
-;   - keys / values / clear；遍历走 keys() 再 for
+;   - keys / values / clear；直接 for-in（Indexed<K>），keys() 仍是克隆快照
 
 #Test
 fn test_map_i32_insert_get() {
@@ -104,4 +104,58 @@ fn test_map_keys_values_clear() {
   assert_true(m.is_empty())
   assert_eq(m.len(), 0)
   assert_false(m.contains(1))
+}
+
+; 验证：Map 直接 for-in（Indexed<K>），不经 keys()
+#Test
+fn test_map_for_in() {
+  #Mut let m Map<i32, i32> = Map:<i32, i32>::make()
+  m.insert(1, 10)
+  m.insert(2, 20)
+  m.insert(3, 30)
+  #Mut let sum_k i32 = 0
+  #Mut let sum_v i32 = 0
+  for k in m {
+    sum_k = sum_k + k
+    sum_v = sum_v + m.get_or(k, 0)
+  }
+  assert_eq(sum_k, 6)
+  assert_eq(sum_v, 60)
+}
+
+; 验证：空 Map 直接 for-in 零轮
+#Test
+fn test_map_for_in_empty() {
+  let m Map<i32, i32> = Map:<i32, i32>::make()
+  #Mut let n i32 = 0
+  for k in m {
+    n = n + 1
+  }
+  assert_eq(n, 0)
+}
+
+; 验证：Map for-in 的 item 是 K&，写穿键槽
+#Test
+fn test_map_for_in_write_through() {
+  #Mut let m Map<i32, i32> = Map:<i32, i32>::make()
+  m.insert(1, 10)
+  for k in m {
+    k = k + 100
+  }
+  assert_true(m.contains(101))
+  assert_false(m.contains(1))
+  assert_eq(m.get_or(101, 0), 10)
+}
+
+; 验证：String 键 Map 直接 for-in
+#Test
+fn test_map_for_in_string_key() {
+  #Mut let m Map<String, i32> = Map:<String, i32>::make()
+  m.insert("a", 1)
+  m.insert("b", 2)
+  #Mut let n i32 = 0
+  for k in m {
+    n = n + m.get_or(k, 0)
+  }
+  assert_eq(n, 3)
 }

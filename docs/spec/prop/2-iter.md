@@ -162,4 +162,5 @@ loop {
 
 ## 落地
 
-- 2026-09-19（`notes/0.23`）：2.1 SDK `Indexed<T>`；for-in 第二档 `#Impl(Indexed<U>)` 隐藏索引 loop，`item = U&`，入口拍 `len`。回归：`for_in_indexed_*` / `diag_for_in_not_indexed`、`tests/projects/for_in_indexed`、`control_flow.test` Indexed。Map/Set / Iter / spec 回写未做。
+- 2026-09-19（`notes/0.23`）：2.1 SDK `Indexed<T>`；for-in 第二档 `#Impl(Indexed<U>)` 隐藏索引 loop，`item = U&`，入口拍 `len`。回归：`for_in_indexed_*` / `diag_for_in_not_indexed`、`tests/projects/for_in_indexed`、`control_flow.test` Indexed。
+- 2026-09-19（`notes/0.23`）：2.2 `Map` `#Impl(Indexed<K>)` 加 `at`；`Set` 转发 `$._items.at(i)`；E3160 文案扩 Indexed。回归：`map.test` / `set.test` 直接 for。Iter / spec 回写未做。

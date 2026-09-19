@@ -4,7 +4,7 @@
 ;   - i32：insert / contains / remove / 重复插入
 ;   - String：键比较与删除
 ;   - len / is_empty / keys / clear
-;   - keys() 返回独立克隆，可直接 for-in
+;   - 直接 for-in（Indexed<T>）；keys() 仍返回独立克隆快照
 
 #Test
 fn test_set_i32_insert_remove() {
@@ -44,7 +44,7 @@ fn test_set_keys_and_clear() {
   s.insert(3)
 
   #Mut let sum i32 = 0
-  for item in s.keys() {
+  for item in s {
     sum += item
   }
   assert_eq(sum, 6)
@@ -58,4 +58,15 @@ fn test_set_keys_and_clear() {
   assert_true(s.is_empty())
   assert_eq(s.len(), 0)
   assert_false(s.contains(1))
+}
+
+; 验证：空 Set 直接 for-in 零轮
+#Test
+fn test_set_for_in_empty() {
+  let s Set<i32> = Set:<i32>::make()
+  #Mut let n i32 = 0
+  for item in s {
+    n = n + 1
+  }
+  assert_eq(n, 0)
 }

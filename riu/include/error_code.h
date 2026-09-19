@@ -301,7 +301,7 @@ DEF_ERR(3152, "Cannot access static field '{}' through an instance of '{}'; use 
               "(DRAFT-static-vars §4.4)")
 DEF_ERR(3158, "Cannot read uninitialized #Mut global '{}' (DRAFT-static-vars §6; #Mut globals must be initialized "
               "before first read)")
-DEF_ERR(3160, "`for-in` iterable must be Array<T> or [T*N], got '{}'")
+DEF_ERR(3160, "`for-in` iterable must be Array<T>, [T*N], or Indexed, got '{}'")
 
 // ── E315x DRAFT-static-vars Phase 6（跨模块 init 顺序） ──────────────────
 DEF_ERR(3153, "Circular module dependency detected involving '{}'; cannot determine global init order "
