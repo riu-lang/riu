@@ -470,12 +470,6 @@ void SemaPass::visitFn(FnNode* fn) {
         }
     }
 
-    // getType 可能在 visitExpr 之前走到 match 臂（如 let 的声明类型比对），
-    // 须先把 payload 绑定类型写进 arm scope。
-    for (auto& stmt : fn->body()) {
-        fillMatchBindingsInStmt(stmt);
-    }
-
     for (auto& stmt : fn->body()) {
         visitStmt(stmt);
     }

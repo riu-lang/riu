@@ -1832,21 +1832,6 @@ void validateEnumCtorShape(FileNode* file, FileNode* sdkFile, ExprPathCallNode* 
 
 // ========== Phase 3.4.b / 泛型 enum 3.4: match arm 静态校验 ==========
 
-map<string, TypeInfo> enumInstSubst(EnumDeclNode* enumDecl, const TypeInfo& enumType) {
-    map<string, TypeInfo> subst;
-    if (!enumDecl) return subst;
-    const auto& tps = enumDecl->typeParams();
-    if (tps.empty() || enumType.genericArgs.size() != tps.size()) return subst;
-    for (size_t i = 0; i < tps.size(); ++i) {
-        if (!enumType.genericArgs[i] || enumType.genericArgs[i]->empty()) {
-            subst.clear();
-            return subst;
-        }
-        subst[tps[i]] = *enumType.genericArgs[i];
-    }
-    return subst;
-}
-
 void validateMatchArms(EnumDeclNode* enumDecl, const TypeInfo& enumType, ExprMatchNode* node, FileNode* file) {
     if (!enumDecl || !node) return;
     auto& arms = node->arms();

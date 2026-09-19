@@ -381,10 +381,6 @@ void validateFnSymbolVisibility(const FnSymbolInfo* fnSymbol, const string& curr
 //   - SemaPass.visitExpr ExprPathCallNode 分支调用
 void validateEnumCtorShape(FileNode* file, FileNode* sdkFile, ExprPathCallNode* node);
 
-// 泛型 enum 单态：形参 → enumType.genericArgs。非泛型或实参个数不对返回空 map。
-// match 绑定 / 穷尽诊断用带实参的 enumType，不能只拿声明 payload 原文。
-std::map<std::string, TypeInfo> enumInstSubst(EnumDeclNode* enumDecl, const TypeInfo& enumType);
-
 // match 表达式 arm 静态校验 (Phase 3.4.b / 泛型 enum 3.4).
 //
 // 在调用方已剥 Rc/Heap/Ref、别名解析并 lookup 到 enumDecl 之后调用。
@@ -405,7 +401,7 @@ std::map<std::string, TypeInfo> enumInstSubst(EnumDeclNode* enumDecl, const Type
 //   - E3027 (arm body 结果类型不一致) —— 跨 arm body getType 计算, 可能因 lambda
 //     形参未推断而误判, 留 Compiler
 //   - E3091/E3096 —— SemaPass 已覆盖未知类型；codegen 走 throwSemaGap
-//   - 绑定类型填写 —— SemaPass::fillMatchArmBindingTypes 用 enumInstSubst 填槽
+//   - 绑定类型填写 —— ExprMatchNode::fillArmBindingTypes 用 enumInstSubst 填槽
 //
 // 调用方: SemaPass::tryValidateMatchScrut（scrut 剥到 enum 后）。
 //

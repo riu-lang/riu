@@ -729,6 +729,10 @@ public:
 
     [[nodiscard]] ExprNode* scrutinee() const { return _scrutinee; }
     [[nodiscard]] const vector<MatchArmNode*>& arms() const { return _arms; }
+    // builder 只注册空槽。按 scrut 的 enumType（含 genericArgs）subst payload 再填。
+    // instSubst 非空时强制覆盖（泛型实例复查）；否则已填的绑定不改，避免 codegen
+    // 在 subst 帧里走 structuralType 时把实例类型冲回形参。
+    void fillArmBindingTypes(const map<string, TypeInfo>* instSubst = nullptr) const;
     [[nodiscard]] TypeInfo structuralType() const override;
     void accept(AstVisitor& v) override;
 };

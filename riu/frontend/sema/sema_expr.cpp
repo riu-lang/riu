@@ -2270,7 +2270,7 @@ void SemaPass::visitMatch(ExprMatchNode& node) {
     auto* n = &node;
 
     visitExpr(n->scrutinee());
-    fillMatchArmBindingTypes(n);
+    n->fillArmBindingTypes(currentInstSubst());
     for (auto& arm : n->arms()) {
         if (arm->hasBlock())
             visitBlock(arm->block(), _visitExpected);

@@ -7,6 +7,8 @@
 #include "ast/node/file_node.h"
 #include "ast/type_path.h"
 
+#include <map>
+
 class AliasDeclNode;
 class EnumDeclNode;
 class StructDeclNode;
@@ -73,6 +75,10 @@ TypePathResult resolveExprTypeLhs(const Node* from, FileNode* file, Riu* riu, co
 [[nodiscard]] AliasDeclNode* lookupScopedAlias(const Node* from, const string& name);
 // 展开局部别名目标；成环抛 E2016。
 [[nodiscard]] TypeInfo expandScopedAlias(const AliasDeclNode* alias);
+
+// 泛型 enum 单态：形参 → enumType.genericArgs。非泛型或实参个数不对返回空 map。
+// match 绑定 / 穷尽诊断用带实参的 enumType，不能只拿声明 payload 原文。
+std::map<std::string, TypeInfo> enumInstSubst(EnumDeclNode* enumDecl, const TypeInfo& enumType);
 
 } // namespace sema
 

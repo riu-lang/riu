@@ -389,4 +389,19 @@ TypePathResult resolveExprTypeLhs(const Node* from, FileNode* file, Riu* riu, co
     return resolveExprTypeLhs(file, riu, path, line, col);
 }
 
+map<string, TypeInfo> enumInstSubst(EnumDeclNode* enumDecl, const TypeInfo& enumType) {
+    map<string, TypeInfo> subst;
+    if (!enumDecl) return subst;
+    const auto& tps = enumDecl->typeParams();
+    if (tps.empty() || enumType.genericArgs.size() != tps.size()) return subst;
+    for (size_t i = 0; i < tps.size(); ++i) {
+        if (!enumType.genericArgs[i] || enumType.genericArgs[i]->empty()) {
+            subst.clear();
+            return subst;
+        }
+        subst[tps[i]] = *enumType.genericArgs[i];
+    }
+    return subst;
+}
+
 } // namespace sema

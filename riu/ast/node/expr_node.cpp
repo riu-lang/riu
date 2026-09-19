@@ -10,6 +10,7 @@
 #include <set>
 
 #include "ast/name_lookup.h"
+#include "ast/riu.h"
 #include "builtin_methods.h"
 #include "enum_node.h"
 #include "file_node.h"
@@ -2181,7 +2182,86 @@ int MatchArmNode::resultCol() const {
     return getColumn();
 }
 
+void ExprMatchNode::fillArmBindingTypes(const map<string, TypeInfo>* instSubst) const {
+    auto applyInst = [&](TypeInfo t) -> TypeInfo {
+        if (instSubst && !instSubst->empty()) t = t.substitute(*instSubst);
+        return t;
+    };
+    const bool force = instSubst && !instSubst->empty();
+
+    TypeInfo enumType;
+    EnumDeclNode* scrutEnum = nullptr;
+    FileNode* file = enclosingFileFrom(this);
+    auto nr = namesFromFile(file);
+    Riu* riu = file ? file->riu() : nullptr;
+    try {
+        if (auto* scrut = _scrutinee) {
+            enumType = scrut->hasResolvedType() ? scrut->resolvedType() : scrut->getType();
+            enumType = sema::resolveAlias(applyInst(enumType), nr.file, nr.sdkFile);
+            auto peelIfEnum = [&](const TypeInfo& wrapped) {
+                TypeInfo in = sema::resolveAlias(applyInst(wrapped), nr.file, nr.sdkFile);
+                if (nr.lookupEnum(in)) enumType = std::move(in);
+            };
+            if (enumType.isRc()) {
+                if (auto inner = enumType.rcElementType()) peelIfEnum(*inner);
+            } else if (enumType.isHeap()) {
+                if (auto inner = enumType.heapElementType()) peelIfEnum(*inner);
+            } else if (enumType.isRef()) {
+                if (auto inner = enumType.refElementType()) peelIfEnum(*inner);
+            }
+            scrutEnum = nr.lookupEnum(enumType);
+        }
+    } catch (const RiuError&) {
+        throw;
+    } catch (...) { // NOLINT(bugprone-empty-catch)
+        // getType 可能早于 visitExpr；visit match 会再填一次。
+    }
+
+    for (auto* arm : _arms) {
+        if (!arm) continue;
+        auto* pat = arm->pattern();
+        if (!pat || pat->isElse() || pat->binds().empty()) continue;
+        EnumDeclNode* enumDecl = scrutEnum;
+        if (!enumDecl) {
+            try {
+                auto r =
+                    sema::resolveExprTypeLhs(pat, file, riu, pat->enumPath(), pat->getLineNumber(), pat->getColumn());
+                enumDecl = r.enumDecl;
+                if (!enumDecl) enumDecl = nr.lookupEnum(r.type);
+            } catch (const RiuError&) {
+                throw;
+            } catch (...) { // NOLINT(bugprone-empty-catch)
+                continue;
+            }
+        }
+        EnumVariantNode* variant = enumDecl ? enumDecl->variant(pat->variantName().getText()) : nullptr;
+        auto subst = sema::enumInstSubst(enumDecl, enumType);
+        const auto& locals = arm->localSymbols();
+        for (size_t i = 0; i < pat->binds().size(); ++i) {
+            const string& bn = pat->binds()[i].getText();
+            if (!force) {
+                auto it = locals.find(bn);
+                if (it != locals.end() && !it->second.type.empty()) continue;
+            }
+            TypeInfo bindType;
+            if (variant && i < variant->payloadArity() && variant->payloadTypes()[i]) {
+                try {
+                    bindType = variant->payloadTypes()[i]->getType();
+                    if (!subst.empty()) bindType = bindType.substitute(subst);
+                    bindType = applyInst(bindType);
+                } catch (const RiuError&) {
+                    throw;
+                } catch (...) { // NOLINT(bugprone-empty-catch)
+                }
+            }
+            arm->registerSymbol(bn, {SymbolKind::Variable, bn, bindType, false});
+        }
+    }
+}
+
 TypeInfo ExprMatchNode::structuralType() const {
+    // getType 可能早于 visitMatch（如 let 声明类型比对）。幂等：已填的绑定不覆盖。
+    fillArmBindingTypes(nullptr);
     TypeInfo first;
     bool firstSet = false;
     for (auto& arm : _arms) {
