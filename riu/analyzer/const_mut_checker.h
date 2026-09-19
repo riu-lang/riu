@@ -6,6 +6,18 @@
 
 #include "ast/node/fn_node.h"
 
+#include <set>
+#include <string>
+
+class FileNode;
+class StructImplNode;
+class StatementNode;
+class StatementAssignNode;
+class StatementSetNode;
+class ExprNode;
+class ExprCallNode;
+class ScopeNode;
+
 // DRAFT-const-mut 静态检查（const_mut_checker）：
 //
 // 当前覆盖：
@@ -50,8 +62,34 @@
 //   §6.2 数组写 `obj[i] = ...` 形态（StatementSetNode 含字段链）；
 //   字段深链 `$.f.g = ...` 中第二层及以后字段的 #Val/#Frozen 解析（需逐级类型推断）。
 //
-// SemaPass::run 之后由 PassManager 对每个 fn 调用一次（见 addAnalysisPasses），
-// 位置与 checkBorrows / checkFlowTerminate 同档。
-void checkConstMut(FnNode* fn);
+// Sema 之后由 runFnCheckers 与 borrow 同趟 walk 调用（见 addAnalysisPasses）。
+class ConstMutWalker {
+public:
+    void begin(FnNode* fn);
+    // 本节点检查，不递归。同一节点上 fused walk 先跑 borrow 再调这里。
+    void onStmt(StatementNode* s);
+    void onExpr(ExprNode* e);
+
+    struct FnContext {
+        FileNode* file = nullptr;
+        StructImplNode* impl = nullptr;
+        std::string implStructName;
+        bool isDestructor = false;
+    };
+
+private:
+    FnContext _ctx;
+    bool _isConstFn = false;
+    std::string _fnName;
+    std::set<std::string> _localNames;
+
+    void checkConstFnWrite(StatementAssignNode* as, ScopeNode* scope);
+    void checkConstFnSet(StatementSetNode* st, ScopeNode* scope);
+    FileNode* fileOf(Node* n) const;
+    FnSymbolInfo* lookupFnSymbolCrossFile(FileNode* file, const std::string& fnName) const;
+    void checkConstFnCall(ExprCallNode* call);
+    void checkFieldWrite(StatementAssignNode* as, ScopeNode* scope);
+    void rejectIfDisallowedInConstFn(StatementNode* s);
+};
 
 #endif // RIU_LANG_CONST_MUT_CHECKER_H
