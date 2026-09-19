@@ -36,3 +36,4 @@
 | 15 | 泛型 spec | 已落地 | [15-spec-generic.md](15-spec-generic.md) |
 | 16 | 分离 impl | 提议 | [16-impl-split.md](16-impl-split.md) |
 | 17 | 类型别名 `type` / 块作用域 | 已落地 | [17-type-alias.md](17-type-alias.md) |
+| 18 | Drop spec / 默认无析构 | 提议 | [18-drop-spec.md](18-drop-spec.md) |
