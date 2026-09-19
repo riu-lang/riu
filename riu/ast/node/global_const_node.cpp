@@ -15,6 +15,6 @@ bool GlobalConstNode::isPrivate() const {
     return _isPrivate;
 }
 
-TypeInfo GlobalConstNode::getType() const {
+const TypeInfo& GlobalConstNode::getType() const {
     return _type ? _type->getType() : _value->getType();
 }

@@ -64,7 +64,7 @@ public:
     [[nodiscard]] const Token& name() const override;
     [[nodiscard]] TypeNode* retType() const;
     [[nodiscard]] const vector<FnParamNode*>& params() const;
-    [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] const TypeInfo& getType() const override;
 
     // 构造模型重构：`#Static fn` 是关联函数（无 receiver $），调用形态 `Type::name(...)`
     // 仅当出现在 structImpl 体内时有意义；放在其它位置的合法性由 sema 校验（Phase 2）
@@ -87,7 +87,7 @@ public:
     void setSourceText(string s) { _sourceText = std::move(s); }
     [[nodiscard]] const string& sourceText() const { return _sourceText; }
 
-    [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] const TypeInfo& getType() const override;
     [[nodiscard]] string getLocation() const override;
 };
 

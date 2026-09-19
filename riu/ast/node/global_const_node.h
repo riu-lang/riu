@@ -29,7 +29,7 @@ public:
     void setSourceText(string s) { _sourceText = std::move(s); }
     [[nodiscard]] const string& sourceText() const { return _sourceText; }
 
-    [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] const TypeInfo& getType() const override;
 };
 
 #endif // RIU_LANG_GLOBAL_CONST_NODE_H

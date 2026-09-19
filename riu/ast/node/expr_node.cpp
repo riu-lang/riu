@@ -105,8 +105,15 @@ static i64 parseFieldIndexLiteral(const string& text) {
     }
 }
 
+const TypeInfo& ExprNode::getType() const {
+    if (_resolvedType && !_resolvedType->empty()) return *_resolvedType;
+    const TypeInfo& interned = internTypeAt(this, structuralType());
+    if (!interned.empty()) _resolvedType = &interned;
+    return interned;
+}
+
 TypeInfo ExprNode::structuralType() const {
-    return getType();
+    return {};
 }
 
 static void unwrapRecvType(TypeInfo& t) {
@@ -613,11 +620,6 @@ const std::vector<ExprNode*>& ExprCallNode::getArgs() const {
     return _args;
 }
 
-TypeInfo ExprCallNode::getType() const {
-    if (hasResolvedType() && !resolvedType().empty()) return resolvedType();
-    return structuralType();
-}
-
 TypeInfo ExprCallNode::structuralType() const {
     auto type = _calleeExpr->getType();
 
@@ -834,12 +836,6 @@ LiteralNode* ExprLiteralNode::literal() const {
     return _literal;
 }
 
-TypeInfo ExprLiteralNode::getType() const {
-    // 空槽 = 尚未推断（lambda 形参回填前），不是 void；继续走 structuralType。
-    if (hasResolvedType() && !resolvedType().empty()) return resolvedType();
-    return structuralType();
-}
-
 TypeInfo ExprLiteralNode::structuralType() const {
     return _literal->getType();
 }
@@ -854,11 +850,6 @@ ExprNode* ExprAddSubNode::left() const {
 
 ExprNode* ExprAddSubNode::right() const {
     return _right;
-}
-
-TypeInfo ExprAddSubNode::getType() const {
-    if (hasResolvedType() && !resolvedType().empty()) return resolvedType();
-    return structuralType();
 }
 
 TypeInfo ExprAddSubNode::structuralType() const {
@@ -913,11 +904,6 @@ ExprNode* ExprMulDivModNode::right() const {
     return _right;
 }
 
-TypeInfo ExprMulDivModNode::getType() const {
-    if (hasResolvedType() && !resolvedType().empty()) return resolvedType();
-    return structuralType();
-}
-
 TypeInfo ExprMulDivModNode::structuralType() const {
     auto leftType = _left->getType().peelAutoDeref();
     auto rightType = _right->getType().peelAutoDeref();
@@ -964,11 +950,6 @@ ExprNode* ExprBinOpNode::right() const {
     return _right;
 }
 
-TypeInfo ExprBinOpNode::getType() const {
-    if (hasResolvedType() && !resolvedType().empty()) return resolvedType();
-    return structuralType();
-}
-
 TypeInfo ExprBinOpNode::structuralType() const {
     auto leftType = _left->getType().peelAutoDeref();
     auto rightType = _right->getType().peelAutoDeref();
@@ -1005,11 +986,6 @@ int ExprBinOpNode::resolveColumn() const {
 
 ExprNode* ExprParenNode::expr() const {
     return _inner;
-}
-
-TypeInfo ExprParenNode::getType() const {
-    if (hasResolvedType() && !resolvedType().empty()) return resolvedType();
-    return structuralType();
 }
 
 TypeInfo ExprParenNode::structuralType() const {
@@ -1073,11 +1049,6 @@ bool ExprDotNode::isFieldAccess() const {
     if (!file) return false;
     auto sd = namesFromFile(file).lookupStruct(baseT, /*includeBuiltin=*/true);
     return sd && sd->field(member()) != nullptr;
-}
-
-TypeInfo ExprDotNode::getType() const {
-    if (hasResolvedType() && !resolvedType().empty()) return resolvedType();
-    return structuralType();
 }
 
 TypeInfo ExprDotNode::structuralType() const {
@@ -1611,11 +1582,6 @@ ExprNode* ExprCompareNode::right() const {
     return _right;
 }
 
-TypeInfo ExprCompareNode::getType() const {
-    if (hasResolvedType() && !resolvedType().empty()) return resolvedType();
-    return structuralType();
-}
-
 TypeInfo ExprCompareNode::structuralType() const {
     auto leftType = _left->getType().peelAutoDeref();
     auto rightType = _right->getType().peelAutoDeref();
@@ -1762,11 +1728,6 @@ StatementBlockNode* ExprIfElseNode::elseBlock() const {
     return _elseBlock;
 }
 
-TypeInfo ExprIfElseNode::getType() const {
-    if (hasResolvedType() && !resolvedType().empty()) return resolvedType();
-    return structuralType();
-}
-
 TypeInfo ExprIfElseNode::structuralType() const {
     // §4.9.3.5：ret / #NoReturn 臂流终止，不参与类型合并；其余无尾值则整体 void。
     ScopeNode* sc = findNearestScope();
@@ -1812,11 +1773,6 @@ int ExprIfElseNode::resolveColumn() const {
     return _condition->resolveColumn();
 }
 
-TypeInfo ExprOneLineIfElseNode::getType() const {
-    if (hasResolvedType() && !resolvedType().empty()) return resolvedType();
-    return structuralType();
-}
-
 TypeInfo ExprOneLineIfElseNode::structuralType() const {
     ScopeNode* sc = findNearestScope();
     bool trueTerm = exprTerminatesFlow(sc, _trueValue);
@@ -1850,11 +1806,6 @@ ExprNode* ExprGetNode::arrayExpr() const {
 
 const vector<ExprNode*>& ExprGetNode::indices() const {
     return _indices;
-}
-
-TypeInfo ExprGetNode::getType() const {
-    if (hasResolvedType() && !resolvedType().empty()) return resolvedType();
-    return structuralType();
 }
 
 TypeInfo ExprGetNode::structuralType() const {
@@ -1906,11 +1857,6 @@ const vector<ExprNode*>& ExprArrayNode::elements() const {
     return _elements;
 }
 
-TypeInfo ExprArrayNode::getType() const {
-    if (hasResolvedType() && !resolvedType().empty()) return resolvedType();
-    return structuralType();
-}
-
 TypeInfo ExprArrayNode::structuralType() const {
     if (_elements.empty()) {
         return {make_shared<TypeInfo>("__empty"), 0};
@@ -1940,27 +1886,23 @@ int ExprArrayNode::resolveLineNumber() const {
 // 形参类型缺失 → 槽位放 empty TypeInfo 占位，由调用 / 赋值点反推
 // 返回类型：显式标注用之；否则从 body / 期望类型推断
 // 调用点 / 赋值点反推后 _inferredFnType 持完整类型，优先返回
-TypeInfo LambdaExprNode::getType() const {
-    if (hasResolvedType() && !resolvedType().empty()) return resolvedType();
-    return structuralType();
-}
-
 TypeInfo LambdaExprNode::structuralType() const {
     if (_inferredFnType.isFn()) return _inferredFnType;
     vector<sp<TypeInfo>> ps;
     ps.reserve(_params.size());
     for (auto& slot : _params) {
         if (slot.type)
-            ps.push_back(make_shared<TypeInfo>(slot.type->getType()));
+            ps.push_back(internTypeSpAt(this, slot.type->getType()));
         else
-            ps.push_back(make_shared<TypeInfo>()); // 占位，等调用 / 赋值点反推回填
+            ps.push_back(internTypeSpAt(this, TypeInfo())); // 占位，等调用 / 赋值点反推回填
     }
     sp<TypeInfo> rt = nullptr;
     if (_retType) {
-        rt = make_shared<TypeInfo>(_retType->getType());
+        TypeInfo ret = _retType->getType();
         if (_fallibleErrType) {
-            rt->attachFallibleErr(fallibleErrKey(_fallibleErrType->getType()));
+            ret.attachFallibleErr(fallibleErrKey(_fallibleErrType->getType()));
         }
+        rt = internTypeSpAt(this, std::move(ret));
     } else if (_bodyExpr) {
         auto bt = _bodyExpr->getType();
         if (!bt.empty()) rt = make_shared<TypeInfo>(bt);
@@ -1981,11 +1923,6 @@ TypeInfo LambdaExprNode::structuralType() const {
 }
 
 // 元组构造表达式：把每个元素类型组合为 TupleTag TypeInfo
-TypeInfo ExprTupleNode::getType() const {
-    if (hasResolvedType() && !resolvedType().empty()) return resolvedType();
-    return structuralType();
-}
-
 TypeInfo ExprTupleNode::structuralType() const {
     vector<sp<TypeInfo>> elems;
     elems.reserve(_elements.size());
@@ -2023,11 +1960,6 @@ TypeNode* ExprArrayInitNode::explicitType() const {
     return _explicitType;
 }
 
-TypeInfo ExprArrayInitNode::getType() const {
-    if (hasResolvedType() && !resolvedType().empty()) return resolvedType();
-    return structuralType();
-}
-
 TypeInfo ExprArrayInitNode::structuralType() const {
     TypeInfo elementType;
     if (_explicitType) {
@@ -2044,11 +1976,6 @@ TypeInfo ExprArrayInitNode::structuralType() const {
 
     auto elemShared = make_shared<TypeInfo>(elementType);
     return {elemShared, 0};
-}
-
-TypeInfo ExprGetRefNode::getType() const {
-    if (hasResolvedType() && !resolvedType().empty()) return resolvedType();
-    return structuralType();
 }
 
 TypeInfo ExprGetRefNode::structuralType() const {
@@ -2136,11 +2063,6 @@ ExprNode* ExprUnaryNode::right() const {
     return _right;
 }
 
-TypeInfo ExprUnaryNode::getType() const {
-    if (hasResolvedType() && !resolvedType().empty()) return resolvedType();
-    return structuralType();
-}
-
 TypeInfo ExprUnaryNode::structuralType() const {
     auto rightType = _right->getType();
     // Heap<T> → T：一元运算符穿透 Heap wrapper，结果类型为内部 T
@@ -2178,11 +2100,6 @@ int ExprUnaryNode::resolveColumn() const {
 // ExprMoveAssignNode: a <- b
 // 移出旧值、替换新值、返回旧值。
 // 类型：left 的类型（即旧值的类型），与 left / right 是否匹配无关（由 sema 校验）
-TypeInfo ExprMoveAssignNode::getType() const {
-    if (hasResolvedType() && !resolvedType().empty()) return resolvedType();
-    return structuralType();
-}
-
 TypeInfo ExprMoveAssignNode::structuralType() const {
     return _left->getType();
 }
@@ -2199,11 +2116,6 @@ int ExprMoveAssignNode::resolveColumn() const {
 
 // ExprNullElseNode: a ?? b
 // 类型规则：a 必须是 Nullable<T>，结果类型为 T；b 必须能转为 T
-TypeInfo ExprNullElseNode::getType() const {
-    if (hasResolvedType() && !resolvedType().empty()) return resolvedType();
-    return structuralType();
-}
-
 TypeInfo ExprNullElseNode::structuralType() const {
     auto leftType = _left->getType();
     // Ref<Nullable<T>> → 剥 Ref 取 Nullable（如 Array<Nullable<T>> 下标返回 T?&）
@@ -2269,11 +2181,6 @@ int MatchArmNode::resultCol() const {
     return getColumn();
 }
 
-TypeInfo ExprMatchNode::getType() const {
-    if (hasResolvedType() && !resolvedType().empty()) return resolvedType();
-    return structuralType();
-}
-
 TypeInfo ExprMatchNode::structuralType() const {
     TypeInfo first;
     bool firstSet = false;
@@ -2298,11 +2205,6 @@ TypeInfo ExprMatchNode::structuralType() const {
 // 流终止 arm（body 末以 ret / panic 结尾，hasResult=false）不参与类型合并；
 // 与 if-else / match 同档：若任何参与方为 void 则整体 void，类型不一致返回首个，
 // 编译期再校验（保持与 ExprMatchNode::structuralType 一致风格）。
-TypeInfo ExprTryCatchNode::getType() const {
-    if (hasResolvedType() && !resolvedType().empty()) return resolvedType();
-    return structuralType();
-}
-
 TypeInfo ExprTryCatchNode::structuralType() const {
     ScopeNode* sc = findNearestScope();
     if (!blockTerminatesFlow(sc, _tryBlock) && (!_tryBlock->hasResult() || !_tryBlock->resultExpr())) {
@@ -2331,11 +2233,6 @@ TypeInfo ExprTryCatchNode::structuralType() const {
 
 // Dyn<D>(x) / Dyn<D&>(x) 的整体类型 = `Dyn<D>` 或 `Dyn<D&>`。
 // 内层 TypeNode 已携带借用形态（Ref<D>），这里直接包一层 `Dyn` 即可。
-TypeInfo ExprDynCtorNode::getType() const {
-    if (hasResolvedType() && !resolvedType().empty()) return resolvedType();
-    return structuralType();
-}
-
 TypeInfo ExprDynCtorNode::structuralType() const {
     if (!_specType) return {};
     auto inner = make_shared<TypeInfo>(_specType->getType());
@@ -2343,11 +2240,6 @@ TypeInfo ExprDynCtorNode::structuralType() const {
 }
 
 // Phase 3b: 类型 = 所属结构体, structName 由 ast_builder 扫 _scopeStack 时填入
-TypeInfo ExprStructLitNode::getType() const {
-    if (hasResolvedType() && !resolvedType().empty()) return resolvedType();
-    return structuralType();
-}
-
 TypeInfo ExprStructLitNode::structuralType() const {
     if (_isSelfForm) {
         if (_structName.empty()) return {};
@@ -2382,11 +2274,6 @@ TypeInfo ExprPathCallNode::resolvedLhsType() const {
     }
     auto r = sema::resolveExprTypeLhs(this, enclosingFile(), nullptr, _lhsPath, getLineNumber(), getColumn());
     return r.type;
-}
-
-TypeInfo ExprPathCallNode::getType() const {
-    if (hasResolvedType() && !resolvedType().empty()) return resolvedType();
-    return structuralType();
 }
 
 TypeInfo ExprPathCallNode::structuralType() const {

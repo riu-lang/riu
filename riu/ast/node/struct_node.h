@@ -32,7 +32,7 @@ public:
 
     [[nodiscard]] const Token& name() const { return _name; }
     [[nodiscard]] TypeNode* type() const { return _type; }
-    [[nodiscard]] TypeInfo getType() const { return _type->getType(); }
+    [[nodiscard]] const TypeInfo& getType() const { return _type->getType(); }
     [[nodiscard]] bool isPrivate() const { return _isPrivate; }
 
     void setVal(bool v) { _isVal = v; }

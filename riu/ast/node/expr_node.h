@@ -26,8 +26,7 @@ protected:
     //
     // 空指针 = 尚未解析（区别于 TypeInfo::empty() 表示的 void 类型）。
     // 标量 intern 单例不占节点内 TypeInfo（~200B）；复杂类型才 heap 一份。
-    const TypeInfo* _resolvedType = nullptr;
-    std::unique_ptr<TypeInfo> _resolvedOwned;
+    mutable const TypeInfo* _resolvedType = nullptr;
 
     // Phase 2.3 Sema/Codegen 拆分：表达式解析到的符号（变量符号 / 函数符号 / 空）。
     // 详见 node.h ResolvedSymbol 注释。当前过渡期：仅在 compile<Foo>Expr 现场已经查到
@@ -38,22 +37,17 @@ protected:
 public:
     ExprNode(Node* parent) : Node(parent) {}
 
-    void setResolvedType(TypeInfo t) {
-        if (const TypeInfo* p = internTypePtr(t)) {
-            _resolvedType = p;
-            _resolvedOwned.reset();
-            return;
-        }
-        _resolvedOwned = std::make_unique<TypeInfo>(std::move(t));
-        _resolvedType = _resolvedOwned.get();
-    }
+    void setResolvedType(TypeInfo t) { _resolvedType = &internTypeAt(this, std::move(t)); }
     [[nodiscard]] bool hasResolvedType() const { return _resolvedType != nullptr; }
     [[nodiscard]] const TypeInfo& resolvedType() const {
         return *_resolvedType; // NOLINT(bugprone-unchecked-optional-access)
     }
     // 块值汇合（if / match / try）优先读 SemaPass 靶向后的 resolved，避免 `[]` 的
     // getType `[__empty * 0]` 与 `Array<T>` 假阳性失配。
-    [[nodiscard]] TypeInfo resolvedOrGetType() const { return hasResolvedType() ? resolvedType() : getType(); }
+    [[nodiscard]] const TypeInfo& resolvedOrGetType() const { return hasResolvedType() ? resolvedType() : getType(); }
+
+    // 有槽走 intern 槽；无槽 intern structuralType 再挂槽（避免临时对象）。
+    [[nodiscard]] const TypeInfo& getType() const override;
 
     // 不读 resolved 槽。结构回退（字面量 / 已填子节点 / 已加载模块图查找）。
     [[nodiscard]] virtual TypeInfo structuralType() const;
@@ -138,7 +132,6 @@ public:
     [[nodiscard]] ExprNode* getCalleeExpr() const;
     [[nodiscard]] const std::vector<ExprNode*>& getArgs() const;
 
-    [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] TypeInfo structuralType() const override;
     void accept(AstVisitor& v) override;
 };
@@ -153,7 +146,6 @@ public:
     }
 
     [[nodiscard]] LiteralNode* literal() const;
-    [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] TypeInfo structuralType() const override;
     void accept(AstVisitor& v) override;
 };
@@ -174,7 +166,6 @@ public:
     [[nodiscard]] Op op() const;
     [[nodiscard]] ExprNode* left() const;
     [[nodiscard]] ExprNode* right() const;
-    [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] TypeInfo structuralType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
     [[nodiscard]] int resolveColumn() const override;
@@ -197,7 +188,6 @@ public:
     [[nodiscard]] Op op() const;
     [[nodiscard]] ExprNode* left() const;
     [[nodiscard]] ExprNode* right() const;
-    [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] TypeInfo structuralType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
     [[nodiscard]] int resolveColumn() const override;
@@ -220,7 +210,6 @@ public:
     [[nodiscard]] Op op() const;
     [[nodiscard]] ExprNode* left() const;
     [[nodiscard]] ExprNode* right() const;
-    [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] TypeInfo structuralType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
     [[nodiscard]] int resolveColumn() const override;
@@ -234,7 +223,6 @@ public:
     ExprParenNode(Node* parent, ExprNode* inner) : ExprNode(parent), _inner(inner) {}
 
     [[nodiscard]] ExprNode* expr() const;
-    [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] TypeInfo structuralType() const override;
     void accept(AstVisitor& v) override;
 };
@@ -268,7 +256,6 @@ public:
     [[nodiscard]] bool isSafe() const { return _safe; }
     [[nodiscard]] const string& specQualifier() const { return _specQualifier; }
     [[nodiscard]] bool hasSpecQualifier() const { return !_specQualifier.empty(); }
-    [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] TypeInfo structuralType() const override;
     void accept(AstVisitor& v) override;
     // 点成员是否为结构体字段（非方法）。方法点 getType 也返回 TypeKind::Fn，
@@ -304,7 +291,6 @@ public:
     [[nodiscard]] Op op() const;
     [[nodiscard]] ExprNode* left() const;
     [[nodiscard]] ExprNode* right() const;
-    [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] TypeInfo structuralType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
     [[nodiscard]] int resolveColumn() const override;
@@ -353,7 +339,6 @@ public:
     [[nodiscard]] StatementBlockNode* thenBlock() const;
     [[nodiscard]] const vector<ExprElIfNode*>& elifs() const;
     [[nodiscard]] StatementBlockNode* elseBlock() const;
-    [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] TypeInfo structuralType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
     [[nodiscard]] int resolveColumn() const override;
@@ -372,7 +357,6 @@ public:
     [[nodiscard]] ExprNode* condition() const { return _condition; }
     [[nodiscard]] ExprNode* trueValue() const { return _trueValue; }
     [[nodiscard]] ExprNode* falseValue() const { return _falseValue; }
-    [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] TypeInfo structuralType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
     [[nodiscard]] int resolveColumn() const override;
@@ -389,7 +373,6 @@ public:
 
     [[nodiscard]] ExprNode* arrayExpr() const;
     [[nodiscard]] const vector<ExprNode*>& indices() const;
-    [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] TypeInfo structuralType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
     [[nodiscard]] int resolveColumn() const override;
@@ -403,7 +386,6 @@ public:
     ExprArrayNode(Node* parent, vector<ExprNode*> elements) : ExprNode(parent), _elements(std::move(elements)) {}
 
     [[nodiscard]] const vector<ExprNode*>& elements() const;
-    [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] TypeInfo structuralType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
     [[nodiscard]] int resolveColumn() const override;
@@ -420,7 +402,6 @@ public:
 
     [[nodiscard]] LiteralNode* value() const;
     [[nodiscard]] TypeNode* explicitType() const;
-    [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] TypeInfo structuralType() const override;
     void accept(AstVisitor& v) override;
 };
@@ -435,7 +416,6 @@ public:
 
     [[nodiscard]] Token obj() const { return _obj; }
     [[nodiscard]] const vector<Token>& subs() const { return _subs; }
-    [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] TypeInfo structuralType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
     [[nodiscard]] int resolveColumn() const override;
@@ -455,7 +435,6 @@ public:
 
     [[nodiscard]] Op op() const;
     [[nodiscard]] ExprNode* right() const;
-    [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] TypeInfo structuralType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
     [[nodiscard]] int resolveColumn() const override;
@@ -568,7 +547,6 @@ public:
     }
 
     // 返回 Fn TypeInfo；缺失槽位用 empty TypeInfo 占位，等 Phase 2b 上下文反推回填
-    [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] TypeInfo structuralType() const override;
     void accept(AstVisitor& v) override;
 };
@@ -582,7 +560,6 @@ public:
     ExprTupleNode(Node* parent, vector<ExprNode*> elements) : ExprNode(parent), _elements(std::move(elements)) {}
 
     [[nodiscard]] const vector<ExprNode*>& elements() const { return _elements; }
-    [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] TypeInfo structuralType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
     [[nodiscard]] int resolveColumn() const override;
@@ -635,7 +612,6 @@ public:
     [[nodiscard]] string resolvedLhsName() const;
     // 限定路径走 resolveExprTypeLhs（含 ownerModule）；Self 用 enclosing struct。
     [[nodiscard]] TypeInfo resolvedLhsType() const;
-    [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] TypeInfo structuralType() const override;
     void accept(AstVisitor& v) override;
 };
@@ -681,7 +657,6 @@ public:
     [[nodiscard]] const TypePath& typePath() const { return _typePath; }
     [[nodiscard]] const vector<FieldInitNode*>& fields() const { return _fields; }
     [[nodiscard]] ExprNode* positional() const { return _positional; }
-    [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] TypeInfo structuralType() const override;
     void accept(AstVisitor& v) override;
 };
@@ -754,7 +729,6 @@ public:
 
     [[nodiscard]] ExprNode* scrutinee() const { return _scrutinee; }
     [[nodiscard]] const vector<MatchArmNode*>& arms() const { return _arms; }
-    [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] TypeInfo structuralType() const override;
     void accept(AstVisitor& v) override;
 };
@@ -792,7 +766,6 @@ public:
 
     [[nodiscard]] StatementBlockNode* tryBlock() const { return _tryBlock; }
     [[nodiscard]] const vector<CatchArmNode*>& catches() const { return _catches; }
-    [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] TypeInfo structuralType() const override;
     void accept(AstVisitor& v) override;
 };
@@ -817,7 +790,6 @@ public:
     [[nodiscard]] TypeNode* specType() const { return _specType; }
     [[nodiscard]] ExprNode* arg() const { return _arg; }
     [[nodiscard]] bool isBorrow() const { return _isBorrow; }
-    [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] TypeInfo structuralType() const override;
     void accept(AstVisitor& v) override;
 };
@@ -833,7 +805,6 @@ public:
 
     [[nodiscard]] ExprNode* left() const { return _left; }
     [[nodiscard]] ExprNode* right() const { return _right; }
-    [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] TypeInfo structuralType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
     [[nodiscard]] int resolveColumn() const override;
@@ -850,7 +821,6 @@ public:
 
     [[nodiscard]] ExprNode* left() const { return _left; }
     [[nodiscard]] ExprNode* right() const { return _right; }
-    [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] TypeInfo structuralType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
     [[nodiscard]] int resolveColumn() const override;

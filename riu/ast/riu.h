@@ -38,6 +38,8 @@ struct PkgExportItem {
 [[nodiscard]] vector<PkgExportItem> parsePkgFileAt(const string& pkgPath);
 
 class Riu {
+    // 先于 FileNode 析构：intern 指针活过 AST。
+    TypeIntern _typeIntern;
     vector<FileNode*> _files;
     FileNode* _sdkFile;
 
@@ -73,6 +75,9 @@ public:
     // SpecImplChecker> 的构造期 unwind 与析构都需要完整类型。
     Riu();
     ~Riu();
+
+    TypeIntern& typeIntern() { return _typeIntern; }
+    [[nodiscard]] const TypeIntern& typeIntern() const { return _typeIntern; }
 
     void addFile(FileNode* file);
     FileNode* createFile(const string& moduleName);

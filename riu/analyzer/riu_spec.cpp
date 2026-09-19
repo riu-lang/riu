@@ -14,7 +14,9 @@
 #include "spec_impl_checker.h"
 #include "spec_registry.h"
 
-Riu::Riu() : _sdkFile(nullptr) {}
+Riu::Riu() : _sdkFile(nullptr) {
+    bindTypeIntern(&_typeIntern);
+}
 
 Riu::~Riu() {
     _rdBuilders.clear();
@@ -23,6 +25,7 @@ Riu::~Riu() {
         delete file;
     }
     delete _sdkFile;
+    bindTypeIntern(nullptr);
 }
 
 SpecRegistry& Riu::specRegistry() {

@@ -27,11 +27,9 @@ const vector<FnParamNode*>& FnHeaderNode::params() const {
     return _params;
 }
 
-TypeInfo FnHeaderNode::getType() const {
-    if (_retType) {
-        return _retType->getType();
-    }
-    return {};
+const TypeInfo& FnHeaderNode::getType() const {
+    if (_retType) return _retType->getType();
+    return internTypeAt(this, TypeInfo());
 }
 
 string FnHeaderNode::resolvedFallibleErr() const {
@@ -53,7 +51,7 @@ FnHeaderNode* FnNode::header() const {
     return _header;
 }
 
-TypeInfo FnNode::getType() const {
+const TypeInfo& FnNode::getType() const {
     return _header->getType();
 }
 

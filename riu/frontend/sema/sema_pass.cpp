@@ -640,7 +640,11 @@ void SemaPass::checkGenericBodyInst(FnNode* fn, const map<string, TypeInfo>& sub
         if (auto* dollar = fn->lookupSymbol("$")) {
             if (dollar->type.isRef()) {
                 if (auto inner = dollar->type.refElementType()) {
-                    if (inner->ownerModule.empty()) inner->ownerModule = owner->moduleName();
+                    if (inner->ownerModule.empty()) {
+                        TypeInfo owned = *inner;
+                        owned.ownerModule = owner->moduleName();
+                        dollar->type = internType(TypeInfo("Ref", {internTypeSp(std::move(owned))}));
+                    }
                 }
             } else if (dollar->type.ownerModule.empty()) {
                 dollar->type.ownerModule = owner->moduleName();

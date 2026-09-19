@@ -3,6 +3,6 @@
 
 #include "global_var_node.h"
 
-TypeInfo GlobalVarNode::getType() const {
+const TypeInfo& GlobalVarNode::getType() const {
     return _type ? _type->getType() : _value->getType();
 }

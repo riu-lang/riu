@@ -20,6 +20,7 @@ static_library("riu_ast") {
     "name_lookup.cpp",
     "riu.cpp",
     "syntax_diag.cpp",
+    "type_intern.cpp",
     "type_path.cpp",
     "rd/dump.cpp",
     "rd/flat.cpp",

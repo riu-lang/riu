@@ -184,6 +184,11 @@ public:
 // 把出错节点所属文件路径写入 RiuError（已有路径则不动）。
 void attachDiagFile(RiuError& e, const Node* n);
 
+// 按节点所属 FileNode 的 Riu intern；无 Riu 则走 TLS / fallback。
+// SDK FileNode 跨多次 check 复用，不能把类型指针挂到用户 Riu 的 intern 表上。
+[[nodiscard]] const TypeInfo& internTypeAt(const Node* n, TypeInfo t);
+[[nodiscard]] sp<TypeInfo> internTypeSpAt(const Node* n, TypeInfo t);
+
 class Named {
 protected:
     Token _name;
@@ -199,7 +204,7 @@ public:
 class Typed {
 public:
     virtual ~Typed() = default;
-    [[nodiscard]] virtual TypeInfo getType() const = 0;
+    [[nodiscard]] virtual const TypeInfo& getType() const = 0;
 };
 
 class Annotated {

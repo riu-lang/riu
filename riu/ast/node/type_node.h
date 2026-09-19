@@ -10,10 +10,18 @@
 #include <optional>
 
 class TypeNode : public Node {
+protected:
+    mutable const TypeInfo* _cachedType = nullptr;
+
+    const TypeInfo& cacheType(TypeInfo t) const {
+        _cachedType = &internTypeAt(this, std::move(t));
+        return *_cachedType;
+    }
+
 public:
     explicit TypeNode(Node* parent) : Node(parent) {}
 
-    [[nodiscard]] virtual TypeInfo getType() const = 0;
+    [[nodiscard]] virtual const TypeInfo& getType() const = 0;
     [[nodiscard]] virtual bool isArray() const { return false; }
 };
 
@@ -34,7 +42,7 @@ public:
     TypeSelfNode(Node* parent, Token selfTok, string structName)
         : TypeNode(parent), _selfTok(std::move(selfTok)), _structName(std::move(structName)) {}
 
-    [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] const TypeInfo& getType() const override;
 
     [[nodiscard]] const Token& selfToken() const { return _selfTok; }
     [[nodiscard]] const string& structName() const { return _structName; }
@@ -43,20 +51,24 @@ public:
     // DRAFT-spec-default-body Phase 3：spec 默认体 fall-through 编译时, 把
     // spec 体内"无归属"的 TypeSelfNode 临时改写到具体实现类型, 编完再还原.
     // 不要在常规路径使用 — 仅供 compiler 的 fall-through 临时 patch.
-    void setStructName(string s) { _structName = std::move(s); }
-    void setOwnerModule(string o) { _ownerModule = std::move(o); }
+    void setStructName(string s) {
+        _structName = std::move(s);
+        _cachedType = nullptr;
+    }
+    void setOwnerModule(string o) {
+        _ownerModule = std::move(o);
+        _cachedType = nullptr;
+    }
 };
 
 class TypeNormalNode : public TypeNode {
     TypePath _path;
-    mutable const TypeInfo* _cachedType = nullptr;
-    mutable std::unique_ptr<TypeInfo> _ownedType;
 
 public:
     TypeNormalNode(Node* parent, Token typeName) : TypeNormalNode(parent, TypePath(std::move(typeName))) {}
     TypeNormalNode(Node* parent, TypePath path) : TypeNode(parent), _path(std::move(path)) {}
 
-    [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] const TypeInfo& getType() const override;
 
     [[nodiscard]] Token typeNameToken() const { return _path.last(); }
     [[nodiscard]] const TypePath& path() const { return _path; }
@@ -70,11 +82,10 @@ public:
     TypeArrayNode(Node* parent, TypeNode* elementType, Token count)
         : TypeNode(parent), _elementType(elementType), _count(std::move(count)) {}
 
-    [[nodiscard]] TypeInfo getType() const override {
-        auto elemTypeInfo = _elementType->getType();
-        auto elemShared = make_shared<TypeInfo>(elemTypeInfo);
+    [[nodiscard]] const TypeInfo& getType() const override {
+        if (_cachedType) return *_cachedType;
         u64 size = stoull(_count.getText());
-        return {elemShared, size};
+        return cacheType({internTypeSpAt(this, _elementType->getType()), size});
     }
 
     [[nodiscard]] TypeNode* elementType() const { return _elementType; }
@@ -94,7 +105,7 @@ public:
     TypeGenericNode(Node* parent, TypePath path, vector<TypeNode*> typeArgs)
         : TypeNode(parent), _path(std::move(path)), _typeArgs(std::move(typeArgs)) {}
 
-    [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] const TypeInfo& getType() const override;
 
     [[nodiscard]] Token baseName() const { return _path.last(); }
     [[nodiscard]] const TypePath& path() const { return _path; }
@@ -114,21 +125,25 @@ public:
     TypeFnNode(Node* parent, vector<TypeNode*> paramTypes, TypeNode* retType, bool nullable)
         : TypeNode(parent), _paramTypes(std::move(paramTypes)), _retType(retType), _nullable(nullable) {}
 
-    [[nodiscard]] TypeInfo getType() const override {
+    [[nodiscard]] const TypeInfo& getType() const override {
+        if (_cachedType) return *_cachedType;
         vector<sp<TypeInfo>> params;
         params.reserve(_paramTypes.size());
         for (auto& pt : _paramTypes) {
-            params.push_back(make_shared<TypeInfo>(pt->getType()));
+            params.push_back(internTypeSpAt(this, pt->getType()));
         }
         sp<TypeInfo> ret = nullptr;
-        if (_retType) ret = make_shared<TypeInfo>(_retType->getType());
-        return TypeInfo(FnTag{}, std::move(params), ret, _nullable);
+        if (_retType) ret = internTypeSpAt(this, _retType->getType());
+        return cacheType(TypeInfo(FnTag{}, std::move(params), ret, _nullable));
     }
 
     [[nodiscard]] const vector<TypeNode*>& paramTypes() const { return _paramTypes; }
     [[nodiscard]] TypeNode* retType() const { return _retType; }
     [[nodiscard]] bool nullable() const { return _nullable; }
-    void setNullable(bool v) { _nullable = v; }
+    void setNullable(bool v) {
+        _nullable = v;
+        _cachedType = nullptr;
+    }
 };
 
 class TypeFallibleNode : public TypeNode {
@@ -139,10 +154,11 @@ public:
     TypeFallibleNode(Node* parent, TypeNode* base, TypeNode* errType)
         : TypeNode(parent), _base(base), _errType(errType) {}
 
-    [[nodiscard]] TypeInfo getType() const override {
+    [[nodiscard]] const TypeInfo& getType() const override {
+        if (_cachedType) return *_cachedType;
         TypeInfo ti = _base->getType();
         ti.attachFallibleErr(fallibleErrKey(_errType->getType()));
-        return ti;
+        return cacheType(std::move(ti));
     }
 
     [[nodiscard]] TypeNode* baseType() const { return _base; }
@@ -157,13 +173,14 @@ public:
     TypeTupleNode(Node* parent, vector<TypeNode*> elementTypes)
         : TypeNode(parent), _elementTypes(std::move(elementTypes)) {}
 
-    [[nodiscard]] TypeInfo getType() const override {
+    [[nodiscard]] const TypeInfo& getType() const override {
+        if (_cachedType) return *_cachedType;
         vector<sp<TypeInfo>> elems;
         elems.reserve(_elementTypes.size());
         for (auto& e : _elementTypes) {
-            elems.push_back(make_shared<TypeInfo>(e->getType()));
+            elems.push_back(internTypeSpAt(this, e->getType()));
         }
-        return TypeInfo(TupleTag{}, std::move(elems));
+        return cacheType(TypeInfo(TupleTag{}, std::move(elems)));
     }
 
     [[nodiscard]] const vector<TypeNode*>& elementTypes() const { return _elementTypes; }

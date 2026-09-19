@@ -309,10 +309,10 @@ FnNode* RdBuilder::buildFnClean(rd::NodeId id, ScopeNode* parent, FileNode* file
     _scopeStack.push_back(fn);
     if (!structName.empty()) {
         vector<sp<TypeInfo>> selfArgs;
-        auto selfInner = make_shared<TypeInfo>(structName);
-        if (file) selfInner->ownerModule = file->moduleName();
-        selfArgs.push_back(std::move(selfInner));
-        fn->registerSymbol("$", {SymbolKind::Variable, "$", TypeInfo("Ref", selfArgs)});
+        TypeInfo selfInner(structName);
+        if (file) selfInner.ownerModule = file->moduleName();
+        selfArgs.push_back(internTypeSp(std::move(selfInner)));
+        fn->registerSymbol("$", {SymbolKind::Variable, "$", internType(TypeInfo("Ref", selfArgs))});
     }
     if (at(id).children_count > 0) fillFnBody(fn, child(id, 0));
     _scopeStack.pop_back();
@@ -354,11 +354,11 @@ FnNode* RdBuilder::buildMethod(rd::NodeId id, StructImplNode* impl, FileNode* fi
     for (auto& tp : header->typeParams())
         fn->registerSymbol(tp, {SymbolKind::TypeParam, tp, TypeInfo(tp)});
     {
-        auto selfInner = make_shared<TypeInfo>(impl->structName());
-        if (file) selfInner->ownerModule = file->moduleName();
+        TypeInfo selfInner(impl->structName());
+        if (file) selfInner.ownerModule = file->moduleName();
         vector<sp<TypeInfo>> selfArgs;
-        selfArgs.push_back(std::move(selfInner));
-        fn->registerSymbol("$", {SymbolKind::Variable, "$", TypeInfo("Ref", selfArgs)});
+        selfArgs.push_back(internTypeSp(std::move(selfInner)));
+        fn->registerSymbol("$", {SymbolKind::Variable, "$", internType(TypeInfo("Ref", selfArgs))});
     }
     for (auto* param : header->params()) {
         TypeInfo paramType = param->type() ? param->type()->getType() : TypeInfo();

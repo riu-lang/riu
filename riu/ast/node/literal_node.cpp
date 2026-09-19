@@ -32,8 +32,8 @@ LiteralIntNode::LiteralIntNode(const Token& value) : LiteralNumberNode(value) {
         _type = TypeInfo("i32");
 }
 
-TypeInfo LiteralIntNode::getType() const {
-    return _type;
+const TypeInfo& LiteralIntNode::getType() const {
+    return internType(_type);
 }
 
 LiteralFloatNode::LiteralFloatNode(const Token& value) : LiteralNumberNode(value) {
@@ -47,21 +47,21 @@ LiteralFloatNode::LiteralFloatNode(const Token& value) : LiteralNumberNode(value
         _type = TypeInfo("f64");
 }
 
-TypeInfo LiteralFloatNode::getType() const {
-    return _type;
+const TypeInfo& LiteralFloatNode::getType() const {
+    return internType(_type);
 }
 
 LiteralBoolNode::LiteralBoolNode(const Token& value) : LiteralNode(value) {}
 
-TypeInfo LiteralBoolNode::getType() const {
-    return TypeInfo("bool");
+const TypeInfo& LiteralBoolNode::getType() const {
+    return internNamedType("bool");
 }
 
 LiteralObjNode::LiteralObjNode(Node* parent, const Token& value) : LiteralNode(value) {
     _parent = parent;
 }
 
-TypeInfo LiteralObjNode::getType() const {
+const TypeInfo& LiteralObjNode::getType() const {
     auto name = _value.getText();
     auto scope = findNearestScope();
     if (scope) {
@@ -73,28 +73,28 @@ TypeInfo LiteralObjNode::getType() const {
                     vector<sp<TypeInfo>> paramTypes;
                     paramTypes.reserve(fnSym->params.size());
                     for (auto& p : fnSym->params)
-                        paramTypes.push_back(make_shared<TypeInfo>(p));
+                        paramTypes.push_back(internTypeSpAt(this, p));
                     sp<TypeInfo> retType = nullptr;
                     if (!fnSym->retType.empty() && fnSym->retType.name != "()")
-                        retType = make_shared<TypeInfo>(fnSym->retType);
-                    return TypeInfo(FnTag{}, std::move(paramTypes), std::move(retType));
+                        retType = internTypeSpAt(this, fnSym->retType);
+                    return internTypeAt(this, TypeInfo(FnTag{}, std::move(paramTypes), std::move(retType)));
                 }
                 sp<TypeInfo> retType = nullptr;
-                if (!sym->type.empty() && sym->type.name != "()") retType = make_shared<TypeInfo>(sym->type);
-                return TypeInfo(FnTag{}, {}, std::move(retType));
+                if (!sym->type.empty() && sym->type.name != "()") retType = internTypeSpAt(this, sym->type);
+                return internTypeAt(this, TypeInfo(FnTag{}, {}, std::move(retType)));
             }
             // Phase 4a: T& 局部 / 参数 在表达式上下文按值语义出现（自动解引用为 T）；
             // 借用绑定 / 调用借用形参 等需要原始 Ref 类型的场景，在调用点直接读 sym 表
             if (sym->type.isRef()) {
                 auto inner = sym->type.refElementType();
-                if (inner) return *inner;
+                if (inner) return internTypeAt(this, *inner);
             }
-            return sym->type;
+            return internTypeAt(this, sym->type);
         }
     }
 
     if (name == "_stdout_write") {
-        return TypeInfo(FnTag{}, {}, nullptr);
+        return internTypeAt(this, TypeInfo(FnTag{}, {}, nullptr));
     }
 
     throw RiuError(static_cast<int>(_value.getLine()), static_cast<int>(_value.getCharPositionInLine()) + 1,
@@ -107,9 +107,9 @@ string LiteralObjNode::getLocation() const {
 
 LiteralNullNode::LiteralNullNode(const Token& value) : LiteralNode(value) {}
 
-TypeInfo LiteralNullNode::getType() const {
-    if (!_type.empty()) return _type;
-    return TypeInfo("Ptr");
+const TypeInfo& LiteralNullNode::getType() const {
+    if (!_type.empty()) return internType(_type);
+    return internNamedType("Ptr");
 }
 
 LiteralCodePointNode::LiteralCodePointNode(const Token& value) : LiteralNode(value) {
@@ -165,8 +165,8 @@ LiteralCodePointNode::LiteralCodePointNode(const Token& value) : LiteralNode(val
     }
 }
 
-TypeInfo LiteralCodePointNode::getType() const {
-    return TypeInfo("u32");
+const TypeInfo& LiteralCodePointNode::getType() const {
+    return internNamedType("u32");
 }
 
 LiteralStringNode::LiteralStringNode(const Token& value, bool raw) : LiteralNode(value) {
@@ -240,13 +240,13 @@ LiteralStringNode::LiteralStringNode(const Token& value, bool raw) : LiteralNode
     }
 }
 
-TypeInfo LiteralStringNode::getType() const {
-    return TypeInfo("String");
+const TypeInfo& LiteralStringNode::getType() const {
+    return internTypeAt(this, TypeInfo("String"));
 }
 
 StringTemplateNode::StringTemplateNode(const Token& openTok, vector<string> parts, vector<ExprNode*> interps)
     : LiteralNode(openTok), _parts(std::move(parts)), _interps(std::move(interps)) {}
 
-TypeInfo StringTemplateNode::getType() const {
-    return TypeInfo("String");
+const TypeInfo& StringTemplateNode::getType() const {
+    return internTypeAt(this, TypeInfo("String"));
 }

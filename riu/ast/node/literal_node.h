@@ -37,7 +37,7 @@ protected:
 
 public:
     explicit LiteralIntNode(const Token& value);
-    [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] const TypeInfo& getType() const override;
     [[nodiscard]] bool hasSuffix() const { return _hasSuffix; }
     void setType(TypeInfo t) { _type = std::move(t); }
     void setUnaryNegated(bool v) { _unaryNegated = v; }
@@ -51,7 +51,7 @@ protected:
 
 public:
     explicit LiteralFloatNode(const Token& value);
-    [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] const TypeInfo& getType() const override;
     [[nodiscard]] bool hasSuffix() const { return _hasSuffix; }
     void setType(TypeInfo t) { _type = std::move(t); }
 };
@@ -59,13 +59,13 @@ public:
 class LiteralBoolNode : public LiteralNode {
 public:
     explicit LiteralBoolNode(const Token& value);
-    [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] const TypeInfo& getType() const override;
 };
 
 class LiteralObjNode : public LiteralNode {
 public:
     explicit LiteralObjNode(Node* parent, const Token& value);
-    [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] const TypeInfo& getType() const override;
     [[nodiscard]] string getLocation() const override;
 };
 
@@ -74,7 +74,7 @@ protected:
     TypeInfo _type; // 推断的目标类型（初始为空，此时 getType() 返回 Ptr）
 public:
     explicit LiteralNullNode(const Token& value);
-    [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] const TypeInfo& getType() const override;
     void setType(TypeInfo t) { _type = std::move(t); }
     [[nodiscard]] bool hasInferredType() const { return !_type.empty(); }
 };
@@ -84,7 +84,7 @@ class LiteralCodePointNode : public LiteralNode {
 
 public:
     explicit LiteralCodePointNode(const Token& value);
-    [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] const TypeInfo& getType() const override;
     [[nodiscard]] u32 codePoint() const { return _codePoint; }
 };
 
@@ -93,7 +93,7 @@ class LiteralStringNode : public LiteralNode {
 
 public:
     explicit LiteralStringNode(const Token& value, bool raw = false);
-    [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] const TypeInfo& getType() const override;
     [[nodiscard]] const vector<u32>& codePoints() const { return _codePoints; }
 };
 
@@ -109,7 +109,7 @@ class StringTemplateNode : public LiteralNode {
 
 public:
     StringTemplateNode(const Token& openTok, vector<string> parts, vector<ExprNode*> interps);
-    [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] const TypeInfo& getType() const override;
     [[nodiscard]] const vector<string>& parts() const { return _parts; }
     [[nodiscard]] const vector<ExprNode*>& interps() const { return _interps; }
 };

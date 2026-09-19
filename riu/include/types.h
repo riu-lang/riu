@@ -353,6 +353,8 @@ struct TypeInfo {
     bool fnNullable = false;            // Fn: Function<...>? 可空（仍 16 字节 fat-ptr，不套 Nullable）
     string fallibleErr; // T ! E 的错误类型 E 的 getFullName；空 = 非 fallible。须存完整写法（`Box<String>` 而非裸名
                         // `Box`）
+    // intern 后的成功类型（剥 fallible）；空 = 尚未 intern 或本身非 fallible。
+    mutable const TypeInfo* _withoutFallible = nullptr;
 
     TypeInfo() = default;
 
@@ -414,17 +416,8 @@ struct TypeInfo {
     // T ! E 签名位：fallibleErr 非空即 fallible 类型（ABI 仍按成功类型 T）
     [[nodiscard]] bool isFallible() const { return !fallibleErr.empty(); }
 
-    // 剥掉 fallible 后缀，保留成功类型 T（供 LLVM / 值类型判等）
-    [[nodiscard]] TypeInfo withoutFallible() const {
-        if (fallibleErr.empty()) return *this;
-        TypeInfo t = *this;
-        const string suffix = "!" + fallibleErr;
-        if (t.name.size() >= suffix.size() && t.name.ends_with(suffix)) {
-            t.name.resize(t.name.size() - suffix.size());
-        }
-        t.fallibleErr.clear();
-        return t;
-    }
+    // 剥掉 fallible 后缀，保留成功类型 T（intern 后的引用；供 LLVM / 值类型判等）
+    [[nodiscard]] const TypeInfo& withoutFallible() const;
 
     // 在成功类型上附加 fallible 后缀，刷新 name。`err` 须是 E 的 getFullName。
     void attachFallibleErr(string err) {
@@ -577,24 +570,22 @@ struct TypeInfo {
     // 8 字节堆句柄：Rc / Weak / Array<T> / String。不含 Heap（单所有权裸指针）
     [[nodiscard]] bool isRcHandle() const { return isRc() || isWeak() || isArrayGeneric() || isString(); }
 
-    // 剥一层 Ref<T> → T；非 Ref 原样返回
-    [[nodiscard]] TypeInfo peelRef() const {
-        if (isRef()) {
-            if (auto inner = refElementType()) return *inner;
-        }
+    // 剥一层 Ref<T> → T；非 Ref 原样返回。走已 intern 的 genericArgs[0]，不拷贝。
+    [[nodiscard]] const TypeInfo& peelRef() const {
+        if (isRef() && genericArgs.size() == 1 && genericArgs[0]) return *genericArgs[0];
         return *this;
     }
 
     // 运算符自动解引用：Ref → Heap → Rc，各一层（与 expr getType 历史行为一致）
-    [[nodiscard]] TypeInfo peelAutoDeref() const {
-        TypeInfo t = peelRef();
-        if (t.isHeap()) {
-            if (auto inner = t.heapElementType()) t = *inner;
+    [[nodiscard]] const TypeInfo& peelAutoDeref() const {
+        const TypeInfo* t = &peelRef();
+        if (t->isHeap()) {
+            if (auto inner = t->heapElementType()) t = inner.get();
         }
-        if (t.isRc()) {
-            if (auto inner = t.rcElementType()) t = *inner;
+        if (t->isRc()) {
+            if (auto inner = t->rcElementType()) t = inner.get();
         }
-        return t;
+        return *t;
     }
 
     // 是否有类型实参：Generic（用户泛型）或内置包装类型
@@ -1047,6 +1038,50 @@ inline const TypeInfo* internTypePtr(const TypeInfo& t) {
     if (t.kind != TypeKind::Normal && t.kind != TypeKind::Ptr) return nullptr;
     if (!isLanguageNamedType(t.name)) return nullptr;
     return &internNamedType(t.name);
+}
+
+// 编译期类型 intern 表（挂在 Riu 上）。子类型先 intern，按 kind / owner / name /
+// 子指针 / fallible 哈希。语言标量仍走 internNamedType 进程单例。
+class TypeIntern {
+    struct Impl;
+    unique_ptr<Impl> _impl;
+
+public:
+    TypeIntern();
+    ~TypeIntern();
+    TypeIntern(TypeIntern&&) noexcept;
+    TypeIntern& operator=(TypeIntern&&) noexcept;
+    TypeIntern(const TypeIntern&) = delete;
+    TypeIntern& operator=(const TypeIntern&) = delete;
+
+    const TypeInfo& intern(TypeInfo t);
+    sp<TypeInfo> internSp(TypeInfo t);
+};
+
+// Riu 构造 push、析构 pop。无绑定则用进程 fallback（单文件 / 早期构造）。
+void bindTypeIntern(TypeIntern* intern);
+
+// 子类型先 intern；语言具名走进程单例。返回的引用在当前 intern 表存活期内有效。
+[[nodiscard]] const TypeInfo& internType(TypeInfo t);
+[[nodiscard]] sp<TypeInfo> internTypeSp(TypeInfo t);
+
+inline void typeInfoStripFallible(TypeInfo& t) {
+    if (t.fallibleErr.empty()) return;
+    const string suffix = "!" + t.fallibleErr;
+    if (t.name.size() >= suffix.size() && t.name.ends_with(suffix)) {
+        t.name.resize(t.name.size() - suffix.size());
+    }
+    t.fallibleErr.clear();
+    t._withoutFallible = nullptr;
+}
+
+inline const TypeInfo& TypeInfo::withoutFallible() const {
+    if (fallibleErr.empty()) return *this;
+    if (_withoutFallible) return *_withoutFallible;
+    TypeInfo t = *this;
+    typeInfoStripFallible(t);
+    // 不把 TLS intern 指针写回 *this：SDK 节点上的 interned 对象可能活过用户 Riu。
+    return internType(std::move(t));
 }
 
 // E4025: Rc / Weak / Array 禁止直接内嵌 Heap（§8.3a.5.1）。递归下钻，覆盖

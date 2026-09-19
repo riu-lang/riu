@@ -53,7 +53,7 @@ public:
     void setConstValue(ConstantValue v) { _constValue = std::move(v); }
     [[nodiscard]] const std::optional<ConstantValue>& constValue() const { return _constValue; }
 
-    [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] const TypeInfo& getType() const override;
 };
 
 #endif // RIU_LANG_GLOBAL_VAR_NODE_H
