@@ -486,3 +486,156 @@ fn test_for_in_indexed_empty() {
   }
   assert_eq(n, 0)
 }
+
+; ==================== for-in Iter ====================
+
+#Impl(Iter<i32, End>)
+struct ForInCounter {
+  #Mut
+  i i32
+  end i32
+
+  #Static
+  fn make(end i32) Self {
+    Self {
+      .i = 0
+      .end = end
+    }
+  }
+
+  fn next() IterItem<i32, End> {
+    if $.i >= $.end {
+      ret IterItem:<i32, End>::End
+    }
+    #Mut let v i32 = $.i
+    $.i += 1
+    IterItem:<i32, End>::Item(v)
+  }
+}
+
+enum ForInNetErr {
+  Fail
+}
+
+#Impl(Iter<i32, ForInNetErr>)
+struct ForInStream {
+  #Mut
+  i i32
+  fail_at i32
+
+  #Static
+  fn make(fail_at i32) Self {
+    Self {
+      .i = 0
+      .fail_at = fail_at
+    }
+  }
+
+  fn next() IterItem<i32, ForInNetErr> {
+    if $.i == $.fail_at {
+      ret IterItem:<i32, ForInNetErr>::Error(ForInNetErr::Fail)
+    }
+    if $.i >= 4 {
+      ret IterItem:<i32, ForInNetErr>::End
+    }
+    #Mut let v i32 = $.i
+    $.i += 1
+    IterItem:<i32, ForInNetErr>::Item(v)
+  }
+}
+
+; 验证：`#Impl(Iter<U, End>)` 隐藏 next match，item 为 U 值
+#Test
+fn test_for_in_iter_sum() {
+  #Mut let c = ForInCounter::make(4)
+  #Mut let sum i32 = 0
+  for x in c {
+    sum = sum + x
+  }
+  assert_eq(sum, 6)
+}
+
+; 验证：Iter 空区间零轮
+#Test
+fn test_for_in_iter_empty() {
+  #Mut let c = ForInCounter::make(0)
+  #Mut let n i32 = 0
+  for x in c {
+    n = n + 1
+  }
+  assert_eq(n, 0)
+}
+
+; 验证：Iter for-in continue / break
+#Test
+fn test_for_in_iter_continue_break() {
+  #Mut let c = ForInCounter::make(5)
+  #Mut let sum i32 = 0
+  for x in c {
+    if x == 1 {
+      continue;
+    }
+    if x == 3 {
+      break;
+    }
+    sum = sum + x
+  }
+  assert_eq(sum, 2)
+}
+
+; 验证：手写 loop + match next 与 for-in 同一条 IterItem
+#Test
+fn test_iter_handwritten_match() {
+  #Mut let it = ForInCounter::make(4)
+  #Mut let sum i32 = 0
+  loop {
+    match it.next() {
+      IterItem::Item(v) => {
+        sum = sum + v
+      }
+      IterItem::End => {
+        break;
+      }
+      IterItem::Error(e) => {
+        break;
+      }
+    }
+  }
+  assert_eq(sum, 6)
+}
+
+; 验证：可失败 Iter 在 try 内，Error 进 catch
+#Test
+fn test_for_in_iter_error_try() {
+  #Mut let s = ForInStream::make(1)
+  let n i32 = try {
+    #Mut let sum i32 = 0
+    for x in s {
+      sum = sum + x
+    }
+    sum
+  } catch e ForInNetErr {
+    -1
+  }
+  assert_eq(n, -1)
+}
+
+; 验证：可失败 Iter 同型 `!` 透传；成功走完
+fn sum_ok_stream() i32 ! ForInNetErr {
+  #Mut let s = ForInStream::make(9)
+  #Mut let sum i32 = 0
+  for x in s {
+    sum = sum + x
+  }
+  ret sum
+}
+
+#Test
+fn test_for_in_iter_error_bang_ok() {
+  let n i32 = try {
+    sum_ok_stream()
+  } catch e ForInNetErr {
+    -1
+  }
+  assert_eq(n, 6)
+}

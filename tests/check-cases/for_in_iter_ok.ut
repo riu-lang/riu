@@ -1,0 +1,29 @@
+; require-sdk
+; #2 2.3：`#Impl(Iter<U, End>)` 可 for-in，item 为 U 值；E = End 不必 !
+#Impl(Iter<i32, End>)
+struct Counter {
+    #Mut
+    i i32
+    end i32
+
+    fn next() IterItem<i32, End> {
+        if $.i >= $.end {
+            ret IterItem:<i32, End>::End
+        }
+        #Mut let v i32 = $.i
+        $.i += 1
+        IterItem:<i32, End>::Item(v)
+    }
+}
+
+fn main() {
+    #Mut let c = Counter {
+        .i = 0
+        .end = 3
+    }
+    #Mut let sum i32 = 0
+    for x in c {
+        sum = sum + x
+    }
+    ret;
+}

@@ -1,0 +1,25 @@
+; require-sdk
+; 同一类型 Indexed + Iter：走 Indexed，item 为 U&
+#Impl(Indexed<i32>)
+#Impl(Iter<i32, End>)
+struct Both {
+    #Mut
+    v i32
+
+    fn len() usize = 1usize
+    fn at(i usize) i32& = &$.v
+
+    fn next() IterItem<i32, End> {
+        ret IterItem:<i32, End>::End
+    }
+}
+
+fn main() {
+    #Mut let b = Both {
+        .v = 1
+    }
+    for x in b {
+        x = 2
+    }
+    ret;
+}

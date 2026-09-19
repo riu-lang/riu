@@ -1,0 +1,57 @@
+; require-sdk
+; #2 2.3：E ≠ End 时 for 在 E 上可失败；try 或同型 `!` 合法
+enum NetErr {
+    Fail
+}
+
+#Impl(Iter<i32, NetErr>)
+struct Stream {
+    #Mut
+    i i32
+    fail_at i32
+
+    fn next() IterItem<i32, NetErr> {
+        if $.i == $.fail_at {
+            ret IterItem:<i32, NetErr>::Error(NetErr::Fail)
+        }
+        if $.i >= 3 {
+            ret IterItem:<i32, NetErr>::End
+        }
+        #Mut let v i32 = $.i
+        $.i += 1
+        IterItem:<i32, NetErr>::Item(v)
+    }
+}
+
+fn via_try() i32 {
+    #Mut let s = Stream {
+        .i = 0
+        .fail_at = 1
+    }
+    ret try {
+        #Mut let n i32 = 0
+        for x in s {
+            n = n + x
+        }
+        n
+    } catch e NetErr {
+        -1
+    }
+}
+
+fn via_bang() i32 ! NetErr {
+    #Mut let s = Stream {
+        .i = 0
+        .fail_at = 9
+    }
+    #Mut let n i32 = 0
+    for x in s {
+        n = n + x
+    }
+    ret n
+}
+
+fn main() {
+    via_try()
+    ret;
+}

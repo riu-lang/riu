@@ -1,0 +1,39 @@
+; require-sdk
+; #2 2.3：手写 loop + match next 与 for-in 同一条 IterItem
+#Impl(Iter<i32, End>)
+struct Counter {
+    #Mut
+    i i32
+    end i32
+
+    fn next() IterItem<i32, End> {
+        if $.i >= $.end {
+            ret IterItem:<i32, End>::End
+        }
+        #Mut let v i32 = $.i
+        $.i += 1
+        IterItem:<i32, End>::Item(v)
+    }
+}
+
+fn main() {
+    #Mut let it = Counter {
+        .i = 0
+        .end = 3
+    }
+    #Mut let sum i32 = 0
+    loop {
+        match it.next() {
+            IterItem::Item(v) => {
+                sum = sum + v
+            }
+            IterItem::End => {
+                break;
+            }
+            IterItem::Error(e) => {
+                break;
+            }
+        }
+    }
+    ret;
+}

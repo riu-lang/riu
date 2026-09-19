@@ -1,0 +1,132 @@
+use riu.core.*
+
+#Impl(Iter<i32, End>)
+struct Counter {
+    #Mut
+    i i32
+    end i32
+
+    #Static
+    fn make(end i32) Self {
+        Self {
+            .i = 0
+            .end = end
+        }
+    }
+
+    fn next() IterItem<i32, End> {
+        if $.i >= $.end {
+            ret IterItem:<i32, End>::End
+        }
+        #Mut let v i32 = $.i
+        $.i += 1
+        IterItem:<i32, End>::Item(v)
+    }
+}
+
+#NoCopy
+#Impl(Iter<i32, End>)
+struct Once {
+    #Mut
+    taken bool
+    v i32
+
+    #Static
+    fn make(v i32) Self {
+        Self {
+            .taken = false
+            .v = v
+        }
+    }
+
+    fn next() IterItem<i32, End> {
+        if $.taken {
+            ret IterItem:<i32, End>::End
+        }
+        $.taken = true
+        IterItem:<i32, End>::Item($.v)
+    }
+}
+
+enum NetErr {
+    Fail
+}
+
+#Impl(Iter<i32, NetErr>)
+struct Stream {
+    #Mut
+    i i32
+    fail_at i32
+
+    #Static
+    fn make(fail_at i32) Self {
+        Self {
+            .i = 0
+            .fail_at = fail_at
+        }
+    }
+
+    fn next() IterItem<i32, NetErr> {
+        if $.i == $.fail_at {
+            ret IterItem:<i32, NetErr>::Error(NetErr::Fail)
+        }
+        if $.i >= 3 {
+            ret IterItem:<i32, NetErr>::End
+        }
+        #Mut let v i32 = $.i
+        $.i += 1
+        IterItem:<i32, NetErr>::Item(v)
+    }
+}
+
+fn main() {
+    #Mut let c = Counter::make(4)
+    #Mut let sum i32 = 0
+    for x in c {
+        sum = sum + x
+    }
+    println(sum)
+
+    #Mut let empty = Counter::make(0)
+    #Mut let n i32 = 0
+    for x in empty {
+        n = n + 1
+    }
+    println(n)
+
+    #Mut let it = Counter::make(3)
+    #Mut let hs i32 = 0
+    loop {
+        match it.next() {
+            IterItem::Item(v) => {
+                hs = hs + v
+            }
+            IterItem::End => {
+                break;
+            }
+            IterItem::Error(e) => {
+                break;
+            }
+        }
+    }
+    println(hs)
+
+    let o = Once::make(9)
+    #Mut let ov i32 = 0
+    for x in o {
+        ov = x
+    }
+    println(ov)
+
+    #Mut let s = Stream::make(1)
+    let got i32 = try {
+        #Mut let acc i32 = 0
+        for x in s {
+            acc = acc + x
+        }
+        acc
+    } catch e NetErr {
+        -1
+    }
+    println(got)
+}

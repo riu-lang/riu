@@ -1,0 +1,33 @@
+; require-sdk
+; #2 2.3：开 impl `#Impl(Iter<T, End>) struct Cell<T>`
+#Impl(Iter<T, End>)
+struct Cell<T> {
+    #Mut
+    taken bool
+    v T
+
+    #Static
+    fn make(v T) Self {
+        Self {
+            .taken = false
+            .v = v
+        }
+    }
+
+    fn next() IterItem<T, End> {
+        if $.taken {
+            ret IterItem:<T, End>::End
+        }
+        $.taken = true
+        IterItem:<T, End>::Item($.v)
+    }
+}
+
+fn main() {
+    #Mut let c = Cell:<i32>::make(7)
+    #Mut let n i32 = 0
+    for x in c {
+        n = x
+    }
+    ret;
+}

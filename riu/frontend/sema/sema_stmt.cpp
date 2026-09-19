@@ -91,6 +91,37 @@ void bindForInItemType(StatementBlockNode* blk, const string& name, const TypeIn
         }
     }
 }
+
+bool isSdkEndType(const TypeInfo& t, const sema::NameResolver& names, FileNode* sdkFile) {
+    if (t.name != "End" || !t.genericArgs.empty() || !sdkFile) return false;
+    auto* ed = names.lookupEnum(t, nullptr);
+    return ed && ed == sdkFile->getEnumDecl("End");
+}
+
+string forInCallerFallibleErr(FnNode* fn, LambdaExprNode* lam) {
+    if (fn && fn->header()) {
+        string e = fn->header()->resolvedFallibleErr();
+        if (!e.empty()) return e;
+    }
+    if (lam && lam->fallibleErrTypeNode()) {
+        return fallibleErrKey(lam->fallibleErrTypeNode()->getType());
+    }
+    if (lam) {
+        auto ft = lam->getType();
+        if (ft.isFn() && ft.fnReturnType() && !ft.fnReturnType()->fallibleErr.empty()) {
+            return ft.fnReturnType()->fallibleErr;
+        }
+    }
+    return {};
+}
+
+string forInIdentName(ExprNode* expr) {
+    auto* lit = dynamic_cast<ExprLiteralNode*>(expr);
+    if (!lit) return {};
+    auto* obj = dynamic_cast<LiteralObjNode*>(lit->literal());
+    if (!obj) return {};
+    return obj->getValue().getText();
+}
 } // namespace
 
 void SemaPass::visitStmt(StatementNode* stmt) {
@@ -253,13 +284,40 @@ void SemaPass::visitForIn(StatementForInNode& node) {
             bindForInItemType(forin->block(), forin->item().getText(), itemTy);
         } else if (_riu) {
             // 第二档：`#Impl(Indexed<U>)`，item = U&
-            auto args = _riu->specImplChecker().findSpecImplArgs(at, "Indexed", _file);
-            if (args && args->size() == 1) {
-                TypeInfo itemTy("Ref", {std::make_shared<TypeInfo>((*args)[0])});
+            auto indexed = _riu->specImplChecker().findSpecImplArgs(at, "Indexed", _file);
+            if (indexed && indexed->size() == 1) {
+                TypeInfo itemTy("Ref", {std::make_shared<TypeInfo>((*indexed)[0])});
                 bindForInItemType(forin->block(), forin->item().getText(), itemTy);
             } else {
-                throw RiuError(forin->getLineNumber(), forin->getColumn(), ErrorCode::E3160,
-                               at.getFullName().empty() ? "<unknown>" : at.getFullName());
+                // 第三档：`#Impl(Iter<U, E>)`，item = U 值；E = SDK End 时不可失败
+                auto iter = _riu->specImplChecker().findSpecImplArgs(at, "Iter", _file);
+                if (iter && iter->size() == 2) {
+                    TypeInfo itemTy = (*iter)[0];
+                    TypeInfo errTy = (*iter)[1];
+                    bindForInItemType(forin->block(), forin->item().getText(), itemTy);
+                    if (isNoCopyTypeIn(at, _file, _sdkFile) && !at.isRef()) {
+                        string ident = forInIdentName(forin->expr());
+                        if (!ident.empty()) _movedVars.insert(ident);
+                    }
+                    if (!isSdkEndType(errTy, _names, _sdkFile)) {
+                        string eKey = fallibleErrKey(errTy);
+                        if (!_tryStack.empty()) {
+                            _tryStack.back().push_back(eKey);
+                        } else {
+                            string callerErr = forInCallerFallibleErr(_currentFn, _currentLambda);
+                            if (callerErr.empty()) {
+                                throw RiuError(forin->getLineNumber(), forin->getColumn(), ErrorCode::E7006, "for-in");
+                            }
+                            if (callerErr != eKey) {
+                                throw RiuError(forin->getLineNumber(), forin->getColumn(), ErrorCode::E7004, eKey,
+                                               callerErr, eKey, callerErr, eKey);
+                            }
+                        }
+                    }
+                } else {
+                    throw RiuError(forin->getLineNumber(), forin->getColumn(), ErrorCode::E3160,
+                                   at.getFullName().empty() ? "<unknown>" : at.getFullName());
+                }
             }
         } else {
             throw RiuError(forin->getLineNumber(), forin->getColumn(), ErrorCode::E3160,

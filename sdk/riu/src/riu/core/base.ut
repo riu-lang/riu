@@ -130,6 +130,25 @@ struct Indexed<T> {
   fn at(i usize) T&
 }
 
+; End：无业务失败时 Iter 的 E 占位。与 variant `IterItem::End`（没有下一项）不同名空间。
+enum End {
+  End
+}
+
+; IterItem：next() 的三态值。结束不是失败，不走 T ! E。
+enum IterItem<T, E> {
+  Item(T)
+  End
+  Error(E)
+}
+
+; Iter：消费型遍历。for-in 第三档认 `#Impl(Iter<U, E>)`（#2）。
+; 只有签名。next 写游标，返回 IterItem；本身不是 T ! E。
+#Spec
+struct Iter<T, E> {
+  fn next() IterItem<T, E>
+}
+
 ; 内置基本类型声明见 num.ut（i8/u8/i16/u16/i32/u32/i64/u64/isize/usize/f64/f32）
 
 ; 内置泛型类型占位：实际布局与方法（_push/_len/... 等）由编译器合成

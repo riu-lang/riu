@@ -1833,6 +1833,13 @@ void Compiler::compileForInStatement(StatementForInNode* node) {
         if (args && args->size() == 1) {
             indexedElem = applySubst((*args)[0]);
             lenVal = compileIndexedMethodCall(collPtr, peeled, "len", {}, {}, node->getLineNumber(), node->getColumn());
+        } else {
+            auto iter = _riu->specImplChecker().findSpecImplArgs(peeled, "Iter", _file);
+            if (iter && iter->size() == 2) {
+                compileForInIterLoop(node, collExpr, collPtr, collType, peeled, applySubst((*iter)[0]),
+                                     applySubst((*iter)[1]), frameDepthBeforeLoop, frameDepthBeforeBody);
+                return;
+            }
         }
     }
     if (!lenVal) {
@@ -1924,6 +1931,221 @@ void Compiler::compileForInStatement(StatementForInNode* node) {
     if (!exitBB->hasNPredecessorsOrMore(1)) {
         _builder.CreateUnreachable();
     }
+}
+
+void Compiler::compileForInIterLoop(StatementForInNode* node, ExprNode* collExpr, llvm::Value* collPtr,
+                                    const TypeInfo& collType, const TypeInfo& peeled, const TypeInfo& itemTy,
+                                    const TypeInfo& errTy, size_t frameDepthBeforeLoop, size_t frameDepthBeforeBody) {
+    int line = node->getLineNumber();
+    int col = node->getColumn();
+    if (!collPtr) {
+        throwSemaGap(line, col);
+    }
+
+    // #NoCopy 左值 move 进隐藏槽；可寻址非 NoCopy 就地调。
+    if (!collType.isRef() && isNoCopyType(peeled)) {
+        if (auto* literalNode = dynamic_cast<ExprLiteralNode*>(collExpr)) {
+            if (auto* objLiteral = dynamic_cast<LiteralObjNode*>(literalNode->literal())) {
+                string varName = objLiteral->getValue().getText();
+                auto it = _localVarPtrs.find(varName);
+                if (it != _localVarPtrs.end() && it->second == collPtr) {
+                    auto* llvmT = getLLVMType(peeled);
+                    if (!llvmT) {
+                        throwSemaGap(line, col);
+                    }
+                    auto* slot = _builder.CreateAlloca(llvmT, nullptr, "for.iter");
+                    auto* loaded = _builder.CreateLoad(llvmT, collPtr, "for.iter.move");
+                    _builder.CreateStore(loaded, slot);
+                    _builder.CreateStore(llvm::Constant::getNullValue(llvmT), collPtr);
+                    _movedVars.insert(varName);
+                    eraseScopeVar(varName);
+                    registerLocalVar(".for.iter." + std::to_string(_forInSerial++), slot, peeled);
+                    collPtr = slot;
+                }
+            }
+        }
+    }
+
+    FileNode* itemOwner = nullptr;
+    TypeInfo iterItemTy("IterItem", {std::make_shared<TypeInfo>(itemTy), std::make_shared<TypeInfo>(errTy)});
+    auto* itemDecl = names().lookupEnum(iterItemTy, &itemOwner);
+    if (!itemDecl || !itemDecl->isGeneric()) {
+        throwSemaGap(line, col);
+    }
+    if (itemOwner) iterItemTy.ownerModule = itemOwner->moduleName();
+
+    int itemTag = itemDecl->variantIndex("Item");
+    int endTag = itemDecl->variantIndex("End");
+    int errTag = itemDecl->variantIndex("Error");
+    if (itemTag < 0 || endTag < 0 || errTag < 0) {
+        throwSemaGap(line, col);
+    }
+
+    auto* enumLLVM = getLLVMType(iterItemTy);
+    auto* itemLLVM = getLLVMType(itemTy);
+    if (!enumLLVM || !itemLLVM) {
+        throwSemaGap(line, col);
+    }
+
+    FileNode* sdkFile = _riu ? _riu->sdkFile() : nullptr;
+    bool errIsSdkEnd = false;
+    if (errTy.name == "End" && errTy.genericArgs.empty() && sdkFile) {
+        auto* ed = names().lookupEnum(errTy, nullptr);
+        errIsSdkEnd = ed && ed == sdkFile->getEnumDecl("End");
+    }
+
+    llvm::Function* func = _builder.GetInsertBlock()->getParent();
+    llvm::BasicBlock* nextBB = llvm::BasicBlock::Create(_context, "for.iter.next");
+    llvm::BasicBlock* itemBB = llvm::BasicBlock::Create(_context, "for.iter.item");
+    llvm::BasicBlock* errBB = errIsSdkEnd ? nullptr : llvm::BasicBlock::Create(_context, "for.iter.err");
+    llvm::BasicBlock* exitBB = llvm::BasicBlock::Create(_context, "for.iter.exit");
+
+    auto* nextAlloca = _builder.CreateAlloca(enumLLVM, nullptr, "for.iter.itemval");
+    auto* itemAlloca = _builder.CreateAlloca(itemLLVM, nullptr, "for.item");
+
+    _builder.CreateBr(nextBB);
+
+    func->insert(func->end(), nextBB);
+    _builder.SetInsertPoint(nextBB);
+    llvm::Value* nextVal = compileIndexedMethodCall(collPtr, peeled, "next", {}, {}, line, col);
+    if (!nextVal) {
+        throwSemaGap(line, col);
+    }
+    _builder.CreateStore(nextVal, nextAlloca);
+    auto* tagPtr = _builder.CreateStructGEP(enumLLVM, nextAlloca, 0, "for.iter.tag.ptr");
+    auto* tag = _builder.CreateLoad(_builder.getInt32Ty(), tagPtr, "for.iter.tag");
+    auto* sw = _builder.CreateSwitch(tag, exitBB, 3);
+    sw->addCase(_builder.getInt32(itemTag), itemBB);
+    sw->addCase(_builder.getInt32(endTag), exitBB);
+    sw->addCase(_builder.getInt32(errTag), errBB ? errBB : exitBB);
+
+    auto loadPayload0 = [&](const TypeInfo& payloadTy, const string& variantName) -> llvm::Value* {
+        auto* variant = itemDecl->variant(variantName);
+        if (!variant || variant->payloadTypes().empty()) {
+            throwSemaGap(line, col);
+        }
+        vector<llvm::Type*> elemTys;
+        elemTys.reserve(variant->payloadTypes().size());
+        for (auto* t : variant->payloadTypes()) {
+            elemTys.push_back(getLLVMType(substEnumPayload(itemDecl, iterItemTy, t)));
+        }
+        auto* payloadStruct = llvm::StructType::get(_context, elemTys);
+        auto* payloadBufPtr = _builder.CreateStructGEP(enumLLVM, nextAlloca, 1, "for.iter.payload");
+        auto* fieldPtr = _builder.CreateStructGEP(payloadStruct, payloadBufPtr, 0, "for.iter.field");
+        auto* payloadLLVM = getLLVMType(payloadTy);
+        if (!payloadLLVM) {
+            throwSemaGap(line, col);
+        }
+        return _builder.CreateLoad(payloadLLVM, fieldPtr, "for.iter.payload.val");
+    };
+
+    func->insert(func->end(), itemBB);
+    _builder.SetInsertPoint(itemBB);
+    pushScopeFrame(); // 本轮 item；continue 拆掉，保留迭代器槽
+    auto* loadedItem = loadPayload0(itemTy, "Item");
+    _builder.CreateStore(loadedItem, itemAlloca);
+    _builder.CreateStore(llvm::Constant::getNullValue(enumLLVM), nextAlloca);
+    registerLocalVar(node->item().getText(), itemAlloca, itemTy);
+
+    _loopExitBlocks.push_back({.label = node->label().getText(),
+                               .exitBB = exitBB,
+                               .continueBB = nextBB,
+                               .frameDepthBeforeLoop = frameDepthBeforeLoop,
+                               .frameDepthBeforeBody = frameDepthBeforeBody});
+    compileStatementBlock(node->block());
+    _loopExitBlocks.pop_back();
+
+    if (scopeFrameDepth() > frameDepthBeforeBody) {
+        if (_builder.GetInsertBlock()->getTerminator()) {
+            popScopeFrameNoDestroy();
+        } else {
+            popScopeFrameAndDestroy();
+            _builder.CreateBr(nextBB);
+        }
+    } else if (!_builder.GetInsertBlock()->getTerminator()) {
+        _builder.CreateBr(nextBB);
+    }
+
+    if (errBB) {
+        func->insert(func->end(), errBB);
+        _builder.SetInsertPoint(errBB);
+        auto* loadedErr = loadPayload0(errTy, "Error");
+        _builder.CreateStore(llvm::Constant::getNullValue(enumLLVM), nextAlloca);
+        propagateForInIterError(loadedErr, errTy, frameDepthBeforeLoop, line, col);
+        if (!_builder.GetInsertBlock()->getTerminator()) {
+            _builder.CreateUnreachable();
+        }
+    }
+
+    func->insert(func->end(), exitBB);
+    _builder.SetInsertPoint(exitBB);
+    unwindScopeFramesTo(frameDepthBeforeLoop);
+    if (!exitBB->hasNPredecessorsOrMore(1)) {
+        _builder.CreateUnreachable();
+    }
+}
+
+void Compiler::propagateForInIterError(llvm::Value* errVal, const TypeInfo& errTy, size_t unwindDepth, int line,
+                                       int col) {
+    if (!errVal) {
+        throwSemaGap(line, col);
+    }
+    string eKey = fallibleErrKey(errTy);
+    if (!_tryCatchStack.empty()) {
+        auto& tryCtx = _tryCatchStack.back();
+        for (size_t i = 0; i < tryCtx.catchTypes.size(); ++i) {
+            if (tryCtx.catchTypes[i] == eKey) {
+                emitDestructorsAbove(unwindDepth);
+                _builder.CreateStore(errVal, tryCtx.armEAllocas[i]);
+                _builder.CreateBr(tryCtx.armEntryBBs[i]);
+                return;
+            }
+        }
+        throwSemaGap(line, col);
+    }
+
+    string callerErr;
+    TypeInfo callerRetType;
+    if (_currentFnNode && _currentFnNode->header()) {
+        if (_currentFnNode->header()->fallibleErrTypeNode()) {
+            callerErr = fallibleErrKey(applySubst(_currentFnNode->header()->fallibleErrTypeNode()->getType()));
+        }
+        if (_currentFnNode->header()->retType()) {
+            callerRetType = applySubst(_currentFnNode->header()->retType()->getType());
+        }
+    } else if (_currentLambdaForCapture) {
+        if (_currentLambdaForCapture->fallibleErrTypeNode()) {
+            callerErr = fallibleErrKey(_currentLambdaForCapture->fallibleErrTypeNode()->getType());
+        } else {
+            auto ft = _currentLambdaForCapture->getType();
+            if (ft.isFn() && ft.fnReturnType() && !ft.fnReturnType()->fallibleErr.empty()) {
+                callerErr = ft.fnReturnType()->fallibleErr;
+            }
+        }
+        if (_currentLambdaForCapture->retType()) {
+            callerRetType = _currentLambdaForCapture->retType()->getType();
+        } else {
+            auto ft = _currentLambdaForCapture->getType();
+            if (ft.isFn() && ft.fnReturnType()) {
+                callerRetType = ft.fnReturnType()->withoutFallible();
+            }
+        }
+    }
+    if (callerErr.empty()) {
+        throwSemaGap(line, col);
+    }
+    auto* outerRetTy = getFallibleRetStructType(callerRetType, callerErr);
+    llvm::Value* outerRet = llvm::UndefValue::get(outerRetTy);
+    outerRet = _builder.CreateInsertValue(outerRet, _builder.getInt1(true), {0});
+    unsigned outerErrIdx = 1;
+    if (!callerRetType.empty()) {
+        auto* okLLVMTy = getLLVMType(callerRetType);
+        outerRet = _builder.CreateInsertValue(outerRet, llvm::Constant::getNullValue(okLLVMTy), {1});
+        outerErrIdx = 2;
+    }
+    outerRet = _builder.CreateInsertValue(outerRet, errVal, {outerErrIdx});
+    callDestructorsForScope();
+    _builder.CreateRet(outerRet);
 }
 
 // ==================== 数组元素赋值语句编译 ====================

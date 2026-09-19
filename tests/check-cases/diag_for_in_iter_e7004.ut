@@ -1,0 +1,32 @@
+; require-sdk
+; Iter 的 E 与外层 `!` 不同型 → E7004
+enum NetErr {
+    Fail
+}
+
+enum OtherErr {
+    X
+}
+
+#Impl(Iter<i32, NetErr>)
+struct Stream {
+    _n i32
+
+    fn next() IterItem<i32, NetErr> {
+        ret IterItem:<i32, NetErr>::End
+    }
+}
+
+fn run() i32 ! OtherErr {
+    let s = Stream {
+        ._n = 0
+    }
+    for x in s { ; check: E7004
+        break;
+    }
+    ret 0
+}
+
+fn main() {
+    ret;
+}
