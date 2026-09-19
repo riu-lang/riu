@@ -11,6 +11,7 @@
 // - break / continue 语句
 // - 数组元素赋值语句
 
+#include "analyzer/spec_impl_checker.h"
 #include "ast/mangler.h"
 #include "ast/node/alias_node.h"
 #include "ast/node/enum_node.h"
@@ -21,6 +22,7 @@
 #include "sema/call_resolve.h"
 #include <algorithm>
 #include <memory>
+#include <optional>
 
 // ==================== Return 语句编译 ====================
 
@@ -1707,6 +1709,76 @@ void Compiler::compileContinueStatement(StatementContinueNode* node) {
     _builder.SetInsertPoint(unreachableBB);
 }
 
+llvm::Value* Compiler::compileIndexedMethodCall(llvm::Value* recvPtr, const TypeInfo& recvType, const string& method,
+                                                const vector<llvm::Value*>& args, const vector<TypeInfo>& argTypes,
+                                                int line, int col) {
+    if (!recvPtr) {
+        throwSemaGap(line, col);
+    }
+    TypeInfo actual = applySubst(recvType).peelRef();
+
+    if (actual.hasGenericArgs()) {
+        FileNode* owner = _file;
+        auto* baseDecl = names().lookupStruct(actual, /*includeBuiltin=*/false, &owner);
+        if (!owner) owner = _file;
+        if (baseDecl && baseDecl->isGeneric()) {
+            string effName = genericStruct(baseDecl, actual.genericArgs, owner, line);
+            auto* inst = _generic.structs().find(effName);
+            if (!inst || !inst->baseImpl) {
+                throwSemaGap(line, col);
+            }
+            FnNode* chosen = nullptr;
+            for (auto* m : inst->baseImpl->methods()) {
+                if (!m || !m->header()) continue;
+                if (m->header()->name().getText() != method) continue;
+                if (m->header()->params().size() != argTypes.size()) continue;
+                chosen = m;
+                break;
+            }
+            if (!chosen) {
+                throwSemaGap(line, col);
+            }
+            auto subst = inst->substMap();
+            vector<TypeInfo> formalTypes;
+            for (auto* p : chosen->header()->params()) {
+                if (p && p->type()) {
+                    formalTypes.push_back(p->type()->getType().substitute(subst));
+                }
+            }
+            TypeInfo retType;
+            if (chosen->header()->retType()) {
+                retType = chosen->header()->retType()->getType().substitute(subst);
+                retType = bindStructSelfType(retType, inst->baseDecl->name().getText(), effName);
+            }
+            auto* fn = getMethodFunction(effName, method, formalTypes, retType);
+            vector<llvm::Value*> methodArgs;
+            methodArgs.push_back(recvPtr);
+            methodArgs.insert(methodArgs.end(), args.begin(), args.end());
+            return _builder.CreateCall(fn, methodArgs, retType.empty() ? "" : method + ".ret");
+        }
+    }
+
+    vector<TypeInfo> methodParamTypes;
+    methodParamTypes.push_back(actual);
+    methodParamTypes.insert(methodParamTypes.end(), argTypes.begin(), argTypes.end());
+    auto* methodSymbol = names().lookupMethodWithParams(actual, method, methodParamTypes);
+    if (!methodSymbol) {
+        throwSemaGap(line, col);
+    }
+    auto& mparams = methodSymbol->params;
+    vector<TypeInfo> declaredParams;
+    if (mparams.size() > 1) {
+        declaredParams.assign(mparams.begin() + 1, mparams.end());
+    }
+    string ownerMod = methodSymbol->moduleName.empty() ? _file->moduleName() : methodSymbol->moduleName;
+    auto* fn = getMethodFunction(actual.name, method, declaredParams, methodSymbol->retType,
+                                 methodSymbol->fallibleErrType, /*isStatic=*/false, ownerMod);
+    vector<llvm::Value*> methodArgs;
+    methodArgs.push_back(recvPtr);
+    methodArgs.insert(methodArgs.end(), args.begin(), args.end());
+    return _builder.CreateCall(fn, methodArgs, methodSymbol->retType.empty() ? "" : method + ".ret");
+}
+
 void Compiler::compileForInStatement(StatementForInNode* node) {
     DEBUG_LOG("  Statement: ForIn item=" << node->item().getText());
 
@@ -1751,11 +1823,19 @@ void Compiler::compileForInStatement(StatementForInNode* node) {
 
     auto* sizeTy = getSizeType();
     llvm::Value* lenVal = nullptr;
+    std::optional<TypeInfo> indexedElem;
     if (peeled.isArrayGeneric()) {
         lenVal = _builder.CreateLoad(sizeTy, arrayLenFieldPtr(collPtr, "for"), "for.len");
     } else if (peeled.isArray()) {
         lenVal = llvm::ConstantInt::get(sizeTy, peeled.arraySize);
-    } else {
+    } else if (_riu) {
+        auto args = _riu->specImplChecker().findSpecImplArgs(peeled, "Indexed", _file);
+        if (args && args->size() == 1) {
+            indexedElem = applySubst((*args)[0]);
+            lenVal = compileIndexedMethodCall(collPtr, peeled, "len", {}, {}, node->getLineNumber(), node->getColumn());
+        }
+    }
+    if (!lenVal) {
         throwSemaGap(node->getLineNumber(), node->getColumn());
     }
 
@@ -1791,7 +1871,7 @@ void Compiler::compileForInStatement(StatementForInNode* node) {
         auto dataPtr =
             _builder.CreateLoad(llvm::PointerType::get(_context, 0), arrayDataFieldPtr(collPtr, "for"), "for.data");
         elemPtr = _builder.CreateGEP(elemLLVM, dataPtr, {iBody}, "for.elem");
-    } else {
+    } else if (peeled.isArray()) {
         if (!peeled.elementType) {
             throwSemaGap(node->getLineNumber(), node->getColumn());
         }
@@ -1802,6 +1882,17 @@ void Compiler::compileForInStatement(StatementForInNode* node) {
         if (elemTy.isRef()) {
             elemPtr = _builder.CreateLoad(getLLVMType(elemTy), elemPtr, "for.elem.ref");
         }
+    } else if (indexedElem) {
+        elemTy = *indexedElem;
+        vector<llvm::Value*> atArgs{iBody};
+        vector<TypeInfo> atTypes{TypeInfo("usize")};
+        elemPtr =
+            compileIndexedMethodCall(collPtr, peeled, "at", atArgs, atTypes, node->getLineNumber(), node->getColumn());
+        if (!elemPtr) {
+            throwSemaGap(node->getLineNumber(), node->getColumn());
+        }
+    } else {
+        throwSemaGap(node->getLineNumber(), node->getColumn());
     }
 
     TypeInfo itemTy("Ref", {std::make_shared<TypeInfo>(elemTy)});

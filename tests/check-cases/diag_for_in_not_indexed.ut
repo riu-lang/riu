@@ -1,0 +1,13 @@
+; 无 Indexed / 非数组 → 仍 E3160
+struct S {
+    n i32
+}
+
+fn main() {
+    let s = S {
+        .n = 1
+    }
+    for x in s { ; check: E3160
+        break;
+    }
+}

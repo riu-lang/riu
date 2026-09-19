@@ -428,3 +428,61 @@ fn test_for_in_continue() {
   }
   assert_eq(sum, 8)
 }
+
+; ==================== for-in Indexed ====================
+
+#NoCopy
+#Impl(Indexed<i32>)
+struct ForInBuf {
+  data Array<i32>
+
+  #Static
+  fn make(data Array<i32>) Self {
+    Self {
+      .data = move(data)
+    }
+  }
+
+  fn len() usize {
+    $.data.len()
+  }
+
+  fn at(i usize) i32& {
+    let d Array<i32>& = &$.data
+    ret d[i]
+  }
+}
+
+; 验证：`#Impl(Indexed<U>)` 隐藏索引 loop，item 为 U&
+#Test
+fn test_for_in_indexed_sum() {
+  let b = ForInBuf::make([1i32, 2i32, 3i32])
+  #Mut let sum i32 = 0
+  for x in b {
+    sum = sum + x
+  }
+  assert_eq(sum, 6)
+}
+
+; 验证：Indexed for-in 写穿
+#Test
+fn test_for_in_indexed_write_through() {
+  #Mut let b = ForInBuf::make([1i32, 2i32, 3i32])
+  for x in b {
+    x = x + 10
+  }
+  assert_eq(b.at(0usize), 11i32)
+  assert_eq(b.at(1usize), 12i32)
+  assert_eq(b.at(2usize), 13i32)
+}
+
+; 验证：Indexed 空集合零轮
+#Test
+fn test_for_in_indexed_empty() {
+  let b = ForInBuf::make([])
+  #Mut let n i32 = 0
+  for x in b {
+    n = n + 1
+  }
+  assert_eq(n, 0)
+}

@@ -77,6 +77,20 @@ sp<TypeInfo> forInElementType(const TypeInfo& coll) {
     if (coll.isArray()) return coll.elementType;
     return nullptr;
 }
+
+// for-in item 在包装块与 filled 块上各有一份 SymbolInfo 拷贝；体语句
+// nearest scope 走包装块，必须两处都写，否则 Indexed 的 U& 留在空类型上。
+void bindForInItemType(StatementBlockNode* blk, const string& name, const TypeInfo& ty) {
+    if (!blk || name.empty()) return;
+    if (auto* sym = blk->lookupSymbol(name)) {
+        sym->type = ty;
+    }
+    if (auto* p = blk->parentScope()) {
+        if (auto* sym = p->lookupSymbol(name)) {
+            sym->type = ty;
+        }
+    }
+}
 } // namespace
 
 void SemaPass::visitStmt(StatementNode* stmt) {
@@ -236,10 +250,16 @@ void SemaPass::visitForIn(StatementForInNode& node) {
             // 模板形参：等实例化后再查 E3160
         } else if (auto elem = forInElementType(at)) {
             TypeInfo itemTy("Ref", {std::make_shared<TypeInfo>(*elem)});
-            if (auto blk = forin->block()) {
-                if (auto* sym = blk->lookupSymbol(forin->item().getText())) {
-                    sym->type = std::move(itemTy);
-                }
+            bindForInItemType(forin->block(), forin->item().getText(), itemTy);
+        } else if (_riu) {
+            // 第二档：`#Impl(Indexed<U>)`，item = U&
+            auto args = _riu->specImplChecker().findSpecImplArgs(at, "Indexed", _file);
+            if (args && args->size() == 1) {
+                TypeInfo itemTy("Ref", {std::make_shared<TypeInfo>((*args)[0])});
+                bindForInItemType(forin->block(), forin->item().getText(), itemTy);
+            } else {
+                throw RiuError(forin->getLineNumber(), forin->getColumn(), ErrorCode::E3160,
+                               at.getFullName().empty() ? "<unknown>" : at.getFullName());
             }
         } else {
             throw RiuError(forin->getLineNumber(), forin->getColumn(), ErrorCode::E3160,

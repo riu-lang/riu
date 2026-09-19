@@ -65,6 +65,11 @@ public:
     bool boundSatisfied(const TypeInfo& typeArg, SpecDeclNode* draft, const std::string& specQualified,
                         const std::vector<TypeInfo>& specTypeArgs) const;
 
+    // 若 typeArg 有 `#Impl(specBareName<…>)`（按 visibleFrom 解析基名），返回 subst
+    // 后的 spec 实参。无 impl / 解析失败 → nullopt。#15 单 Impl：同一 (S, D) 至多一条。
+    std::optional<std::vector<TypeInfo>> findSpecImplArgs(const TypeInfo& typeArg, const std::string& specBareName,
+                                                          FileNode* visibleFrom) const;
+
     // §12.9 / DRAFT-dyn-draft §4 对象安全 (Phase 2a):
     // 给定 draft D, 判定其方法签名是否允许进入 Dyn<D> / Dyn<D&> 形态.
     // v1 第一轮规则: 任一 fnSig 的"非 receiver"参数类型 / 返回类型 (递归)

@@ -173,7 +173,7 @@ public:
     void accept(AstVisitor& v) override;
 };
 
-// `for item in expr { }`：item 为元素 T&；expr 须为 Array<T> / [T*N]（可 peelRef）
+// `for item in expr { }`：item 为元素 T&；expr 须为 Array<T> / [T*N] / Indexed（可 peelRef）
 class StatementForInNode : public StatementNode {
 protected:
     StatementBlockNode* _block;

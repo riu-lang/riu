@@ -47,6 +47,10 @@
     void compileAssignStatement(StatementAssignNode* node);                         // 编译赋值语句
     void compileLoopStatement(StatementLoopNode* node);                             // 编译 loop 语句
     void compileForInStatement(StatementForInNode* node);                           // 编译 for-in 语句
+    // Indexed for-in：对已物化的 receiver 调 `len` / `at`（无 AST）
+    llvm::Value* compileIndexedMethodCall(llvm::Value* recvPtr, const TypeInfo& recvType, const string& method,
+                                          const vector<llvm::Value*>& args, const vector<TypeInfo>& argTypes, int line,
+                                          int col);
     void compileBreakStatement(StatementBreakNode* node);                           // 编译 break 语句
     void compileContinueStatement(StatementContinueNode* node);                     // 编译 continue 语句
     void compileArraySetStatement(StatementSetNode* node);                          // 编译数组元素赋值语句

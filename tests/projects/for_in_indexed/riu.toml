@@ -1,0 +1,3 @@
+name = "for_in_indexed"
+version = "1.0.0"
+entry = "main.ut"

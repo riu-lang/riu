@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| 状态 | 待实施 |
+| 状态 | 实施中 |
 | 开 | 2026-09-13 |
 | 旧档 | 无。现 `for-in` 只 lower Array / `[T*N]`（§5.5.4）。草案 `#Spec struct Iter<T> { fn next() T? }` 见 [DRAFT-spec-unify.md](../draft/DRAFT-spec-unify.md) §3.1 / [#1.R]；**本条不用那份签名**。 |
 
@@ -162,4 +162,4 @@ loop {
 
 ## 落地
 
-- （未开始。建议切片：Indexed + Map/Set for-in → SDK `End` / `IterItem` + Iter + E3160 / Error 透传 → 可选 Range / `collect`。）
+- 2026-09-19（`notes/0.23`）：2.1 SDK `Indexed<T>`；for-in 第二档 `#Impl(Indexed<U>)` 隐藏索引 loop，`item = U&`，入口拍 `len`。回归：`for_in_indexed_*` / `diag_for_in_not_indexed`、`tests/projects/for_in_indexed`、`control_flow.test` Indexed。Map/Set / Iter / spec 回写未做。

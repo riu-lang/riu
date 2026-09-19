@@ -1,0 +1,69 @@
+use riu.core.*
+
+#NoCopy
+#Impl(Indexed<i32>)
+struct Buf {
+    data Array<i32>
+
+    #Static
+    fn make(data Array<i32>) Self {
+        Self {
+            .data = move(data)
+        }
+    }
+
+    fn len() usize {
+        $.data.len()
+    }
+
+    fn at(i usize) i32& {
+        let d Array<i32>& = &$.data
+        ret d[i]
+    }
+}
+
+#NoCopy
+#Impl(Indexed<T>)
+struct Slot<T> {
+    #Mut
+    v T
+
+    #Static
+    fn make(v T) Self {
+        Self {
+            .v = v
+        }
+    }
+
+    fn len() usize = 1usize
+    fn at(i usize) T& = &$.v
+}
+
+fn main() {
+    let b = Buf::make([1i32, 2i32, 3i32])
+    #Mut let sum i32 = 0
+    for x in b {
+        sum = sum + x
+    }
+    println(sum)
+
+    #Mut let w = Buf::make([1i32, 2i32])
+    for x in w {
+        x = x + 10
+    }
+    println(w.at(0usize))
+    println(w.at(1usize))
+
+    let empty = Buf::make([])
+    #Mut let n i32 = 0
+    for x in empty {
+        n = n + 1
+    }
+    println(n)
+
+    #Mut let s = Slot:<i32>::make(9)
+    for x in s {
+        x = 4
+    }
+    println(s.at(0usize))
+}

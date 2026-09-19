@@ -122,6 +122,14 @@ struct ToJson {
   fn to_json() String
 }
 
+; Indexed：按索引遍历。for-in 第二档认 `#Impl(Indexed<U>)`（#2）。
+; 只有签名。at 不叫 get：Map 已有 get(key K&) V?。
+#Spec
+struct Indexed<T> {
+  fn len() usize
+  fn at(i usize) T&
+}
+
 ; 内置基本类型声明见 num.ut（i8/u8/i16/u16/i32/u32/i64/u64/isize/usize/f64/f32）
 
 ; 内置泛型类型占位：实际布局与方法（_push/_len/... 等）由编译器合成

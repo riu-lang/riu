@@ -1,0 +1,25 @@
+; require-sdk
+; #2 2.1：开 impl `#Impl(Indexed<T>) struct Cell<T>`
+#Impl(Indexed<T>)
+struct Cell<T> {
+    #Mut
+    v T
+
+    #Static
+    fn make(v T) Self {
+        Self {
+            .v = v
+        }
+    }
+
+    fn len() usize = 1usize
+    fn at(i usize) T& = &$.v
+}
+
+fn main() {
+    #Mut let c = Cell:<i32>::make(7)
+    for x in c {
+        x = 8
+    }
+    ret;
+}

@@ -450,8 +450,8 @@ void SpecImplChecker::validateImpl(FileNode* implFile, StructImplNode* impl) {
 bool SpecImplChecker::sigEquivalent(FnHeaderNode* implMethod, FnHeaderNode* specSig,
                                     const std::map<std::string, TypeInfo>& subst) const {
 
-    auto implParams = implMethod->params();
-    auto specParams = specSig->params();
+    const auto& implParams = implMethod->params();
+    const auto& specParams = specSig->params();
     if (implParams.size() != specParams.size()) return false;
 
     for (size_t i = 0; i < implParams.size(); ++i) {
@@ -561,6 +561,52 @@ bool SpecImplChecker::boundSatisfied(const TypeInfo& typeArg, SpecDeclNode* draf
         return typeSatisfiesSpec(typeBare, draft, specTypeArgs);
     }
     return false;
+}
+
+std::optional<std::vector<TypeInfo>> SpecImplChecker::findSpecImplArgs(const TypeInfo& typeArg,
+                                                                       const std::string& specBareName,
+                                                                       FileNode* visibleFrom) const {
+    if (!_riu || specBareName.empty() || typeArg.isRef()) return std::nullopt;
+
+    auto& reg = _riu->specRegistry();
+    FileNode* from = visibleFrom ? visibleFrom : _riu->sdkFile();
+    auto resolved = from ? reg.resolve(specBareName, from) : std::nullopt;
+    if (!resolved) return std::nullopt;
+    const std::string& specQualified = resolved->qualifiedName;
+
+    const std::string& typeBare = typeArg.name;
+    auto tryFile = [&](FileNode* file) -> std::optional<std::vector<TypeInfo>> {
+        if (!file) return std::nullopt;
+        auto* impl = file->getStructImpl(typeBare);
+        if (!impl) return std::nullopt;
+        for (auto& dref : impl->specRefs()) {
+            auto r = reg.resolve(dref.name, file);
+            if (!r || r->qualifiedName != specQualified) continue;
+            std::map<std::string, TypeInfo> subst;
+            const auto& tps = impl->typeParams();
+            for (size_t i = 0; i < tps.size() && i < typeArg.genericArgs.size(); ++i) {
+                if (typeArg.genericArgs[i]) subst[tps[i]] = *typeArg.genericArgs[i];
+            }
+            return substSpecTypeArgs(dref.typeArgs, subst);
+        }
+        return std::nullopt;
+    };
+
+    std::set<FileNode*> processed;
+    auto run = [&](FileNode* f) -> std::optional<std::vector<TypeInfo>> {
+        if (!f || !processed.insert(f).second) return std::nullopt;
+        return tryFile(f);
+    };
+    if (auto sdk = _riu->sdkFile()) {
+        if (auto hit = run(sdk)) return hit;
+        for (auto* imp : sdk->wildcardImports()) {
+            if (auto hit = run(imp)) return hit;
+        }
+    }
+    for (auto& f : _riu->files()) {
+        if (auto hit = run(f)) return hit;
+    }
+    return std::nullopt;
 }
 
 // §12.9 / DRAFT-dyn-draft §4 对象安全 — Phase 2a.
