@@ -18,7 +18,12 @@ const Token& Named::name() const {
 }
 
 void ScopeNode::registerSymbol(const string& name, SymbolInfo info) {
-    _symbols[name] = std::move(info);
+    auto it = _symbols.find(name);
+    if (it != _symbols.end()) {
+        *it->second = std::move(info);
+        return;
+    }
+    _symbols.emplace(name, std::make_unique<SymbolInfo>(std::move(info)));
 }
 
 void ScopeNode::eraseSymbol(const string& name) {
@@ -26,7 +31,7 @@ void ScopeNode::eraseSymbol(const string& name) {
 }
 
 void ScopeNode::registerFnSymbol(const string& name, FnSymbolInfo info) {
-    _fnSymbols[name].push_back(std::move(info));
+    _fnSymbols[name].push_back(std::make_unique<FnSymbolInfo>(std::move(info)));
 }
 
 void ScopeNode::setParentScope(ScopeNode* scope) {
@@ -36,7 +41,7 @@ void ScopeNode::setParentScope(ScopeNode* scope) {
 SymbolInfo* ScopeNode::lookupSymbol(const string& name) {
     auto it = _symbols.find(name);
     if (it != _symbols.end()) {
-        return &it->second;
+        return it->second.get();
     }
     if (_parentScope) {
         return _parentScope->lookupSymbol(name);
@@ -47,7 +52,7 @@ SymbolInfo* ScopeNode::lookupSymbol(const string& name) {
 FnSymbolInfo* ScopeNode::lookupFnSymbol(const string& name) {
     auto it = _fnSymbols.find(name);
     if (it != _fnSymbols.end() && !it->second.empty()) {
-        return &it->second[0];
+        return it->second[0].get();
     }
     if (_parentScope) {
         return _parentScope->lookupFnSymbol(name);
@@ -58,19 +63,20 @@ FnSymbolInfo* ScopeNode::lookupFnSymbol(const string& name) {
 bool ScopeNode::matchFnParams(const FnSymbolInfo& fnInfo, const vector<TypeInfo>& paramTypes) const {
     if (fnInfo.params.size() != paramTypes.size()) return false;
     for (size_t i = 0; i < paramTypes.size(); ++i) {
-        if (fnInfo.params[i] == paramTypes[i]) continue;
-        if (fnInfo.params[i].isRef()) {
-            auto refElemType = fnInfo.params[i].refElementType();
+        const TypeInfo& p = fnInfo.paramType(i);
+        if (p == paramTypes[i]) continue;
+        if (p.isRef()) {
+            auto refElemType = p.refElementType();
             if (refElemType && *refElemType == paramTypes[i]) continue;
         }
-        if (fnInfo.params[i].isPtr() && paramTypes[i].isRef()) continue;
+        if (p.isPtr() && paramTypes[i].isRef()) continue;
         // Phase 7c (DRAFT §9.3): extern 边界 Ptr 形参接受堆句柄类型自动转换
-        if (fnInfo.isExternal && fnInfo.params[i].isPtr() && paramTypes[i].isRcHandle()) {
+        if (fnInfo.isExternal && p.isPtr() && paramTypes[i].isRcHandle()) {
             continue;
         }
         // Nullable<T> 形参接受 T 值实参（自动包装 T → {_has=true, _value=T}）
-        if (fnInfo.params[i].isNullable()) {
-            auto inner = fnInfo.params[i].nullableInnerType();
+        if (p.isNullable()) {
+            auto inner = p.nullableInnerType();
             if (inner && *inner == paramTypes[i]) continue;
         }
         return false;
@@ -82,8 +88,8 @@ FnSymbolInfo* ScopeNode::lookupFnSymbolWithParams(const string& name, const vect
     auto it = _fnSymbols.find(name);
     if (it != _fnSymbols.end()) {
         for (auto& fnInfo : it->second) {
-            if (matchFnParams(fnInfo, paramTypes)) {
-                return &fnInfo;
+            if (matchFnParams(*fnInfo, paramTypes)) {
+                return fnInfo.get();
             }
         }
     }
@@ -97,7 +103,7 @@ void ScopeNode::collectFnOverloads(const string& name, vector<FnSymbolInfo*>& ou
     auto it = _fnSymbols.find(name);
     if (it != _fnSymbols.end()) {
         for (auto& fn : it->second) {
-            out.push_back(&fn);
+            out.push_back(fn.get());
         }
     }
     if (_parentScope) {
@@ -125,11 +131,11 @@ bool ScopeNode::hasFnSymbol(const string& name) const {
     return false;
 }
 
-const map<string, SymbolInfo>& ScopeNode::localSymbols() const {
+const SymbolTable& ScopeNode::localSymbols() const {
     return _symbols;
 }
 
-const map<string, vector<FnSymbolInfo>>& ScopeNode::localFnSymbols() const {
+const FnSymbolTable& ScopeNode::localFnSymbols() const {
     return _fnSymbols;
 }
 

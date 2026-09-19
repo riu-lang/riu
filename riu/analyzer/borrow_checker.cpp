@@ -28,12 +28,12 @@ void BorrowChecker::begin(FnNode* fn, const std::string& selfStructName) {
         auto pname = param->name().getText();
         declare(pname);
         if (param->type()) {
-            auto ty = param->type()->getType();
+            const TypeInfo& ty = param->type()->getType();
             // T& / Dyn<D&> 形参：根即参数自身。Dyn<D&> 不是 Ref<T>，不能作 T& 返回源。
             if (ty.isRef() || ty.isDynBorrow()) {
                 _refToRoot[pname] = pname;
             } else {
-                _rootType[pname] = ty;
+                _rootType[pname] = &ty;
             }
         }
     }
@@ -291,7 +291,7 @@ void BorrowChecker::afterDeclareAssign(StatementDeclareAssignNode* da, int line)
                 }
             }
         }
-        _rootType[vname] = varType;
+        _rootType[vname] = &internType(varType);
     }
 }
 
@@ -305,26 +305,26 @@ void BorrowChecker::onAssign(StatementAssignNode* as, int line) {
     // DRAFT-heap-types §8.3a.3.2 (Phase 2.8)：Heap<T> 局部重赋
     // RHS 必须是 heap:<T>(...) 构造调用（同 decl-assign 理由）。
     auto rit = _rootType.find(lhsName);
-    if (rit != _rootType.end() && rit->second.isHeap() && as->expr()) {
+    if (rit != _rootType.end() && rit->second->isHeap() && as->expr()) {
         bool ok = false;
         if (auto call = dynamic_cast<ExprCallNode*>(as->expr())) {
             auto rt = call->getType();
-            if (rt.isHeap() && rt == rit->second) ok = true;
+            if (rt.isHeap() && rt == *rit->second) ok = true;
         }
         if (!ok) {
-            auto inner = rit->second.heapElementType();
+            auto inner = rit->second->heapElementType();
             std::string innerName = inner ? inner->name : std::string("?");
             throw RiuError(line, ErrorCode::E4024, innerName, lhsName, innerName);
         }
     }
     // Phase 3d.1：Heap<T>? 顶层重赋同样走白名单（同上）。
-    else if (rit != _rootType.end() && rit->second.isNullable() && as->expr()) {
-        auto inner = rit->second.nullableInnerType();
+    else if (rit != _rootType.end() && rit->second->isNullable() && as->expr()) {
+        auto inner = rit->second->nullableInnerType();
         if (inner && inner->isHeap()) {
             bool ok = isFlexibleNullExpr(as->expr());
             if (!ok) {
                 if (auto call = dynamic_cast<ExprCallNode*>(as->expr())) {
-                    if (call->getType() == rit->second) ok = true;
+                    if (call->getType() == *rit->second) ok = true;
                 }
             }
             if (!ok) {
@@ -360,8 +360,8 @@ void BorrowChecker::afterRet(StatementRetNode* ret, int line) {
             if (auto obj = dynamic_cast<LiteralObjNode*>(litE->literal())) {
                 name = obj->getValue().getText();
                 auto it = _rootType.find(name);
-                if (it != _rootType.end() && it->second.isHeap()) {
-                    auto inner = it->second.heapElementType();
+                if (it != _rootType.end() && it->second->isHeap()) {
+                    auto inner = it->second->heapElementType();
                     if (inner && inner->name == _returnHeapInnerName) {
                         nrvoEligible = true;
                     }
@@ -391,7 +391,7 @@ void BorrowChecker::onCall(ExprCallNode* call) {
 
     // 类型必须是 Array<T>
     auto tit = _rootType.find(rootName);
-    if (tit == _rootType.end() || !tit->second.isArrayGeneric()) return;
+    if (tit == _rootType.end() || !tit->second->isArrayGeneric()) return;
 
     // 该根对象必须有活跃借用
     auto bit = _activeBorrows.find(rootName);
@@ -418,12 +418,12 @@ void BorrowChecker::enterLambda(LambdaExprNode* lam) {
         auto pname = slot.name.getText();
         declare(pname);
         if (slot.type) {
-            auto ty = slot.type->getType();
+            const TypeInfo& ty = slot.type->getType();
             if (ty.isRef()) {
                 _refToRoot[pname] = pname;
                 saved.addedRefs.push_back(pname);
             } else {
-                _rootType[pname] = ty;
+                _rootType[pname] = &ty;
             }
         }
     }

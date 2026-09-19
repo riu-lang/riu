@@ -228,7 +228,7 @@ bool isOuterLocalCapture(ScopeNode* from, SymbolInfo* sym, const string& name) {
     for (auto* sc = from; sc; sc = sc->parentScope()) {
         const auto& locs = sc->localSymbols();
         auto it = locs.find(name);
-        if (it != locs.end() && &it->second == sym) {
+        if (it != locs.end() && it->second.get() == sym) {
             return dynamic_cast<FileNode*>(sc) == nullptr;
         }
     }
@@ -294,7 +294,7 @@ bool isMorphologicalGenericCode(const char* code) {
 std::optional<TypeInfo> instantiatedMethodRet(FnNode* fn, FileNode* file, FileNode* sdk, const TypeInfo& rawRecv,
                                               const TypeInfo& instRecv, const string& member,
                                               const std::map<string, TypeInfo>* instSubst) {
-    TypeInfo peeledRaw = rawRecv.peelAutoDeref();
+    const TypeInfo& peeledRaw = rawRecv.peelAutoDeref();
     if (typeParamBoundHasMethod(fn, file, sdk, peeledRaw.name, member) && fn && fn->header()) {
         auto hdr = fn->header();
         const auto& tps = hdr->typeParams();
@@ -329,7 +329,7 @@ std::optional<TypeInfo> instantiatedMethodRet(FnNode* fn, FileNode* file, FileNo
             }
         }
     }
-    TypeInfo t = instRecv.peelAutoDeref();
+    const TypeInfo& t = instRecv.peelAutoDeref();
     if (t.isArray() || t.isArrayGeneric()) {
         if (auto* spec = sema::lookupInstanceBuiltin(t, member)) {
             return sema::builtinMethodReturnType(*spec, t);
@@ -343,7 +343,7 @@ std::optional<TypeInfo> instantiatedMethodRet(FnNode* fn, FileNode* file, FileNo
     if (t.name.empty()) return std::nullopt;
     auto* fsym = sema::NameResolver(file, sdk).lookupFn(t.name + "." + member);
     if (!fsym) return std::nullopt;
-    return fsym->retType;
+    return fsym->retTypeRef();
 }
 
 bool receiverHasMethod(const TypeInfo& recv, const string& member, FileNode* file, FileNode* sdk) {
@@ -449,7 +449,7 @@ bool sameFnSig(const FnSymbolInfo* a, const FnSymbolInfo* b) {
     if (a->moduleName != b->moduleName) return false;
     if (a->params.size() != b->params.size()) return false;
     for (size_t i = 0; i < a->params.size(); ++i) {
-        if (!(a->params[i] == b->params[i])) return false;
+        if (!(a->paramType(i) == b->paramType(i))) return false;
     }
     return true;
 }
@@ -476,10 +476,10 @@ bool agreedArityParamTypes(const vector<FnSymbolInfo*>& cands, size_t wantArity,
     out.assign(n, TypeInfo());
     bool any = false;
     for (size_t i = 0; i < n; ++i) {
-        const TypeInfo& t0 = uniq[0]->params[skip + i];
+        const TypeInfo& t0 = uniq[0]->paramType(skip + i);
         bool all = true;
         for (size_t k = 1; k < uniq.size(); ++k) {
-            if (!(uniq[k]->params[skip + i] == t0)) {
+            if (!(uniq[k]->paramType(skip + i) == t0)) {
                 all = false;
                 break;
             }
@@ -503,7 +503,7 @@ void applyLambdaFnExpected(LambdaExprNode* lam, const TypeInfo& fnTy) {
     for (size_t k = 0; k < lam->params().size() && k < fps.size(); ++k) {
         if (lam->params()[k].type) continue;
         if (auto* psym = sc->lookupSymbol(lam->params()[k].name.getText())) {
-            if (fps[k]) psym->type = *fps[k];
+            if (fps[k]) psym->setType(*fps[k]);
         }
     }
 }
@@ -586,14 +586,14 @@ bool refRetSourceInner(ExprNode* expr, FnNode* fn, TypeInfo& srcInner) {
             auto vname = objLit->getValue().getText();
             auto* sym = lookupRetVar(vname, expr, fn);
             const bool isDollar = (vname == "$");
-            const bool isRefVar = sym && sym->type.isRef();
+            const bool isRefVar = sym && sym->type->isRef();
             if (isDollar || isRefVar) {
                 if (isDollar) {
-                    srcInner = sym ? sym->type : TypeInfo();
+                    srcInner = sym ? *sym->type : TypeInfo();
                     if (srcInner.isRef()) {
                         if (auto in = srcInner.refElementType()) srcInner = *in;
                     }
-                } else if (auto in = sym->type.refElementType()) {
+                } else if (auto in = sym->type->refElementType()) {
                     srcInner = *in;
                 }
                 return true;
@@ -616,7 +616,7 @@ bool refRetSourceInner(ExprNode* expr, FnNode* fn, TypeInfo& srcInner) {
 
 bool isAssignTypeParam(const TypeInfo& t, const std::set<std::string>& typeParams) {
     if (typeParams.empty()) return false;
-    TypeInfo peeled = t.peelAutoDeref();
+    const TypeInfo& peeled = t.peelAutoDeref();
     return peeled.isNormal() && !peeled.name.empty() && typeParams.count(peeled.name) > 0;
 }
 
@@ -878,7 +878,7 @@ void checkCallArgAgainst(ExprNode* arg, const TypeInfo& want, int line, int col,
     if (w0.empty() || w0.isSelf() || w0.isFn()) return;
     if (stillTemplateType(w0, typeParams, subst)) return;
 
-    TypeInfo peeledWant = w0.peelRef();
+    const TypeInfo& peeledWant = w0.peelRef();
     if (isFlexibleIntExpr(arg) && isIntTypeName(peeledWant.name)) {
         tryInferIntType(arg, peeledWant);
         return;
@@ -938,8 +938,8 @@ bool argIsRefIdentMatching(ExprNode* arg, const TypeInfo& wantRef) {
     auto* sc = arg->findNearestScope();
     if (!sc) return false;
     auto* sym = sc->lookupSymbol(obj->getValue().getText());
-    if (!sym || !sym->type.isRef()) return false;
-    auto se = sym->type.refElementType();
+    if (!sym || !sym->type->isRef()) return false;
+    auto se = sym->type->refElementType();
     return se && *se == *inner;
 }
 

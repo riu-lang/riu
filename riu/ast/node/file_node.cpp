@@ -157,10 +157,10 @@ void FileNode::addFunction(FnNode* function) {
 }
 
 void FileNode::syncFnSymbolsFromAst() {
-    auto namesMatch = [](const vector<TypeInfo>& a, const vector<TypeInfo>& b) {
+    auto namesMatch = [](const vector<const TypeInfo*>& a, const vector<TypeInfo>& b) {
         if (a.size() != b.size()) return false;
         for (size_t i = 0; i < a.size(); ++i) {
-            if (a[i].getFullName() != b[i].getFullName()) return false;
+            if (a[i]->getFullName() != b[i].getFullName()) return false;
         }
         return true;
     };
@@ -169,8 +169,8 @@ void FileNode::syncFnSymbolsFromAst() {
         if (it == _fnSymbols.end()) return;
         FnSymbolInfo* target = nullptr;
         for (auto& cand : it->second) {
-            if (namesMatch(cand.params, params)) {
-                target = &cand;
+            if (namesMatch(cand->params, params)) {
+                target = cand.get();
                 break;
             }
         }
@@ -178,16 +178,15 @@ void FileNode::syncFnSymbolsFromAst() {
             FnSymbolInfo* only = nullptr;
             int n = 0;
             for (auto& cand : it->second) {
-                if (cand.params.size() == params.size()) {
-                    only = &cand;
+                if (cand->params.size() == params.size()) {
+                    only = cand.get();
                     ++n;
                 }
             }
             if (n == 1) target = only;
         }
         if (!target) return;
-        target->params = std::move(params);
-        target->retType = std::move(ret);
+        target->setSignature(std::move(params), std::move(ret));
         target->fallibleErrType = fallible;
     };
 
@@ -659,15 +658,15 @@ void FileNode::addUseSpec(UseSpec spec) {
 SymbolInfo* FileNode::lookupSymbol(const string& name) {
     auto it = _symbols.find(name);
     if (it != _symbols.end()) {
-        return &it->second;
+        return it->second.get();
     }
     for (auto* imp : _wildcardImports) {
         auto jt = imp->_symbols.find(name);
-        if (jt != imp->_symbols.end() && isOwnModuleName(imp, jt->second.moduleName)) {
+        if (jt != imp->_symbols.end() && isOwnModuleName(imp, jt->second->moduleName)) {
             // 他模块 `_` 前缀全局变量 / `#Cval` 不可见（§10.3.2）。
             // 函数仍查：SDK `__riu_*` 与 call_resolve 的 E6006 都走这条。
-            if (jt->second.isPrivate && jt->second.kind == SymbolKind::Variable) continue;
-            return &jt->second;
+            if (jt->second->isPrivate && jt->second->kind == SymbolKind::Variable) continue;
+            return jt->second.get();
         }
     }
     if (_parentScope) {
@@ -679,13 +678,13 @@ SymbolInfo* FileNode::lookupSymbol(const string& name) {
 FnSymbolInfo* FileNode::lookupFnSymbol(const string& name) {
     auto it = _fnSymbols.find(name);
     if (it != _fnSymbols.end() && !it->second.empty()) {
-        return &it->second[0];
+        return it->second[0].get();
     }
     for (auto* imp : _wildcardImports) {
         auto jt = imp->_fnSymbols.find(name);
         if (jt != imp->_fnSymbols.end()) {
             for (auto& fn : jt->second) {
-                if (isOwnModuleName(imp, fn.moduleName)) return &fn;
+                if (isOwnModuleName(imp, fn->moduleName)) return fn.get();
             }
         }
     }
@@ -699,14 +698,14 @@ FnSymbolInfo* FileNode::lookupFnSymbolWithParams(const string& name, const vecto
     auto it = _fnSymbols.find(name);
     if (it != _fnSymbols.end()) {
         for (auto& fnInfo : it->second) {
-            if (matchFnParams(fnInfo, paramTypes)) return &fnInfo;
+            if (matchFnParams(*fnInfo, paramTypes)) return fnInfo.get();
         }
     }
     for (auto* imp : _wildcardImports) {
         auto jt = imp->_fnSymbols.find(name);
         if (jt != imp->_fnSymbols.end()) {
             for (auto& fnInfo : jt->second) {
-                if (isOwnModuleName(imp, fnInfo.moduleName) && matchFnParams(fnInfo, paramTypes)) return &fnInfo;
+                if (isOwnModuleName(imp, fnInfo->moduleName) && matchFnParams(*fnInfo, paramTypes)) return fnInfo.get();
             }
         }
     }
@@ -732,7 +731,7 @@ void FileNode::collectFnOverloads(const string& name, vector<FnSymbolInfo*>& out
     auto sameParams = [](FnSymbolInfo* a, FnSymbolInfo* b) -> bool {
         if (a->params.size() != b->params.size()) return false;
         for (size_t i = 0; i < a->params.size(); ++i) {
-            if (!(a->params[i] == b->params[i])) return false;
+            if (!(a->paramType(i) == b->paramType(i))) return false;
         }
         return true;
     };
@@ -755,10 +754,10 @@ void FileNode::collectFnOverloads(const string& name, vector<FnSymbolInfo*>& out
         vector<FnSymbolInfo*> own;
         vector<FnSymbolInfo*> injected;
         for (auto& fn : it->second) {
-            if (fn.moduleName.empty() || fn.moduleName == _moduleName)
-                own.push_back(&fn);
+            if (fn->moduleName.empty() || fn->moduleName == _moduleName)
+                own.push_back(fn.get());
             else
-                injected.push_back(&fn);
+                injected.push_back(fn.get());
         }
         for (auto* fn : own)
             addIfNew(fn);
@@ -773,7 +772,7 @@ void FileNode::collectFnOverloads(const string& name, vector<FnSymbolInfo*>& out
         auto jt = imp->_fnSymbols.find(name);
         if (jt != imp->_fnSymbols.end()) {
             for (auto& fn : jt->second)
-                if (isOwnModuleName(imp, fn.moduleName) && !hasSemanticDup(&fn)) addIfNew(&fn);
+                if (isOwnModuleName(imp, fn->moduleName) && !hasSemanticDup(fn.get())) addIfNew(fn.get());
         }
     }
 

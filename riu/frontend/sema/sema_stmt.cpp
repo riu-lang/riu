@@ -83,11 +83,11 @@ sp<TypeInfo> forInElementType(const TypeInfo& coll) {
 void bindForInItemType(StatementBlockNode* blk, const string& name, const TypeInfo& ty) {
     if (!blk || name.empty()) return;
     if (auto* sym = blk->lookupSymbol(name)) {
-        sym->type = ty;
+        sym->setType(ty);
     }
     if (auto* p = blk->parentScope()) {
         if (auto* sym = p->lookupSymbol(name)) {
-            sym->type = ty;
+            sym->setType(ty);
         }
     }
 }
@@ -107,7 +107,7 @@ string forInCallerFallibleErr(FnNode* fn, LambdaExprNode* lam) {
         return fallibleErrKey(lam->fallibleErrTypeNode()->getType());
     }
     if (lam) {
-        auto ft = lam->getType();
+        const TypeInfo& ft = lam->getType();
         if (ft.isFn() && ft.fnReturnType() && !ft.fnReturnType()->fallibleErr.empty()) {
             return ft.fnReturnType()->fallibleErr;
         }
@@ -410,7 +410,7 @@ void SemaPass::visitAssign(StatementAssignNode& node) {
             if (!sym) {
                 sym = _currentFn->lookupSymbol(objName);
             }
-            if (sym && !sym->writeable && !sym->type.isRef()) {
+            if (sym && !sym->writeable && !sym->type->isRef()) {
                 throw RiuError(as->getLineNumber(), as->getColumn(), ErrorCode::E3093, objName);
             }
         }
@@ -464,7 +464,7 @@ void SemaPass::visitAssign(StatementAssignNode& node) {
             sym = _currentFn->lookupSymbol(objName);
         }
         if (sym) {
-            TypeInfo curType = sym->type;
+            TypeInfo curType = *sym->type;
             if (curType.isRef()) {
                 if (auto inner = curType.refElementType()) curType = *inner;
             }
@@ -544,11 +544,11 @@ void SemaPass::visitAssign(StatementAssignNode& node) {
                 members.reserve(as->subs().size());
                 for (auto& t : as->subs())
                     members.push_back(t.getText());
-                tryValidateFieldChain(sym->type, members, as->getLineNumber(), as->getColumn());
-                tryValidateReflectFieldValueWrite(objName, sym->type, members, as->getLineNumber(), as->getColumn());
+                tryValidateFieldChain(*sym->type, members, as->getLineNumber(), as->getColumn());
+                tryValidateReflectFieldValueWrite(objName, *sym->type, members, as->getLineNumber(), as->getColumn());
             }
-            TypeInfo cur = applyInstSubst(sym->type).peelAutoDeref();
-            TypeInfo lastRaw = applyInstSubst(sym->type).peelRef();
+            TypeInfo cur = applyInstSubst(*sym->type).peelAutoDeref();
+            TypeInfo lastRaw = applyInstSubst(*sym->type).peelRef();
             bool ok = true;
             auto isPureDigits = [](const string& s) {
                 return !s.empty() && std::ranges::all_of(s, [](char c) { return c >= '0' && c <= '9'; });
@@ -752,6 +752,11 @@ void SemaPass::visitDeclareAssign(StatementDeclareAssignNode& node) {
             throw RiuError(da->getLineNumber(), da->getColumn(), ErrorCode::E3067, "");
         }
     }
+    // 先 visitExpr 再 getType：无标注 let 的类型在 builder 里是空槽，
+    // 由 refreshInferredLetType 回填。若先 getType 整棵 RHS（如 match 块），
+    // 块内 `let rr = r * r` 仍空，随后 `3.14 * rr` 会 E3001。
+    if (da->expr()) visitExpr(da->expr(), daExpPtr);
+    refreshInferredLetType(da);
     if (da->varType() && _currentFn && da->expr()) {
         auto varType = applyInstSubst(da->varType()->getType());
         // Bucket 6 收口+ (CURRENT-check.md): 目标类型驱动的形态校验.
@@ -819,8 +824,8 @@ void SemaPass::visitDeclareAssign(StatementDeclareAssignNode& node) {
                     if (auto litObj = dynamic_cast<LiteralObjNode*>(litExpr->literal())) {
                         string srcName = litObj->getValue().getText();
                         SymbolInfo* sym = lookupRetVar(srcName, da, _currentFn);
-                        if (!sym || !sym->type.isRef() || !sym->type.refElementType() ||
-                            *sym->type.refElementType() != *innerType) {
+                        if (!sym || !sym->type->isRef() || !sym->type->refElementType() ||
+                            *sym->type->refElementType() != *innerType) {
                             throw RiuError(da->getLineNumber(), da->getColumn(), ErrorCode::E3018, srcName,
                                            innerType->name)
                                 .withHint(std::format("`{}` 不是 {}& 类型，无法 copy-bind 到此声明；改写为 "
@@ -915,8 +920,6 @@ void SemaPass::visitDeclareAssign(StatementDeclareAssignNode& node) {
             }
         }
     }
-    if (da->expr()) visitExpr(da->expr(), daExpPtr);
-    refreshInferredLetType(da);
     // Phase C：句柄声明形态必须在 visitExpr 带靶向类型之后——
     // if/match 块末尾数组字面量先走 E3009，再查非 Array 的 E3064。
     if (da->varType() && _currentFn && da->expr()) {

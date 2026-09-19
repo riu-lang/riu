@@ -86,16 +86,16 @@ void registerLastSegModuleAlias(FileNode* file, const string& alias, FileNode* t
 void injectFileWildcard(FileNode* file, FileNode* target, const string& childMod) {
     for (auto& [name, overloads] : target->localFnSymbols()) {
         for (auto& fnInfo : overloads) {
-            if (fnInfo.moduleName != target->moduleName()) continue;
-            if (fnInfo.isPrivate) continue;
-            file->registerFnSymbol(name, fnInfo);
+            if (fnInfo->moduleName != target->moduleName()) continue;
+            if (fnInfo->isPrivate) continue;
+            file->registerFnSymbol(name, *fnInfo);
         }
     }
     for (auto& [name, sym] : target->localSymbols()) {
-        if (sym.moduleName != target->moduleName()) continue;
-        if (sym.isPrivate) continue;
+        if (sym->moduleName != target->moduleName()) continue;
+        if (sym->isPrivate) continue;
         if (file->localSymbols().count(name)) continue;
-        file->registerSymbol(name, sym);
+        file->registerSymbol(name, *sym);
     }
     file->addWildcardImport(target);
     for (auto* decl : target->getStructDecls()) {
@@ -655,7 +655,7 @@ void RdBuilder::addUse(rd::NodeId id) {
 
     if (!wildcard) {
         if (file->localSymbols().contains(alias)) {
-            auto kind = file->localSymbols().at(alias).kind;
+            auto kind = file->localSymbols().at(alias)->kind;
             bool l1Type =
                 file->localStructDecl(alias, true) || file->localEnumDecl(alias) || file->localAliasDecl(alias);
             if (l1Type || kind == SymbolKind::Module || kind == SymbolKind::Package || kind == SymbolKind::Function) {
@@ -722,16 +722,16 @@ void RdBuilder::addUse(rd::NodeId id) {
     auto imported = _riu.loadModule(modName, line);
     for (auto& [name, overloads] : imported->localFnSymbols()) {
         for (auto& fnInfo : overloads) {
-            if (fnInfo.moduleName != imported->moduleName()) continue;
-            if (fnInfo.isPrivate) continue;
-            file->registerFnSymbol(name, fnInfo);
+            if (fnInfo->moduleName != imported->moduleName()) continue;
+            if (fnInfo->isPrivate) continue;
+            file->registerFnSymbol(name, *fnInfo);
         }
     }
     for (auto& [name, sym] : imported->localSymbols()) {
-        if (sym.moduleName != imported->moduleName()) continue;
-        if (sym.isPrivate) continue;
+        if (sym->moduleName != imported->moduleName()) continue;
+        if (sym->isPrivate) continue;
         if (file->localSymbols().count(name)) continue;
-        file->registerSymbol(name, sym);
+        file->registerSymbol(name, *sym);
     }
     file->addWildcardImport(imported);
     for (auto* decl : imported->getStructDecls()) {

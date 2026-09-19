@@ -247,7 +247,7 @@ void SemaPass::run() {
             }
             noteConcreteGenericType(gc->getType());
             if (gc->value()) {
-                TypeInfo ty = gc->getType();
+                const TypeInfo& ty = gc->getType();
                 inferFlexibleIntForType(gc->value(), ty);
                 auto value = cvalEv.eval(gc->value());
                 Token nm = gc->name();
@@ -272,7 +272,7 @@ void SemaPass::run() {
             }
             noteConcreteGenericType(gv->getType());
             if (gv->value()) {
-                TypeInfo ty = gv->getType();
+                const TypeInfo& ty = gv->getType();
                 inferFlexibleIntForType(gv->value(), ty);
                 if (auto cv = cvalEv.eval(gv->value())) {
                     gv->setConstValue(std::move(*cv));
@@ -483,6 +483,18 @@ void SemaPass::visitBlock(StatementBlockNode* block, const TypeInfo* expected) {
     if (!block) return;
     for (auto& s : block->statements()) {
         visitStmt(s);
+        // buildBlock 先在包装块登记 let，再拷一份到 filled。refreshInferredLetType
+        // 只写 nearest（包装块）；结果表达式若走 filled 会看到空类型。两处都写。
+        if (auto* da = dynamic_cast<StatementDeclareAssignNode*>(s)) {
+            if (da->varType() || !da->expr()) continue;
+            const string name = da->name().getText();
+            auto it = block->localSymbols().find(name);
+            if (it == block->localSymbols().end() || it->second->kind != SymbolKind::Variable) continue;
+            auto* from = da->findNearestScope();
+            if (!from) continue;
+            auto* src = from->lookupSymbol(name);
+            if (src && src->type && !src->type->empty()) it->second->setType(*src->type);
+        }
     }
     if (block->hasResult()) {
         visitExpr(block->resultExpr(), expected);
@@ -490,7 +502,7 @@ void SemaPass::visitBlock(StatementBlockNode* block, const TypeInfo* expected) {
 }
 
 bool SemaPass::isCurrentTypeParam(const TypeInfo& t) const {
-    TypeInfo peeled = t.peelAutoDeref();
+    const TypeInfo& peeled = t.peelAutoDeref();
     if (!peeled.isNormal() || peeled.name.empty()) return false;
     return _currentTypeParams.count(peeled.name) > 0;
 }
@@ -632,16 +644,18 @@ void SemaPass::checkGenericBodyInst(FnNode* fn, const map<string, TypeInfo>& sub
     // 避免调用方文件里的同名 struct 抢走字段查找。
     if (auto* owner = fn->enclosingFile()) {
         if (auto* dollar = fn->lookupSymbol("$")) {
-            if (dollar->type.isRef()) {
-                if (auto inner = dollar->type.refElementType()) {
+            if (dollar->type->isRef()) {
+                if (auto inner = dollar->type->refElementType()) {
                     if (inner->ownerModule.empty()) {
                         TypeInfo owned = *inner;
                         owned.ownerModule = owner->moduleName();
-                        dollar->type = internType(TypeInfo("Ref", {internTypeSp(std::move(owned))}));
+                        dollar->setType(TypeInfo("Ref", {internTypeSp(std::move(owned))}));
                     }
                 }
-            } else if (dollar->type.ownerModule.empty()) {
-                dollar->type.ownerModule = owner->moduleName();
+            } else if (dollar->type->ownerModule.empty()) {
+                TypeInfo t = *dollar->type;
+                t.ownerModule = owner->moduleName();
+                dollar->setType(std::move(t));
             }
         }
     }
@@ -675,14 +689,14 @@ void SemaPass::validateExternFns() {
     const string& mod = _file->moduleName();
     for (auto& [name, overloads] : _file->localFnSymbols()) {
         for (auto& fn : overloads) {
-            if (!fn.isExternal) continue;
-            if (!fn.moduleName.empty() && fn.moduleName != mod) continue;
-            const int line = fn.declLine > 0 ? fn.declLine : 1;
-            for (auto& p : fn.params) {
-                checkExternCLayoutType(p, fn.name, "parameters", line);
+            if (!fn->isExternal) continue;
+            if (!fn->moduleName.empty() && fn->moduleName != mod) continue;
+            const int line = fn->declLine > 0 ? fn->declLine : 1;
+            for (auto* p : fn->params) {
+                checkExternCLayoutType(*p, fn->name, "parameters", line);
             }
-            if (!fn.retType.empty()) {
-                checkExternCLayoutType(fn.retType, fn.name, "return type", line);
+            if (!fn->retTypeRef().empty()) {
+                checkExternCLayoutType(fn->retTypeRef(), fn->name, "return type", line);
             }
         }
     }
@@ -707,7 +721,7 @@ void SemaPass::validateExternFns() {
         if (!f) return;
         for (auto& [_, overloads] : f->localFnSymbols()) {
             for (auto& fn : overloads)
-                consider(fn);
+                consider(*fn);
         }
     };
     for (ScopeNode* p = _file->parentScope(); p; p = p->parentScope()) {
@@ -721,9 +735,9 @@ void SemaPass::validateExternFns() {
         walkFile(imp);
     for (auto& [_, overloads] : _file->localFnSymbols()) {
         for (auto& fn : overloads) {
-            if (!fn.isExternal) continue;
-            if (!fn.moduleName.empty() && fn.moduleName != mod) continue;
-            consider(fn);
+            if (!fn->isExternal) continue;
+            if (!fn->moduleName.empty() && fn->moduleName != mod) continue;
+            consider(*fn);
         }
     }
 }

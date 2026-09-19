@@ -88,23 +88,23 @@ llvm::Value* Compiler::coerceFromExternRet(llvm::Value* v, const ExternAbiSlot& 
 }
 
 llvm::Function* Compiler::getOrCreateExternFunction(const string& cName, const FnSymbolInfo& fnSymbol) {
-    ExternAbiSlot retSlot = externAbiSlot(fnSymbol.retType);
+    ExternAbiSlot retSlot = externAbiSlot(fnSymbol.retTypeRef());
     const bool retSret = retSlot.indirect;
 
     vector<llvm::Type*> paramTys;
     if (retSret) paramTys.push_back(llvm::PointerType::get(_context, 0));
     vector<ExternAbiSlot> argSlots;
     argSlots.reserve(fnSymbol.params.size());
-    for (auto& p : fnSymbol.params) {
-        auto slot = externAbiSlot(p);
+    for (auto* p : fnSymbol.params) {
+        auto slot = externAbiSlot(*p);
         argSlots.push_back(slot);
         paramTys.push_back(slot.abiTy ? slot.abiTy : llvm::PointerType::get(_context, 0));
     }
 
     llvm::Type* llvmRet = _builder.getVoidTy();
-    if (!retSret && !fnSymbol.retType.empty()) {
+    if (!retSret && !fnSymbol.retTypeRef().empty()) {
         llvmRet = retSlot.abiTy ? retSlot.abiTy : _builder.getVoidTy();
-        if (fnSymbol.retType.isPtr()) {
+        if (fnSymbol.retTypeRef().isPtr()) {
             llvmRet = llvm::PointerType::get(_context, 0);
         }
     }
@@ -148,7 +148,7 @@ llvm::Function* Compiler::getOrCreateExternFunction(const string& cName, const F
 void Compiler::applyExternCallAttrs(llvm::CallInst* ci, const FnSymbolInfo& fnSymbol) {
     if (!ci) return;
     ci->setCallingConv(llvm::CallingConv::C);
-    ExternAbiSlot retSlot = externAbiSlot(fnSymbol.retType);
+    ExternAbiSlot retSlot = externAbiSlot(fnSymbol.retTypeRef());
     unsigned idx = 0;
     auto addAlign = [&](unsigned i, llvm::Type* ty) {
         if (!ty) return;
@@ -161,7 +161,7 @@ void Compiler::applyExternCallAttrs(llvm::CallInst* ci, const FnSymbolInfo& fnSy
         idx = 1;
     }
     for (size_t i = 0; i < fnSymbol.params.size(); ++i) {
-        auto slot = externAbiSlot(fnSymbol.params[i]);
+        auto slot = externAbiSlot(fnSymbol.paramType(i));
         if (slot.indirect && slot.valueTy) {
             const unsigned p = idx + static_cast<unsigned>(i);
             ci->addParamAttr(p, llvm::Attribute::getWithByValType(_context, slot.valueTy));

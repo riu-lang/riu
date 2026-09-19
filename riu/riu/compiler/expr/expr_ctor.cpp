@@ -343,8 +343,8 @@ llvm::Value* Compiler::compileEnumCtorExpr(ExprPathCallNode* node) {
                                 if (auto* lit = dynamic_cast<ExprLiteralNode*>(node->args()[i])) {
                                     if (auto* obj = dynamic_cast<LiteralObjNode*>(lit->literal())) {
                                         auto* sym = lookupVarSymbol(obj->getValue().getText(), node);
-                                        if (sym && sym->type.isRef()) {
-                                            auto se = sym->type.refElementType();
+                                        if (sym && sym->type->isRef()) {
+                                            auto se = sym->type->refElementType();
                                             if (se && *se == *inner) refIdent = true;
                                         }
                                     }

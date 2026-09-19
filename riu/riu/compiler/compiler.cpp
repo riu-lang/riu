@@ -604,6 +604,8 @@ void Compiler::compileStructImpls() {
 //      与 ownerModule（spec 与 impl 可能不在同一文件，不能用 spec 的 enclosingFile）。
 //   2. defaultBody scope 内 `$` 符号: Ref<Self> → Ref<structName>（带 impl owner）.
 //   3. Self& 形参符号同理.
+//   4. 压 subst 帧（Self / spec 形参 → impl 实参），让 resolvedOrInferredType 忽略
+//      Sema 槽、用 structuralType+替换。compileGetRefExpr 仍读 patch 后的符号表。
 //
 // 限制: 默认体内部 (statement / expr 局部) 的 TypeSelfNode 不在 patch 范围 — 写
 // `let x Self = ...` 等形态会在 codegen 期失败. Phase 5 base.ut 5 件套默认体均为
@@ -724,6 +726,15 @@ void Compiler::emitSpecDefaultBodyMethod(SpecDeclNode* spec, size_t sigIdx, cons
     bool isStatic = header->isStatic();
 
     // === 4) compileMethod ===
+    // 默认体 AST 与泛型模板一样被多个 impl 复用：Sema 槽仍是 Self / spec 形参。
+    // 压 subst 帧后 resolvedOrInferredType 走 structuralType+替换，不读槽
+    // （否则 GetRef `other` 槽 Ref<Self> 与 patch 后 structural Ref<Duration> 在 debug
+    // assert 上撞车）。subst 已含 Self → impl 类型。
+    generic::SubstScope instScope(_substStack, SubstFrame{.subst = subst,
+                                                          .baseStructName = "Self",
+                                                          .effStructName = structName,
+                                                          .sourceFile = _file ? _file->moduleName() : string(),
+                                                          .sourceLine = body->getLineNumber()});
     bool emitOk = false;
     try {
         auto func = getMethodFunction(structName, emitMethodName, paramTypes, retType, mFallibleErr, isStatic);

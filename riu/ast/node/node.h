@@ -6,6 +6,17 @@
 
 #include "types.h"
 
+#include <memory>
+#include <unordered_map>
+
+inline vector<const TypeInfo*> internTypeList(vector<TypeInfo> types) {
+    vector<const TypeInfo*> out;
+    out.reserve(types.size());
+    for (auto& t : types)
+        out.push_back(&internType(std::move(t)));
+    return out;
+}
+
 enum class SymbolKind : u8 {
     Struct,
     Function,
@@ -16,10 +27,11 @@ enum class SymbolKind : u8 {
 };
 
 struct SymbolInfo {
-    SymbolKind kind;
+    SymbolKind kind{};
     string name;
     string moduleName;
-    TypeInfo type;
+    // intern 后的类型；构造时 intern。intern 对象只读，改类型用 setType。
+    const TypeInfo* type = nullptr;
     bool writeable = false;
     bool isPrivate = false;
     bool isExternal = false;
@@ -31,11 +43,14 @@ struct SymbolInfo {
     // 仅 copy_of 可作为脱 const 出口。
     bool isFrozen = false;
 
-    SymbolInfo() = default;
+    SymbolInfo() : type(&internType(TypeInfo())) {}
     SymbolInfo(SymbolKind k, string n, TypeInfo t = TypeInfo(), bool w = false)
-        : kind(k), name(std::move(n)), type(std::move(t)), writeable(w) {
+        : kind(k), name(std::move(n)), type(&internType(std::move(t))), writeable(w) {
         isPrivate = !this->name.empty() && this->name[0] == '_';
     }
+
+    void setType(TypeInfo t) { type = &internType(std::move(t)); }
+    [[nodiscard]] const TypeInfo& typeRef() const { return type ? *type : internType(TypeInfo()); }
 
     [[nodiscard]] string getFullName() const {
         if (moduleName.empty()) return name;
@@ -46,8 +61,8 @@ struct SymbolInfo {
 struct FnSymbolInfo {
     string name;
     string moduleName;
-    vector<TypeInfo> params;
-    TypeInfo retType;
+    vector<const TypeInfo*> params;
+    const TypeInfo* retType = nullptr;
     bool isPrivate = false;
     bool isExternal = false;
     // DRAFT-错误.md §8.3 / spec §11.5.1：该函数声明带 `#NoReturn` 注解，
@@ -66,14 +81,31 @@ struct FnSymbolInfo {
     // extern 声明行（1-based）；非 extern 为 0。SemaPass 白名单诊断用。
     int declLine = 0;
 
-    FnSymbolInfo() = default;
+    FnSymbolInfo() : retType(&internType(TypeInfo())) {}
     FnSymbolInfo(string n, string mod, vector<TypeInfo> p, TypeInfo r)
-        : name(std::move(n)), moduleName(std::move(mod)), params(std::move(p)), retType(std::move(r)) {
+        : name(std::move(n)), moduleName(std::move(mod)), params(internTypeList(std::move(p))),
+          retType(&internType(std::move(r))) {
         // BUG4 fix: struct 方法的 name 格式为 "StructName.method"，
         // 取最后一个 "." 之后的部分来判断 _ 前缀。
         auto dotPos = this->name.rfind('.');
         string baseName = (dotPos != string::npos) ? this->name.substr(dotPos + 1) : this->name;
         isPrivate = !baseName.empty() && baseName[0] == '_';
+    }
+
+    void setSignature(vector<TypeInfo> p, TypeInfo r) {
+        params = internTypeList(std::move(p));
+        retType = &internType(std::move(r));
+    }
+
+    [[nodiscard]] const TypeInfo& retTypeRef() const { return retType ? *retType : internType(TypeInfo()); }
+    [[nodiscard]] const TypeInfo& paramType(size_t i) const { return *params[i]; }
+    [[nodiscard]] vector<TypeInfo> paramsCopy(size_t skip = 0) const {
+        vector<TypeInfo> out;
+        if (skip >= params.size()) return out;
+        out.reserve(params.size() - skip);
+        for (size_t i = skip; i < params.size(); ++i)
+            out.push_back(*params[i]);
+        return out;
     }
 
     [[nodiscard]] string getFullName() const {
@@ -89,10 +121,10 @@ struct FnSymbolInfo {
 
     // 形参 + 返回是否同一 C 签名（§6.6.1：同链接名须同签名）。
     [[nodiscard]] bool sameExternCSig(const FnSymbolInfo& other) const {
-        if (!(retType == other.retType)) return false;
+        if (!(retTypeRef() == other.retTypeRef())) return false;
         if (params.size() != other.params.size()) return false;
         for (size_t i = 0; i < params.size(); ++i) {
-            if (!(params[i] == other.params[i])) return false;
+            if (!(paramType(i) == other.paramType(i))) return false;
         }
         return true;
     }
@@ -104,8 +136,8 @@ struct FnSymbolInfo {
 // 结果挂在 ExprNode::_resolvedSymbol；codegen 改成直接读，无需再次入 scope。
 //
 // 存放策略：
-// - 只持指针，不复制。ScopeNode 持有的 SymbolInfo / FnSymbolInfo 与 AST 同生命周期，
-//   在编译流程内地址稳定（ScopeNode 用 map 而非 vector，rehash 不影响 value 地址）。
+// - 只持指针，不复制。ScopeNode 用 unique_ptr 挂 SymbolInfo / FnSymbolInfo，
+//   unordered_map rehash 只挪指针，对象地址在 AST 存活期内稳定。
 // - var / fn 互斥：一个表达式要么解析到变量符号，要么解析到函数符号；都为空表示
 //   "尚未解析"（由外层 optional 区分 "未写入" vs "解析为 null"）。
 struct ResolvedSymbol {
@@ -194,7 +226,7 @@ protected:
     Token _name;
 
 public:
-    explicit Named(Token name) : _name(std::move(name)) {}
+    explicit Named(Token name) : _name(name) {}
 
     virtual ~Named() = default;
 
@@ -249,10 +281,14 @@ public:
     }
 };
 
+using SymbolTable = std::unordered_map<string, unique_ptr<SymbolInfo>>;
+using FnSymbolTable = std::unordered_map<string, vector<unique_ptr<FnSymbolInfo>>>;
+
 class ScopeNode : public Node {
 protected:
-    map<string, SymbolInfo> _symbols;
-    map<string, vector<FnSymbolInfo>> _fnSymbols;
+    // unique_ptr：unordered_map rehash 不挪 SymbolInfo / FnSymbolInfo 本体。
+    SymbolTable _symbols;
+    FnSymbolTable _fnSymbols;
     map<string, AliasDeclNode*> _localAliases;
     ScopeNode* _parentScope = nullptr;
 
@@ -282,8 +318,8 @@ public:
 
     [[nodiscard]] bool hasFnSymbol(const string& name) const;
 
-    [[nodiscard]] const map<string, SymbolInfo>& localSymbols() const;
-    [[nodiscard]] const map<string, vector<FnSymbolInfo>>& localFnSymbols() const;
+    [[nodiscard]] const SymbolTable& localSymbols() const;
+    [[nodiscard]] const FnSymbolTable& localFnSymbols() const;
     [[nodiscard]] ScopeNode* parentScope() const;
 
     // 块 / struct 内 `type Name = T`（文件顶层仍走 FileNode::_aliasMap）
@@ -297,13 +333,13 @@ public:
     void normalizeFnSymbolTypes(Resolver resolver) {
         for (auto& [name, overloads] : _fnSymbols) {
             for (auto& fn : overloads) {
-                for (auto& p : fn.params)
-                    p = resolver(p);
-                if (!fn.retType.empty()) fn.retType = resolver(fn.retType);
+                for (auto& p : fn->params)
+                    p = &internType(resolver(*p));
+                if (fn->retType && !fn->retType->empty()) fn->retType = &internType(resolver(*fn->retType));
             }
         }
         for (auto& [name, sym] : _symbols) {
-            if (!sym.type.empty()) sym.type = resolver(sym.type);
+            if (sym->type && !sym->type->empty()) sym->setType(resolver(*sym->type));
         }
     }
 };

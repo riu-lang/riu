@@ -733,7 +733,7 @@ StatementNode* RdBuilder::addAlias(rd::NodeId id) {
     } else if (scope) {
         if (scope->localAlias(name)) throw RiuError(line, col, ErrorCode::E2017, name, string("type alias"), name);
         auto it = scope->localSymbols().find(name);
-        if (it != scope->localSymbols().end() && it->second.kind == SymbolKind::TypeParam) {
+        if (it != scope->localSymbols().end() && it->second->kind == SymbolKind::TypeParam) {
             throw RiuError(line, col, ErrorCode::E2017, name, string("type param"), name);
         }
         scope->addLocalAlias(aliasDecl);

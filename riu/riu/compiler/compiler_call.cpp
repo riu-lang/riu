@@ -558,10 +558,10 @@ llvm::Value* Compiler::compileCallExpr(ExprCallNode* node) {
                         auto lambdaArg = dynamic_cast<LambdaExprNode*>(node->getArgs()[i]);
                         if (!lambdaArg) continue;
                         if (i >= fnSym->params.size()) break;
-                        if (!fnSym->params[i].isFn()) continue;
-                        inferLambdaParamsFromFnType(lambdaArg, fnSym->params[i]);
+                        if (!fnSym->paramType(i).isFn()) continue;
+                        inferLambdaParamsFromFnType(lambdaArg, fnSym->paramType(i));
                         // 预 emit；后续 compileLambdaExpr 走 mangle 缓存命中同一 Function*
-                        emitLambdaFunction(lambdaArg, fnSym->params[i]);
+                        emitLambdaFunction(lambdaArg, fnSym->paramType(i));
                     }
                 }
             }
@@ -574,7 +574,7 @@ llvm::Value* Compiler::compileCallExpr(ExprCallNode* node) {
     // 无法匹配 String::get(usize) → compileStructMethodCall 返回 nullptr → E6015。
     // 仅对结构体类型方法做重载解析；内置类型 / Array / Ptr / Dyn 有各自 codegen 分派路径。
     if (auto dotNode = dynamic_cast<ExprDotNode*>(calleeExpr)) {
-        auto baseType = dotNode->baseExpr()->getType();
+        auto baseType = resolvedOrInferredType(dotNode->baseExpr());
         baseType = applySubst(baseType);
 
         // 安全方法调用 a?.foo()：从 Nullable<T> 解出 T 做重载解析
@@ -617,7 +617,7 @@ llvm::Value* Compiler::compileCallExpr(ExprCallNode* node) {
     }
 
     for (auto& arg : node->getArgs()) {
-        auto argType = arg->getType();
+        auto argType = resolvedOrInferredType(arg);
         argTypes.push_back(argType);
         if (delaySafeMethodArgs) continue;
         // 泛型 callee 的 lambda 实参推迟到 typeArgs 替换之后（见 compileGenericFunctionCall）

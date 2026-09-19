@@ -589,7 +589,7 @@ ExprNode* RdBuilder::buildExpr(rd::NodeId id) {
             auto* full = create<CatchArmNode>(c, scope, errName, errType, body);
             full->setParentScope(scope);
             for (auto& [nm, sym] : placeholder->localSymbols())
-                full->registerSymbol(nm, sym);
+                full->registerSymbol(nm, *sym);
             catches.push_back(full);
         }
         return static_cast<ExprNode*>(create<ExprTryCatchNode>(id, scope, tryBlk, std::move(catches)));

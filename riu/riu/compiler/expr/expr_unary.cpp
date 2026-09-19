@@ -92,7 +92,8 @@ llvm::Value* Compiler::compileCustomTypeUnaryOp(ExprNode* expr, const TypeInfo& 
     if (!fn) {
         vector<llvm::Type*> paramTypes;
         paramTypes.push_back(llvm::PointerType::get(_context, 0));
-        auto retType = methodSymbol->retType.empty() ? _builder.getVoidTy() : getLLVMType(methodSymbol->retType);
+        auto retType =
+            methodSymbol->retTypeRef().empty() ? _builder.getVoidTy() : getLLVMType(methodSymbol->retTypeRef());
         auto fnType = llvm::FunctionType::get(retType, paramTypes, false);
         fn = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, mangledName, _module);
     }
@@ -152,7 +153,7 @@ llvm::Value* Compiler::compileGetRefExpr(ExprGetRefNode* node) {
         currentPtr = globalVar;
     }
 
-    TypeInfo currentType = sym->type;
+    TypeInfo currentType = applySubst(*sym->type);
     // Phase 4a: 若源是 T&（参数 / 局部 ref），currentPtr 已经是底层 T 的地址；剥到 T
     if (currentType.isRef()) {
         if (auto inner = currentType.refElementType()) currentType = *inner;
@@ -208,7 +209,7 @@ llvm::Value* Compiler::compileGetRefExpr(ExprGetRefNode* node) {
 
 llvm::Value* Compiler::compileUnaryExpr(ExprUnaryNode* node) {
     // 槽只由 Sema 写，避免复用 AST 时锁死上次类型。
-    auto type = node->getType();
+    const TypeInfo& type = node->getType();
     auto rightType = node->right()->getType();
     // v0.16: [] 返回 T&——标量操作符自动剥 Ref
     auto effRightType = rightType.isRef() ? *rightType.refElementType() : rightType;

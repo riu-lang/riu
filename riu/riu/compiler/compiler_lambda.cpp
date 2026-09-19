@@ -34,7 +34,7 @@ void Compiler::inferLambdaParamsFromFnType(LambdaExprNode* lambda, const TypeInf
     for (size_t k = 0; k < lambda->params().size() && k < fps.size(); ++k) {
         if (lambda->params()[k].type) continue; // 显式标注尊重源
         if (auto* psym = sc->lookupSymbol(lambda->params()[k].name.getText())) {
-            if (fps[k]) psym->type = *fps[k];
+            if (fps[k]) psym->setType(*fps[k]);
         }
     }
 }

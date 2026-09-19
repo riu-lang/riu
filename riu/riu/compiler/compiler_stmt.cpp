@@ -204,15 +204,15 @@ void Compiler::compileRetStatement(StatementRetNode* node) {
                 auto vname = objLit->getValue().getText();
                 auto sym = lookupVarSymbol(vname, node);
                 bool isDollar = (vname == "$");
-                bool isRefVar = sym && sym->type.isRef();
+                bool isRefVar = sym && sym->type->isRef();
                 if ((isDollar || isRefVar) && _localVarPtrs.contains(vname)) {
                     refPtr = _localVarPtrs[vname];
                     if (isDollar) {
-                        srcInner = sym ? sym->type : TypeInfo();
+                        srcInner = sym ? *sym->type : TypeInfo();
                         if (srcInner.isRef()) {
                             if (auto in = srcInner.refElementType()) srcInner = *in;
                         }
-                    } else if (auto in = sym->type.refElementType()) {
+                    } else if (auto in = sym->type->refElementType()) {
                         srcInner = *in;
                     }
                 }
@@ -878,7 +878,7 @@ void Compiler::compileDeclareAssignTupleStatement(StatementDeclareAssignTupleNod
         // 刷新符号表类型（visit 阶段对 alias 路径登记的是空 TypeInfo）
         if (auto sc = node->findNearestScope()) {
             if (auto sym = sc->lookupSymbol(varName)) {
-                sym->type = elemType;
+                sym->setType(elemType);
             }
         }
         // TODO: 元素若为 RC / Rc / 含析构 struct，需要在此处 retain；当前 Phase 5 仅覆盖值类型
@@ -957,10 +957,10 @@ void Compiler::compileAssignStatement(StatementAssignNode* node) {
                 llvm::Value* valToStore;
                 if (assignOp != AssignOp::Eq) {
                     auto currentVal = _builder.CreateLoad(globalVar->getValueType(), globalVar, "global.current.load");
-                    auto castedExprVal = createCast(exprVal, exprType, sym->type);
-                    valToStore = applyCompoundOp(currentVal, castedExprVal, assignOp, sym->type);
+                    auto castedExprVal = createCast(exprVal, exprType, *sym->type);
+                    valToStore = applyCompoundOp(currentVal, castedExprVal, assignOp, *sym->type);
                 } else {
-                    valToStore = createCast(exprVal, exprType, sym->type);
+                    valToStore = createCast(exprVal, exprType, *sym->type);
                 }
                 _builder.CreateStore(valToStore, globalVar);
                 return;
@@ -969,16 +969,16 @@ void Compiler::compileAssignStatement(StatementAssignNode* node) {
 
         // Phase 4b: T& 赋值是 store-through（改被引对象），不是 rebind；
         // T& 形参 / val 局部 T& 的 writeable=false 不影响"写被引"，写权由源对象决定（4d 校验）
-        if (!sym->writeable && !sym->type.isRef()) {
+        if (!sym->writeable && !sym->type->isRef()) {
             throwSemaGap(node->getLineNumber(), node->getColumn());
         }
 
-        DEBUG_LOG_VAL("  Statement: Assign", objName << " : " << sym->type.name);
+        DEBUG_LOG_VAL("  Statement: Assign", objName << " : " << sym->type->name);
 
         // Phase 4b: T& 赋值落 store-through 改被引对象（rebind 禁）
         // _localVarPtrs[objName] 持有底层 T 的地址（由声明 / 形参路径建立）
-        if (sym->type.isRef()) {
-            auto innerType = sym->type.refElementType();
+        if (sym->type->isRef()) {
+            auto innerType = sym->type->refElementType();
             if (!innerType) {
                 throwSemaGap(node->getLineNumber(), node->getColumn());
             }
@@ -1004,18 +1004,18 @@ void Compiler::compileAssignStatement(StatementAssignNode* node) {
 
         // 推断灵活整数的类型
         if (isFlexibleIntExpr(expr)) {
-            if (isIntTypeName(sym->type.name)) {
-                tryInferIntType(expr, sym->type);
-            } else if (sym->type.isRc()) {
-                if (auto elem = sym->type.rcElementType()) {
+            if (isIntTypeName(sym->type->name)) {
+                tryInferIntType(expr, *sym->type);
+            } else if (sym->type->isRc()) {
+                if (auto elem = sym->type->rcElementType()) {
                     if (isIntTypeName(elem->name)) tryInferIntType(expr, *elem);
                 }
-            } else if (sym->type.isWeak()) {
-                if (auto elem = sym->type.weakElementType()) {
+            } else if (sym->type->isWeak()) {
+                if (auto elem = sym->type->weakElementType()) {
                     if (isIntTypeName(elem->name)) tryInferIntType(expr, *elem);
                 }
-            } else if (sym->type.isHeap()) {
-                if (auto elem = sym->type.heapElementType()) {
+            } else if (sym->type->isHeap()) {
+                if (auto elem = sym->type->heapElementType()) {
                     if (isIntTypeName(elem->name)) tryInferIntType(expr, *elem);
                 }
             }
@@ -1023,14 +1023,14 @@ void Compiler::compileAssignStatement(StatementAssignNode* node) {
 
         // 处理 Array<T> 字面量赋值（包括空数组 = []）
         // Phase 3d: 新 handle 来自 _array_alloc（strong=1），无需 retain；旧 handle 必须 release
-        if (sym->type.isArrayGeneric()) {
+        if (sym->type->isArrayGeneric()) {
             if (auto arrayNode = dynamic_cast<ExprArrayNode*>(expr)) {
                 auto it = _localVarPtrs.find(objName);
                 if (it != _localVarPtrs.end()) {
-                    auto elemType = sym->type.arrayGenericElementType();
+                    auto elemType = sym->type->arrayGenericElementType();
                     // 走统一 helper：含嵌套 Array<Array<U>> 字面量按外层 elemType 递归编译
                     auto block = buildArrayLiteralBlock(arrayNode, elemType ? *elemType : TypeInfo("i8"));
-                    storeIntoSlot(it->second, block, sym->type, expr, SlotStore::Replace);
+                    storeIntoSlot(it->second, block, *sym->type, expr, SlotStore::Replace);
                     return;
                 }
             }
@@ -1038,8 +1038,8 @@ void Compiler::compileAssignStatement(StatementAssignNode* node) {
 
         // Rc<T> 赋值：处理 Rc -> Rc 复制和 T -> Rc<T> 构造
         // 与 compileDeclareAssignStatement 的 Rc 初始化路径保持一致
-        if (assignOp == AssignOp::Eq && sym->type.isRc()) {
-            auto elemType = sym->type.rcElementType();
+        if (assignOp == AssignOp::Eq && sym->type->isRc()) {
+            auto elemType = sym->type->rcElementType();
             if (!elemType) {
                 throwSemaGap(node->getLineNumber(), node->getColumn());
             }
@@ -1051,11 +1051,11 @@ void Compiler::compileAssignStatement(StatementAssignNode* node) {
 
             auto exprVal = compileExpr(expr);
             auto exprType = expr->getType();
-            auto rcStructType = getLLVMType(sym->type);
+            auto rcStructType = getLLVMType(*sym->type);
             auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
 
             if (exprType.isRc() && exprType.rcElementType() && *exprType.rcElementType() == *elemType) {
-                storeIntoSlot(it->second, exprVal, sym->type, expr, SlotStore::Replace);
+                storeIntoSlot(it->second, exprVal, *sym->type, expr, SlotStore::Replace);
             } else if (exprType == *elemType) {
                 // 由值构造 Rc：分配 Block，把 payload 存入 block+8
                 auto elemLLVMType = getLLVMType(*elemType);
@@ -1070,7 +1070,7 @@ void Compiler::compileAssignStatement(StatementAssignNode* node) {
                 _builder.CreateStore(exprVal, payloadPtr);
 
                 // 释放旧 Rc
-                releaseAtPtr(it->second, sym->type);
+                releaseAtPtr(it->second, *sym->type);
 
                 // 写 handle 字段
                 auto handleField = _builder.CreateGEP(rcStructType, it->second, {zero, zero}, "handle_field");
@@ -1086,13 +1086,13 @@ void Compiler::compileAssignStatement(StatementAssignNode* node) {
         //   1) null 字面量 → { _has=false, _value=zeroinit }
         //   2) T 值 → 隐式包装为 { _has=true, _value=expr }
         //   3) 已是 Nullable<T> → 整体结构体复制
-        if (assignOp == AssignOp::Eq && sym->type.isNullable()) {
-            auto innerType = sym->type.nullableInnerType();
+        if (assignOp == AssignOp::Eq && sym->type->isNullable()) {
+            auto innerType = sym->type->nullableInnerType();
             if (!innerType) {
                 throwSemaGap(node->getLineNumber(), node->getColumn());
             }
 
-            auto nullableStructType = getLLVMType(sym->type);
+            auto nullableStructType = getLLVMType(*sym->type);
             auto innerLLVMType = getLLVMType(*innerType);
             auto alloca = _localVarPtrs[objName];
             auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
@@ -1113,7 +1113,7 @@ void Compiler::compileAssignStatement(StatementAssignNode* node) {
                 auto exprType = expr->getType();
                 auto exprVal = compileExpr(expr);
 
-                if (exprType.isNullable() && exprType == sym->type) {
+                if (exprType.isNullable() && exprType == *sym->type) {
                     _builder.CreateStore(exprVal, alloca);
                 } else if (exprType == *innerType) {
                     _builder.CreateStore(_builder.getInt1(true), hasField);
@@ -1131,15 +1131,15 @@ void Compiler::compileAssignStatement(StatementAssignNode* node) {
 
         // 应用复合赋值或类型转换
         if (assignOp != AssignOp::Eq) {
-            auto currentVal = _builder.CreateLoad(getLLVMType(sym->type), _localVarPtrs[objName], "current.load");
-            auto castedExprVal = createCast(exprVal, exprType, sym->type);
-            valToStore = applyCompoundOp(currentVal, castedExprVal, assignOp, sym->type);
+            auto currentVal = _builder.CreateLoad(getLLVMType(*sym->type), _localVarPtrs[objName], "current.load");
+            auto castedExprVal = createCast(exprVal, exprType, *sym->type);
+            valToStore = applyCompoundOp(currentVal, castedExprVal, assignOp, *sym->type);
         } else {
-            valToStore = createCast(exprVal, exprType, sym->type);
+            valToStore = createCast(exprVal, exprType, *sym->type);
         }
 
         if (assignOp == AssignOp::Eq) {
-            storeIntoSlot(_localVarPtrs[objName], valToStore, sym->type, expr, SlotStore::Replace);
+            storeIntoSlot(_localVarPtrs[objName], valToStore, *sym->type, expr, SlotStore::Replace);
         } else {
             _builder.CreateStore(valToStore, _localVarPtrs[objName]);
         }
@@ -1151,9 +1151,9 @@ void Compiler::compileAssignStatement(StatementAssignNode* node) {
             throwSemaGap(node->getLineNumber(), node->getColumn());
         }
 
-        TypeInfo actualType = sym->type;
-        if (sym->type.isRef()) {
-            auto refElemType = sym->type.refElementType();
+        TypeInfo actualType = *sym->type;
+        if (sym->type->isRef()) {
+            auto refElemType = sym->type->refElementType();
             if (refElemType) {
                 actualType = *refElemType;
             }
@@ -1765,18 +1765,14 @@ llvm::Value* Compiler::compileIndexedMethodCall(llvm::Value* recvPtr, const Type
     if (!methodSymbol) {
         throwSemaGap(line, col);
     }
-    auto& mparams = methodSymbol->params;
-    vector<TypeInfo> declaredParams;
-    if (mparams.size() > 1) {
-        declaredParams.assign(mparams.begin() + 1, mparams.end());
-    }
+    vector<TypeInfo> declaredParams = methodSymbol->paramsCopy(1);
     string ownerMod = methodSymbol->moduleName.empty() ? _file->moduleName() : methodSymbol->moduleName;
-    auto* fn = getMethodFunction(actual.name, method, declaredParams, methodSymbol->retType,
+    auto* fn = getMethodFunction(actual.name, method, declaredParams, methodSymbol->retTypeRef(),
                                  methodSymbol->fallibleErrType, /*isStatic=*/false, ownerMod);
     vector<llvm::Value*> methodArgs;
     methodArgs.push_back(recvPtr);
     methodArgs.insert(methodArgs.end(), args.begin(), args.end());
-    return _builder.CreateCall(fn, methodArgs, methodSymbol->retType.empty() ? "" : method + ".ret");
+    return _builder.CreateCall(fn, methodArgs, methodSymbol->retTypeRef().empty() ? "" : method + ".ret");
 }
 
 void Compiler::compileForInStatement(StatementForInNode* node) {

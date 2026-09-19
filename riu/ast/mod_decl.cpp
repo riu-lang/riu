@@ -585,19 +585,19 @@ void write(FileNode* file, const std::string& srcAbs, const std::string& declPat
     vector<const FnSymbolInfo*> externs;
     for (auto& [name, overloads] : file->localFnSymbols()) {
         for (auto& fn : overloads) {
-            if (!fn.isExternal) continue;
-            if (fn.moduleName != file->moduleName()) continue;
-            if (fn.name.find('.') != string::npos) continue;
-            externs.push_back(&fn);
+            if (!fn->isExternal) continue;
+            if (fn->moduleName != file->moduleName()) continue;
+            if (fn->name.find('.') != string::npos) continue;
+            externs.push_back(fn.get());
         }
     }
     w.u32(static_cast<uint32_t>(externs.size()));
     for (auto* fn : externs) {
         w.str(fn->name);
         w.u32(static_cast<uint32_t>(fn->params.size()));
-        for (auto& p : fn->params)
-            writeType(w, p);
-        writeType(w, fn->retType);
+        for (auto* p : fn->params)
+            writeType(w, *p);
+        writeType(w, fn->retTypeRef());
         w.u8(fn->isNoReturn ? 1 : 0);
         w.str(fn->cName);
     }

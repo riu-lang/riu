@@ -72,24 +72,24 @@ const TypeInfo& LiteralObjNode::getType() const {
                 if (auto* fnSym = scope->lookupFnSymbol(name)) {
                     vector<sp<TypeInfo>> paramTypes;
                     paramTypes.reserve(fnSym->params.size());
-                    for (auto& p : fnSym->params)
-                        paramTypes.push_back(internTypeSpAt(this, p));
+                    for (auto* p : fnSym->params)
+                        paramTypes.push_back(internTypeSpAt(this, *p));
                     sp<TypeInfo> retType = nullptr;
-                    if (!fnSym->retType.empty() && fnSym->retType.name != "()")
-                        retType = internTypeSpAt(this, fnSym->retType);
+                    if (!fnSym->retTypeRef().empty() && fnSym->retTypeRef().name != "()")
+                        retType = internTypeSpAt(this, fnSym->retTypeRef());
                     return internTypeAt(this, TypeInfo(FnTag{}, std::move(paramTypes), std::move(retType)));
                 }
                 sp<TypeInfo> retType = nullptr;
-                if (!sym->type.empty() && sym->type.name != "()") retType = internTypeSpAt(this, sym->type);
+                if (!sym->type->empty() && sym->type->name != "()") retType = internTypeSpAt(this, *sym->type);
                 return internTypeAt(this, TypeInfo(FnTag{}, {}, std::move(retType)));
             }
             // Phase 4a: T& 局部 / 参数 在表达式上下文按值语义出现（自动解引用为 T）；
             // 借用绑定 / 调用借用形参 等需要原始 Ref 类型的场景，在调用点直接读 sym 表
-            if (sym->type.isRef()) {
-                auto inner = sym->type.refElementType();
+            if (sym->type->isRef()) {
+                auto inner = sym->type->refElementType();
                 if (inner) return internTypeAt(this, *inner);
             }
-            return internTypeAt(this, sym->type);
+            return internTypeAt(this, *sym->type);
         }
     }
 

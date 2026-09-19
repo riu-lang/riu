@@ -138,7 +138,7 @@ llvm::Value* Compiler::compileCustomTypeBinaryOp(ExprNode* leftExpr, ExprNode* r
     for (auto* cand : candidates) {
         // 二元运算符方法签名：params[0] = 接收者, params[1] = 右操作数
         if (cand->params.size() != 2) continue;
-        const TypeInfo& candParam = cand->params[1];
+        const TypeInfo& candParam = cand->paramType(1);
 
         if (!candParam.isRef() && candParam == effRightType) {
             exactMatches.push_back(cand);
@@ -166,7 +166,7 @@ llvm::Value* Compiler::compileCustomTypeBinaryOp(ExprNode* leftExpr, ExprNode* r
     // 确定右操作数的 ABI 传递方式（spec §7.2.3.3）：
     // 形参为 Ref<T> 或 structParamUsesPointer → 传指针；其余按值。
     // 与 getLLVMFunctionType / compileFn 的方法形参 ABI 保持一致。
-    TypeInfo declaredRhsType = methodSymbol->params.size() >= 2 ? methodSymbol->params[1] : rightType;
+    TypeInfo declaredRhsType = methodSymbol->params.size() >= 2 ? methodSymbol->paramType(1) : rightType;
     bool rhsByPtr = declaredRhsType.isRef() || structParamUsesPointer(declaredRhsType);
 
     if (rhsByPtr) {
@@ -212,7 +212,8 @@ llvm::Value* Compiler::compileCustomTypeBinaryOp(ExprNode* leftExpr, ExprNode* r
         } else {
             paramTypes.push_back(getLLVMType(declaredRhsType));
         }
-        auto retType = methodSymbol->retType.empty() ? _builder.getVoidTy() : getLLVMType(methodSymbol->retType);
+        auto retType =
+            methodSymbol->retTypeRef().empty() ? _builder.getVoidTy() : getLLVMType(methodSymbol->retTypeRef());
         auto fnType = llvm::FunctionType::get(retType, paramTypes, false);
         fn = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, mangledName, _module);
     }

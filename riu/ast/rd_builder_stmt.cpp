@@ -75,7 +75,7 @@ StatementBlockNode* RdBuilder::buildBlock(rd::NodeId id, ScopeNode* parentScope,
     auto* filled = create<StatementBlockNode>(id, parentScope, std::move(statements), resultExpr, hasResult);
     filled->setParentScope(parentScope);
     for (auto& [name, sym] : block->localSymbols())
-        filled->registerSymbol(name, sym);
+        filled->registerSymbol(name, *sym);
     filled->copyLocalAliasesFrom(block);
     return filled;
 }
@@ -206,7 +206,9 @@ StatementNode* RdBuilder::buildLet(rd::NodeId id, bool global) {
         decl->setFrozen(flags.isFrozen);
         return static_cast<StatementNode*>(decl);
     }
-    TypeInfo varType = type ? type->getType() : expr->getType();
+    // 无标注时不要在 builder 里 getType：match 绑定等还是空槽，会把空类型写进 let。
+    // Sema visitDeclareAssign → refreshInferredLetType 在 visitExpr 之后回填。
+    TypeInfo varType = type ? type->getType() : TypeInfo();
     if (scope) {
         SymbolInfo sym(SymbolKind::Variable, nameTok.getText(), varType, flags.isMut);
         if (flags.isCval) sym.isConst = true;
@@ -257,7 +259,7 @@ StatementNode* RdBuilder::buildStmt(rd::NodeId id) {
             Token t = makeTok(child(id, i));
             string text = t.getText();
             if (!text.empty() && text[0] == '.') t = Token(text.substr(1), t.getLine());
-            subs.push_back(std::move(t));
+            subs.push_back(t);
         }
         if (n.children_count > 0) expr = buildExpr(child(id, n.children_count - 1));
         return static_cast<StatementNode*>(
@@ -322,7 +324,7 @@ StatementNode* RdBuilder::buildStmt(rd::NodeId id) {
         _scopeStack.pop_back();
         if (filled != block) {
             for (auto& [nm, sym] : block->localSymbols())
-                filled->registerSymbol(nm, sym);
+                filled->registerSymbol(nm, *sym);
             filled->copyLocalAliasesFrom(block);
         }
         return static_cast<StatementNode*>(
@@ -342,7 +344,7 @@ StatementNode* RdBuilder::buildStmt(rd::NodeId id) {
         block->setParentScope(outer);
         _scopeStack.push_back(block);
         TypeInfo collType = coll ? coll->getType() : TypeInfo();
-        TypeInfo peeled = collType.peelRef();
+        const TypeInfo& peeled = collType.peelRef();
         sp<TypeInfo> elem;
         if (peeled.isArrayGeneric())
             elem = peeled.arrayGenericElementType();
@@ -354,7 +356,7 @@ StatementNode* RdBuilder::buildStmt(rd::NodeId id) {
         _scopeStack.pop_back();
         if (filled != block) {
             for (auto& [nm, sym] : block->localSymbols())
-                filled->registerSymbol(nm, sym);
+                filled->registerSymbol(nm, *sym);
             filled->copyLocalAliasesFrom(block);
         }
         return static_cast<StatementNode*>(create<StatementForInNode>(id, outer, filled, item, coll, label));

@@ -1,0 +1,28 @@
+enum Shape {
+  Point
+  Circle(f64)
+  Rect(f64, f64)
+}
+
+fn area_ret(s Shape) f64 {
+  ret match s {
+    Shape::Point => 0.0f64
+    Shape::Circle(r) => {
+      let rr = r * r
+      3.14f64 * rr
+    }
+    Shape::Rect(w, h) => w * h
+  }
+}
+
+fn area_let(s Shape) f64 {
+  let area f64 = match s {
+    Shape::Point => 0.0f64
+    Shape::Circle(r) => {
+      let rr = r * r
+      3.14f64 * rr
+    }
+    Shape::Rect(w, h) => w * h
+  }
+  ret area
+}

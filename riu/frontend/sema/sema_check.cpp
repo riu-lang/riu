@@ -268,7 +268,8 @@ void SemaPass::refreshInferredLetType(StatementDeclareAssignNode* da) {
     if (!da || da->varType() || !da->expr()) return;
     TypeInfo ty;
     try {
-        ty = da->expr()->hasResolvedType() ? da->expr()->resolvedType() : da->expr()->getType();
+        const bool slotOk = da->expr()->hasResolvedType() && !da->expr()->resolvedType().empty();
+        ty = slotOk ? da->expr()->resolvedType() : da->expr()->getType();
         ty = applyInstSubst(ty);
     } catch (const RiuError&) {
         return;
@@ -276,13 +277,18 @@ void SemaPass::refreshInferredLetType(StatementDeclareAssignNode* da) {
         return;
     }
     if (ty.empty()) return;
-    auto* sc = da->findNearestScope();
-    if (!sc) return;
     const string name = da->name().getText();
-    if (!sc->localSymbols().contains(name)) return;
-    if (auto* sym = sc->lookupSymbol(name)) {
-        if (sym->kind == SymbolKind::Variable) sym->type = std::move(ty);
-    }
+    auto setLocal = [&](ScopeNode* sc) {
+        if (!sc) return;
+        auto it = sc->localSymbols().find(name);
+        if (it != sc->localSymbols().end() && it->second->kind == SymbolKind::Variable) {
+            it->second->setType(ty);
+        }
+    };
+    auto* nearest = da->findNearestScope();
+    setLocal(nearest);
+    if (nearest) setLocal(nearest->parentScope());
+    setLocal(da->expr()->findNearestScope());
 }
 
 void SemaPass::tryValidateMatchScrut(ExprMatchNode* n) {
@@ -602,7 +608,7 @@ void SemaPass::checkArrayInit(ExprArrayInitNode* n, const TypeInfo* expected) {
     };
 
     if (expected) {
-        TypeInfo want = expected->peelRef();
+        const TypeInfo& want = expected->peelRef();
         if (auto wantElem = arrayElemTarget(want)) {
             if (!isCurrentTypeParam(*wantElem) && elemType != *wantElem) {
                 throw RiuError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3009, wantElem->getFullName(),

@@ -669,7 +669,7 @@ TypeInfo ExprCallNode::structuralType() const {
                         argTypes.push_back(arg->getType());
                     auto fn = scope->lookupFnSymbolWithParams(fnName, argTypes);
                     if (!fn) fn = scope->lookupFnSymbol(fnName);
-                    if (fn) retType = fn->retType;
+                    if (fn) retType = fn->retTypeRef();
                 }
                 retType = substGenericFnRet(this, _typeArgs, _args, fnName, std::move(retType));
             }
@@ -719,7 +719,7 @@ TypeInfo ExprCallNode::structuralType() const {
                     }
                     auto fn = scope->lookupFnSymbolWithParams(fnName, argTypes);
                     if (fn) {
-                        return fn->retType;
+                        return fn->retTypeRef();
                     }
                 }
             }
@@ -749,7 +749,7 @@ TypeInfo ExprCallNode::structuralType() const {
                             for (auto& arg : _args)
                                 argTypes.push_back(arg->getType());
                             auto* fn = target->lookupFnSymbolWithParams(segs.back(), argTypes);
-                            if (fn) return fn->retType;
+                            if (fn) return fn->retTypeRef();
                             auto [genericFn, _] = target->getGenericFunction(segs.back());
                             if (genericFn && genericFn->header()->retType()) {
                                 return substResolvedGenericFnRet(genericFn, _typeArgs, _args,
@@ -779,7 +779,7 @@ TypeInfo ExprCallNode::structuralType() const {
                                 argTypes.push_back(arg->getType());
                             }
                             auto* fn = target->lookupFnSymbolWithParams(dotNode->member(), argTypes);
-                            if (fn) return fn->retType;
+                            if (fn) return fn->retTypeRef();
                             auto [genericFn, _] = target->getGenericFunction(dotNode->member());
                             if (genericFn && genericFn->header()->retType()) {
                                 return substResolvedGenericFnRet(genericFn, _typeArgs, _args,
@@ -826,7 +826,7 @@ TypeInfo ExprCallNode::structuralType() const {
 
         auto fn = scope->lookupFnSymbolWithParams(type.name, argTypes);
         if (fn) {
-            return fn->retType;
+            return fn->retTypeRef();
         }
     }
 
@@ -1142,8 +1142,8 @@ TypeInfo ExprDotNode::structuralType() const {
                 }
                 if (methodSym) {
                     DEBUG_LOG_VAL("ExprDotNode::getType - safe builtin method, returning Fn",
-                                  methodSym->retType.getFullName());
-                    return makeCallFnType(methodSym->retType);
+                                  methodSym->retTypeRef().getFullName());
+                    return makeCallFnType(methodSym->retTypeRef());
                 }
             }
 
@@ -1156,7 +1156,7 @@ TypeInfo ExprDotNode::structuralType() const {
             // 结构体方法
             auto methodSym = namesFromFile(file).lookupMethod(actualType, member);
             if (methodSym) {
-                auto rt = methodSym->retType;
+                auto rt = methodSym->retTypeRef();
                 if (!genSubst.empty()) rt = rt.substitute(genSubst);
                 DEBUG_LOG_VAL("ExprDotNode::getType - safe method, returning Fn", rt.getFullName());
                 return makeCallFnType(std::move(rt), methodSym->fallibleErrType);
@@ -1497,8 +1497,8 @@ TypeInfo ExprDotNode::structuralType() const {
                 auto methodSym = file->lookupFnSymbol(methodFullName);
                 if (methodSym) {
                     DEBUG_LOG_VAL("ExprDotNode::getType - found SDK method for builtin type, returning Fn",
-                                  methodSym->retType.getFullName());
-                    return makeCallFnType(methodSym->retType);
+                                  methodSym->retTypeRef().getFullName());
+                    return makeCallFnType(methodSym->retTypeRef());
                 }
             }
         }
@@ -1550,7 +1550,7 @@ TypeInfo ExprDotNode::structuralType() const {
 
             auto methodSym = namesFromFile(file).lookupMethod(actualType, member);
             if (methodSym) {
-                auto rt = methodSym->retType;
+                auto rt = methodSym->retTypeRef();
                 if (!genSubst.empty()) rt = rt.substitute(genSubst);
                 DEBUG_LOG_VAL("ExprDotNode::getType - found method, returning Fn", rt.getFullName());
                 return makeCallFnType(std::move(rt), methodSym->fallibleErrType);
@@ -1990,7 +1990,7 @@ TypeInfo ExprGetRefNode::structuralType() const {
         throw RiuError(resolveLineNumber(), resolveColumn(), ErrorCode::E3030, _obj.getText());
     }
 
-    TypeInfo baseType = sym->type;
+    TypeInfo baseType = *sym->type;
     // Phase 4a: 若 sym 为 T&，剥到 T 后再走字段（&ref.f 与 &x.f 同义）
     if (baseType.isRef()) {
         if (auto inner = baseType.refElementType()) baseType = *inner;
@@ -2241,7 +2241,7 @@ void ExprMatchNode::fillArmBindingTypes(const map<string, TypeInfo>* instSubst) 
             const string& bn = pat->binds()[i].getText();
             if (!force) {
                 auto it = locals.find(bn);
-                if (it != locals.end() && !it->second.type.empty()) continue;
+                if (it != locals.end() && !it->second->type->empty()) continue;
             }
             TypeInfo bindType;
             if (variant && i < variant->payloadArity() && variant->payloadTypes()[i]) {
@@ -2255,6 +2255,15 @@ void ExprMatchNode::fillArmBindingTypes(const map<string, TypeInfo>* instSubst) 
                 }
             }
             arm->registerSymbol(bn, {SymbolKind::Variable, bn, bindType, false});
+            if (arm->hasBlock()) {
+                auto* blk = arm->block();
+                auto bit = blk->localSymbols().find(bn);
+                if (bit != blk->localSymbols().end()) {
+                    if (force || bit->second->type->empty()) bit->second->setType(bindType);
+                } else if (!bindType.empty()) {
+                    blk->registerSymbol(bn, {SymbolKind::Variable, bn, bindType, false});
+                }
+            }
         }
     }
 }

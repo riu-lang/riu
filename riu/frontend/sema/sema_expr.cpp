@@ -70,7 +70,7 @@ bool hasLocalValueNamed(ExprNode* n, const string& name) {
         if (dynamic_cast<FileNode*>(sc)) break;
         auto it = sc->localSymbols().find(name);
         if (it == sc->localSymbols().end()) continue;
-        auto k = it->second.kind;
+        auto k = it->second->kind;
         if (k == SymbolKind::Variable || k == SymbolKind::Function) return true;
     }
     return false;
@@ -173,7 +173,7 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
     // Phase C：有靶向类型时，数组 / 元组字面量先按 expected 走，避免 getType
     // 用首元素推断造成 E3009 假阳性（嵌套 Array<Array<T>>、灵活整数、空数组）。
     if (expected) {
-        TypeInfo want = expected->peelRef();
+        const TypeInfo& want = expected->peelRef();
         if (auto paren = dynamic_cast<ExprParenNode*>(expr)) {
             visitExpr(paren->expr(), expected);
             if (paren->expr() && paren->expr()->hasResolvedType()) {
@@ -299,7 +299,7 @@ void SemaPass::visitLiteral(ExprLiteralNode& node) {
                     sym = _currentFn->lookupSymbol(varName);
                 }
                 if (sym) {
-                    const auto& t = sym->type;
+                    const auto& t = *sym->type;
                     // 函数名 / 类型名不是变量捕获，跳过 Heap/Ref 捕获检查
                     bool isVarOrParam = sym->kind != SymbolKind::Function && sym->kind != SymbolKind::Struct;
                     if (isVarOrParam && t.isHeap()) {
@@ -548,8 +548,8 @@ void SemaPass::visitCall(ExprCallNode& node) {
                 if (!sym && _currentFn) {
                     sym = _currentFn->lookupSymbol(fnName);
                 }
-                if (sym && sym->kind == SymbolKind::Variable && sym->type.isFn()) {
-                    copyFnParamTypes(sym->type, callArgExpected);
+                if (sym && sym->kind == SymbolKind::Variable && sym->type->isFn()) {
+                    copyFnParamTypes(*sym->type, callArgExpected);
                     callArgExpPtr = &callArgExpected;
                 }
             }
@@ -904,7 +904,7 @@ void SemaPass::visitCall(ExprCallNode& node) {
                                 bool paramsMatch = true;
                                 for (size_t i = 0; i < gp.size(); ++i) {
                                     if (!gp[i]->type()) continue;
-                                    if (nonGen->params[i] != gp[i]->type()->getType()) {
+                                    if (nonGen->paramType(i) != gp[i]->type()->getType()) {
                                         paramsMatch = false;
                                         break;
                                     }
@@ -1000,7 +1000,7 @@ void SemaPass::visitCall(ExprCallNode& node) {
                             // Phase B-1: #NoCopy 类型不可按值传参
                             if (fnSym) {
                                 for (size_t i = 0; i < n->getArgs().size() && i < fnSym->params.size(); ++i) {
-                                    const auto& pt = fnSym->params[i];
+                                    const auto& pt = fnSym->paramType(i);
                                     if (isNoCopyTypeIn(pt, _file, _sdkFile)) {
                                         if (!isFreshHandleExpr(n->getArgs()[i])) {
                                             throw RiuError(n->getLineNumber(), n->getColumn(), ErrorCode::E4031,
@@ -1330,7 +1330,7 @@ void SemaPass::visitCall(ExprCallNode& node) {
                 if (methodSymbol) {
                     // params[0] 是隐式 receiver，用户实参从 params[1] 开始对齐。
                     for (size_t i = 0; i < n->getArgs().size() && i + 1 < methodSymbol->params.size(); ++i) {
-                        const auto& pt = methodSymbol->params[i + 1];
+                        const auto& pt = methodSymbol->paramType(i + 1);
                         if (isNoCopyTypeIn(pt, _file, _sdkFile)) {
                             if (!isFreshHandleExpr(n->getArgs()[i])) {
                                 throw RiuError(n->getLineNumber(), n->getColumn(), ErrorCode::E4031, pt.name,
@@ -2367,7 +2367,7 @@ void SemaPass::visitDynCtor(ExprDynCtorNode& node) {
     // 等无 Riu 场景 skip, 留 Compiler 兜底.
     if (!_riu) return;
     try {
-        auto resultType = n->getType();
+        const TypeInfo& resultType = n->getType();
         int line = n->getLineNumber();
         int col = n->getColumn();
         auto specInner = resultType.dynSpecType();
@@ -2568,8 +2568,8 @@ void SemaPass::visitGetRef(ExprGetRefNode& node) {
             members.reserve(n->subs().size());
             for (auto& t : n->subs())
                 members.push_back(t.getText());
-            tryValidateFieldChain(sym->type, members, n->resolveLineNumber(), n->resolveColumn());
-            tryValidateReflectFieldValueWrite(objName, sym->type, members, n->resolveLineNumber(), n->resolveColumn());
+            tryValidateFieldChain(*sym->type, members, n->resolveLineNumber(), n->resolveColumn());
+            tryValidateReflectFieldValueWrite(objName, *sym->type, members, n->resolveLineNumber(), n->resolveColumn());
         }
     }
     return;

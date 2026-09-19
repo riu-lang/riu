@@ -9,6 +9,7 @@
 #include <map>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 class StatementDeclareAssignNode;
@@ -34,7 +35,7 @@ class BorrowChecker {
     std::set<std::string> _declared;
     std::map<std::string, int> _activeBorrows;
     std::map<std::string, std::string> _refToRoot;
-    std::map<std::string, TypeInfo> _rootType;
+    std::unordered_map<std::string, const TypeInfo*> _rootType;
 
     bool _returnsRef = false;
     std::set<std::string> _returnAllowedSources;

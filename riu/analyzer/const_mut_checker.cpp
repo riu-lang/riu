@@ -350,7 +350,7 @@ void ConstMutWalker::checkConstFnCall(ExprCallNode* call) {
         SymbolInfo* sym = scope->lookupSymbol(recvName);
         if (!sym) return;
         string typeName =
-            sym->type.isRef() && sym->type.refElementType() ? sym->type.refElementType()->name : sym->type.name;
+            sym->type->isRef() && sym->type->refElementType() ? sym->type->refElementType()->name : sym->type->name;
         if (typeName.empty()) return;
         string fullName = typeName + "." + dot->member();
         FnSymbolInfo* fs = lookupFnSymbolCrossFile(file, fullName);
@@ -368,7 +368,7 @@ void ConstMutWalker::checkFieldWrite(StatementAssignNode* as, ScopeNode* scope) 
     SymbolInfo* sym = sc->lookupSymbol(as->obj().getText());
     if (!sym) return;
     string typeName =
-        sym->type.isRef() && sym->type.refElementType() ? sym->type.refElementType()->name : sym->type.name;
+        sym->type->isRef() && sym->type->refElementType() ? sym->type->refElementType()->name : sym->type->name;
     StructDeclNode* sd = findStructDecl(_ctx.file, typeName);
     if (!sd) return;
     const string& fieldName = as->subs().front().getText();

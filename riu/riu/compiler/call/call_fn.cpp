@@ -74,7 +74,7 @@ llvm::Value* Compiler::compileFunctionCall(ExprCallNode* callNode, const string&
             bool paramsMatch = true;
             for (size_t i = 0; i < gp.size(); ++i) {
                 if (!gp[i]->type()) continue;
-                if (fnSymbol->params[i] != gp[i]->type()->getType()) {
+                if (fnSymbol->paramType(i) != gp[i]->type()->getType()) {
                     paramsMatch = false;
                     break;
                 }
@@ -937,8 +937,8 @@ llvm::Value* Compiler::compileKnownFunctionCall(ExprCallNode* callNode, const st
     } else {
         string ownerMod = fnSymbol->moduleName.empty() ? _file->moduleName() : fnSymbol->moduleName;
         bool isPriv = !fnName.empty() && fnName[0] == '_';
-        cName =
-            mangleFunction(ownerMod, fnName, fnSymbol->params, isPriv, fnSymbol->retType, fnSymbol->fallibleErrType);
+        cName = mangleFunction(ownerMod, fnName, fnSymbol->paramsCopy(), isPriv, fnSymbol->retTypeRef(),
+                               fnSymbol->fallibleErrType);
     }
 
     DEBUG_LOG_VAL("    Expr: FunctionCall", fnName << " -> " << cName);
@@ -950,8 +950,8 @@ llvm::Value* Compiler::compileKnownFunctionCall(ExprCallNode* callNode, const st
     }
 
     bool needPtrConversion = fnSymbol->isExternal;
-    for (auto& param : fnSymbol->params) {
-        if (param.isPtr()) {
+    for (auto* param : fnSymbol->params) {
+        if (param->isPtr()) {
             needPtrConversion = true;
             break;
         }
@@ -959,20 +959,20 @@ llvm::Value* Compiler::compileKnownFunctionCall(ExprCallNode* callNode, const st
 
     if (!fn) {
         vector<llvm::Type*> paramTypes;
-        for (auto& param : fnSymbol->params) {
-            if (param.isPtr() || param.isRef() || structParamUsesPointer(param)) {
+        for (auto* param : fnSymbol->params) {
+            if (param->isPtr() || param->isRef() || structParamUsesPointer(*param)) {
                 paramTypes.push_back(llvm::PointerType::get(_context, 0));
             } else {
-                paramTypes.push_back(getLLVMType(param));
+                paramTypes.push_back(getLLVMType(*param));
             }
         }
         // extern fn 禁 #Fallible（[#7]）—— extern 路径走原 isPtr 分支不包装；
         // 用户 fn 走 wrapFallibleRetType，按 fnSymbol->fallibleErrType 决定是否包成 struct
         llvm::Type* retType;
-        if (fnSymbol->isExternal && !fnSymbol->retType.empty() && TypeInfo(fnSymbol->retType).isPtr()) {
+        if (fnSymbol->isExternal && !fnSymbol->retTypeRef().empty() && TypeInfo(fnSymbol->retTypeRef()).isPtr()) {
             retType = llvm::PointerType::get(_context, 0);
         } else {
-            retType = wrapFallibleRetType(TypeInfo(fnSymbol->retType), fnSymbol->fallibleErrType);
+            retType = wrapFallibleRetType(TypeInfo(fnSymbol->retTypeRef()), fnSymbol->fallibleErrType);
         }
         auto fnType = llvm::FunctionType::get(retType, paramTypes, false);
         fn = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, cName, _module);
@@ -1006,7 +1006,7 @@ llvm::Value* Compiler::compileKnownFunctionCall(ExprCallNode* callNode, const st
     vector<HeapBdangSlot> heapBdangSlots;
     auto recordBdangIfEligible = [&](size_t i) {
         if (i >= fnSymbol->params.size() || i >= callNode->getArgs().size()) return;
-        const auto& p = fnSymbol->params[i];
+        const auto& p = fnSymbol->paramType(i);
         if (p.isRef() || p.isPtr()) return;
         if (!p.isNullable()) return;
         auto inner = p.nullableInnerType();
@@ -1023,16 +1023,17 @@ llvm::Value* Compiler::compileKnownFunctionCall(ExprCallNode* callNode, const st
             args[i] = compileExpr(callNode->getArgs()[i]);
             if (i < argTypes.size()) argTypes[i] = callNode->getArgs()[i]->getType();
         }
-        DEBUG_LOG_VAL("    Param", i << " argType=" << argTypes[i].name << " paramType=" << fnSymbol->params[i].name);
-        DEBUG_LOG_VAL("    Param isPtr", argTypes[i].isPtr() << " paramIsPtr=" << fnSymbol->params[i].isPtr());
+        DEBUG_LOG_VAL("    Param",
+                      i << " argType=" << argTypes[i].name << " paramType=" << fnSymbol->paramType(i).name);
+        DEBUG_LOG_VAL("    Param isPtr", argTypes[i].isPtr() << " paramIsPtr=" << fnSymbol->paramType(i).isPtr());
         recordBdangIfEligible(i);
-        if (fnSymbol->params[i].isRef() && !fnSymbol->isExternal) {
+        if (fnSymbol->paramType(i).isRef() && !fnSymbol->isExternal) {
             ExprNode* argExpr = i < callNode->getArgs().size() ? callNode->getArgs()[i] : nullptr;
             callArgs.push_back(pointerForRefParam(argExpr, args[i]));
             continue;
         }
 
-        if (fnSymbol->params[i].isPtr()) {
+        if (fnSymbol->paramType(i).isPtr()) {
             if (args[i]->getType()->isPointerTy()) {
                 auto ptrVal = _builder.CreateBitCast(args[i], llvm::PointerType::get(_context, 0), "ptr_cast");
                 callArgs.push_back(ptrVal);
@@ -1102,14 +1103,14 @@ llvm::Value* Compiler::compileKnownFunctionCall(ExprCallNode* callNode, const st
         // 必须在 typeNeedsDestructor 检查之前：String 等含 RC 字段的类型
         // typeNeedsDestructor(实参类型) 为 true，会提前 continue 跳过包装逻辑，
         // 导致裸 T 值传入 Nullable<T> 形参 → LLVM "bad signature" 断言。
-        if (i < fnSymbol->params.size() && fnSymbol->params[i].isNullable() && !argTypes[i].isNullable() &&
+        if (i < fnSymbol->params.size() && fnSymbol->paramType(i).isNullable() && !argTypes[i].isNullable() &&
             !argTypes[i].isPtr()) {
-            auto inner = fnSymbol->params[i].nullableInnerType();
+            auto inner = fnSymbol->paramType(i).nullableInnerType();
             if (inner && *inner == argTypes[i]) {
                 if (i < callNode->getArgs().size()) {
                     passAsArg(args[i], *inner, callNode->getArgs()[i]);
                 }
-                auto nullableLLVMTy = getLLVMType(fnSymbol->params[i]);
+                auto nullableLLVMTy = getLLVMType(fnSymbol->paramType(i));
                 llvm::Value* wrapped = llvm::UndefValue::get(nullableLLVMTy);
                 wrapped = _builder.CreateInsertValue(wrapped, _builder.getInt1(true), {0});
                 wrapped = _builder.CreateInsertValue(wrapped, args[i], {1});
@@ -1122,7 +1123,7 @@ llvm::Value* Compiler::compileKnownFunctionCall(ExprCallNode* callNode, const st
         // Phase 8c: fresh 实参（call/array literal）已自带 +1，跳过 retain
         // Phase 8d.1: fresh 实参的 +1 移交给 callee，从临时帧消费掉
         // Phase B-1: E4031 #NoCopy 按值传参检查已迁入 SemaPass，Compiler 端不再重复。
-        bool paramNeedsPtr = structParamUsesPointer(fnSymbol->params[i]);
+        bool paramNeedsPtr = structParamUsesPointer(fnSymbol->paramType(i));
         if (typeNeedsDestructor(argTypes[i]) && i < callNode->getArgs().size()) {
             passAsArg(args[i], argTypes[i], callNode->getArgs()[i]);
         }
@@ -1132,7 +1133,7 @@ llvm::Value* Compiler::compileKnownFunctionCall(ExprCallNode* callNode, const st
         }
 
         if (paramNeedsPtr) {
-            DEBUG_LOG_VAL("    Passing struct by pointer", "arg " << i << " : " << fnSymbol->params[i].name);
+            DEBUG_LOG_VAL("    Passing struct by pointer", "arg " << i << " : " << fnSymbol->paramType(i).name);
             auto structType = getLLVMType(argTypes[i]);
             auto alloca = _builder.CreateAlloca(structType, nullptr, "struct_arg_tmp");
             _builder.CreateStore(args[i], alloca);
@@ -1144,7 +1145,7 @@ llvm::Value* Compiler::compileKnownFunctionCall(ExprCallNode* callNode, const st
     }
 
     if (fnSymbol->isExternal) {
-        auto retSlot = externAbiSlot(fnSymbol->retType);
+        auto retSlot = externAbiSlot(fnSymbol->retTypeRef());
         vector<llvm::Value*> abiArgs;
         llvm::Value* sretAlloca = nullptr;
         if (retSlot.indirect && retSlot.valueTy) {
@@ -1152,7 +1153,7 @@ llvm::Value* Compiler::compileKnownFunctionCall(ExprCallNode* callNode, const st
             abiArgs.push_back(sretAlloca);
         }
         for (size_t i = 0; i < callArgs.size() && i < fnSymbol->params.size(); ++i) {
-            auto slot = externAbiSlot(fnSymbol->params[i]);
+            auto slot = externAbiSlot(fnSymbol->paramType(i));
             abiArgs.push_back(coerceToExternArg(callArgs[i], slot));
         }
         auto* callResult = _builder.CreateCall(fn, abiArgs);
@@ -1184,10 +1185,10 @@ llvm::Value* Compiler::compileKnownFunctionCall(ExprCallNode* callNode, const st
         }
     }
 
-    if (fnSymbol->isExternal && !fnSymbol->retType.empty() && TypeInfo(fnSymbol->retType).isPtr()) {
+    if (fnSymbol->isExternal && !fnSymbol->retTypeRef().empty() && TypeInfo(fnSymbol->retTypeRef()).isPtr()) {
         return callResult;
     }
 
     // [#10.A] / [#10.C]：callee 标 #Fallible 时分流 isErr → 透传 / 提取 T_ok
-    return handleFallibleCallResult(callResult, fnSymbol->fallibleErrType, TypeInfo(fnSymbol->retType), callNode);
+    return handleFallibleCallResult(callResult, fnSymbol->fallibleErrType, TypeInfo(fnSymbol->retTypeRef()), callNode);
 }

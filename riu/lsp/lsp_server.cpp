@@ -493,7 +493,7 @@ static std::string resolveReceiverStructName(FnNode* fn, const std::string& name
     if (!fn) return {};
     auto* sym = fn->lookupSymbol(name);
     if (!sym) return {};
-    TypeInfo t = sym->type;
+    TypeInfo t = *sym->type;
     // 解包常见包装：Rc<T>/Nullable<T>/Ref —— 仅对成员补全/跳转一层展开
     if (t.isRef()) {
         if (auto e = t.refElementType()) t = *e;

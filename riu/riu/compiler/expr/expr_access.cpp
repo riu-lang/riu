@@ -323,7 +323,7 @@ llvm::Value* Compiler::compileDotExpr(ExprDotNode* node) {
             auto sym = lookupVarSymbol(objName, node);
             if (sym && _localVarPtrs.contains(objName)) {
                 DEBUG_LOG_VAL("    Expr: DotMemberLoad", objName << "." << member);
-                return _builder.CreateLoad(getLLVMType(sym->type), _localVarPtrs[objName]);
+                return _builder.CreateLoad(getLLVMType(*sym->type), _localVarPtrs[objName]);
             }
         }
     }

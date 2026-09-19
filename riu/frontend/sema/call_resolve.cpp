@@ -49,34 +49,35 @@ static bool paramAccepts(const TypeInfo& param, const TypeInfo& argType) {
 
 // 灵活的函数重载匹配
 // 对灵活整数字面量 (如 42) 允许匹配任何整数类型
-static bool overloadMatchesFlexible(const vector<ExprNode*>& args, const vector<TypeInfo>& params) {
+static bool overloadMatchesFlexible(const vector<ExprNode*>& args, const vector<const TypeInfo*>& params) {
     if (params.size() != args.size()) return false;
     for (size_t i = 0; i < args.size(); ++i) {
+        const TypeInfo& pi = *params[i];
         if (isFlexibleIntExpr(args[i])) {
             // 灵活整数可以匹配任何整数类型
-            if (isIntTypeName(params[i].name)) continue;
+            if (isIntTypeName(pi.name)) continue;
             // 形参为 Nullable<T> 且 T 为整数类型 → 允许灵活整数匹配
-            if (params[i].isNullable()) {
-                auto inner = params[i].nullableInnerType();
+            if (pi.isNullable()) {
+                auto inner = pi.nullableInnerType();
                 if (inner && isIntTypeName(inner->name)) continue;
             }
             try {
-                if (paramAccepts(params[i], args[i]->getType())) continue;
+                if (paramAccepts(pi, args[i]->getType())) continue;
             } catch (...) { // NOLINT(bugprone-empty-catch)
             }
             return false;
         }
         // 灵活 null 可以匹配任何 Nullable<T> 形参
         if (isFlexibleNullExpr(args[i])) {
-            if (params[i].isNullable()) continue;
+            if (pi.isNullable()) continue;
             try {
-                if (paramAccepts(params[i], args[i]->getType())) continue;
+                if (paramAccepts(pi, args[i]->getType())) continue;
             } catch (...) { // NOLINT(bugprone-empty-catch)
             }
             return false;
         }
         try {
-            if (!paramAccepts(params[i], args[i]->getType())) return false;
+            if (!paramAccepts(pi, args[i]->getType())) return false;
         } catch (...) {
             return false;
         }
@@ -86,7 +87,7 @@ static bool overloadMatchesFlexible(const vector<ExprNode*>& args, const vector<
 
 // 默认的函数重载匹配
 // 灵活整数字面量默认匹配 i32
-static bool overloadMatchesDefault(const vector<ExprNode*>& args, const vector<TypeInfo>& params) {
+static bool overloadMatchesDefault(const vector<ExprNode*>& args, const vector<const TypeInfo*>& params) {
     if (params.size() != args.size()) return false;
     TypeInfo i32Type("i32");
     TypeInfo ptrType("Ptr");
@@ -103,7 +104,7 @@ static bool overloadMatchesDefault(const vector<ExprNode*>& args, const vector<T
                 return false;
             }
         }
-        if (!paramAccepts(params[i], argType)) return false;
+        if (!paramAccepts(*params[i], argType)) return false;
     }
     return true;
 }
@@ -136,7 +137,7 @@ void resolveCtorOverload(FileNode* file, const string& structName, const vector<
                     return false;
                 }
             }
-            if (!paramAccepts(c->params[i + 1], argType)) return false;
+            if (!paramAccepts(c->paramType(i + 1), argType)) return false;
         }
         return true;
     };
@@ -144,28 +145,28 @@ void resolveCtorOverload(FileNode* file, const string& structName, const vector<
         if (c->params.size() != args.size() + 1) return false;
         for (size_t i = 0; i < args.size(); ++i) {
             if (isFlexibleIntExpr(args[i])) {
-                if (isIntTypeName(c->params[i + 1].name)) continue;
+                if (isIntTypeName(c->paramType(i + 1).name)) continue;
                 // Nullable<整数> 形参：剥 Nullable 后检查内层是否为整数类型
-                if (c->params[i + 1].isNullable()) {
-                    auto inner = c->params[i + 1].nullableInnerType();
+                if (c->paramType(i + 1).isNullable()) {
+                    auto inner = c->paramType(i + 1).nullableInnerType();
                     if (inner && isIntTypeName(inner->name)) continue;
                 }
                 try {
-                    if (paramAccepts(c->params[i + 1], args[i]->getType())) continue;
+                    if (paramAccepts(c->paramType(i + 1), args[i]->getType())) continue;
                 } catch (...) { // NOLINT(bugprone-empty-catch)
                 }
                 return false;
             }
             if (isFlexibleNullExpr(args[i])) {
-                if (c->params[i + 1].isNullable()) continue;
+                if (c->paramType(i + 1).isNullable()) continue;
                 try {
-                    if (paramAccepts(c->params[i + 1], args[i]->getType())) continue;
+                    if (paramAccepts(c->paramType(i + 1), args[i]->getType())) continue;
                 } catch (...) { // NOLINT(bugprone-empty-catch)
                 }
                 return false;
             }
             try {
-                if (!paramAccepts(c->params[i + 1], args[i]->getType())) return false;
+                if (!paramAccepts(c->paramType(i + 1), args[i]->getType())) return false;
             } catch (...) {
                 return false;
             }
@@ -189,17 +190,17 @@ void resolveCtorOverload(FileNode* file, const string& structName, const vector<
         // 唯一匹配：把每个灵活整数 / 灵活 null 实参推断到对应 ctor 形参类型
         auto fn = matches[0];
         for (size_t i = 0; i < args.size(); ++i) {
-            if (isFlexibleIntExpr(args[i]) && isIntTypeName(fn->params[i + 1].name)) {
-                tryInferIntType(args[i], fn->params[i + 1]);
-            } else if (isFlexibleIntExpr(args[i]) && fn->params[i + 1].isNullable()) {
+            if (isFlexibleIntExpr(args[i]) && isIntTypeName(fn->paramType(i + 1).name)) {
+                tryInferIntType(args[i], fn->paramType(i + 1));
+            } else if (isFlexibleIntExpr(args[i]) && fn->paramType(i + 1).isNullable()) {
                 // Nullable<整数> 形参：按内层 T 推断灵活整数
-                auto inner = fn->params[i + 1].nullableInnerType();
+                auto inner = fn->paramType(i + 1).nullableInnerType();
                 if (inner && isIntTypeName(inner->name)) {
                     tryInferIntType(args[i], *inner);
                 }
             }
-            if (isFlexibleNullExpr(args[i]) && fn->params[i + 1].isNullable()) {
-                tryInferNullType(args[i], fn->params[i + 1]);
+            if (isFlexibleNullExpr(args[i]) && fn->paramType(i + 1).isNullable()) {
+                tryInferNullType(args[i], fn->paramType(i + 1));
             }
         }
     } else if (matches.size() > 1) {
@@ -208,7 +209,7 @@ void resolveCtorOverload(FileNode* file, const string& structName, const vector<
             sigs += "\n  " + structName + "(";
             for (size_t i = 1; i < m->params.size(); ++i) {
                 if (i > 1) sigs += ", ";
-                sigs += m->params[i].name;
+                sigs += m->paramType(i).name;
             }
             sigs += ')';
         }
@@ -249,7 +250,7 @@ void resolveCtorOverload(FileNode* file, const string& structName, const vector<
                 sigs += "\n  " + structName + "(";
                 for (size_t i = 1; i < c->params.size(); ++i) {
                     if (i > 1) sigs += ", ";
-                    sigs += c->params[i].name;
+                    sigs += c->paramType(i).name;
                 }
                 sigs += ')';
             }
@@ -297,7 +298,7 @@ void resolveMethodOverload(FileNode* file, FileNode* sdkFile, const string& base
                     return false;
                 }
             }
-            if (!paramAccepts(c->params[i + 1], argType)) return false;
+            if (!paramAccepts(c->paramType(i + 1), argType)) return false;
         }
         return true;
     };
@@ -305,28 +306,28 @@ void resolveMethodOverload(FileNode* file, FileNode* sdkFile, const string& base
         if (c->params.size() != args.size() + 1) return false;
         for (size_t i = 0; i < args.size(); ++i) {
             if (isFlexibleIntExpr(args[i])) {
-                if (isIntTypeName(c->params[i + 1].name)) continue;
+                if (isIntTypeName(c->paramType(i + 1).name)) continue;
                 // Nullable<整数> 形参：剥 Nullable 后检查内层是否为整数类型
-                if (c->params[i + 1].isNullable()) {
-                    auto inner = c->params[i + 1].nullableInnerType();
+                if (c->paramType(i + 1).isNullable()) {
+                    auto inner = c->paramType(i + 1).nullableInnerType();
                     if (inner && isIntTypeName(inner->name)) continue;
                 }
                 try {
-                    if (paramAccepts(c->params[i + 1], args[i]->getType())) continue;
+                    if (paramAccepts(c->paramType(i + 1), args[i]->getType())) continue;
                 } catch (...) { // NOLINT(bugprone-empty-catch)
                 }
                 return false;
             }
             if (isFlexibleNullExpr(args[i])) {
-                if (c->params[i + 1].isNullable()) continue;
+                if (c->paramType(i + 1).isNullable()) continue;
                 try {
-                    if (paramAccepts(c->params[i + 1], args[i]->getType())) continue;
+                    if (paramAccepts(c->paramType(i + 1), args[i]->getType())) continue;
                 } catch (...) { // NOLINT(bugprone-empty-catch)
                 }
                 return false;
             }
             try {
-                if (!paramAccepts(c->params[i + 1], args[i]->getType())) return false;
+                if (!paramAccepts(c->paramType(i + 1), args[i]->getType())) return false;
             } catch (...) {
                 return false;
             }
@@ -350,17 +351,17 @@ void resolveMethodOverload(FileNode* file, FileNode* sdkFile, const string& base
         // 唯一匹配：把每个灵活整数 / 灵活 null 实参推断到对应形参类型
         auto fn = matches[0];
         for (size_t i = 0; i < args.size(); ++i) {
-            if (isFlexibleIntExpr(args[i]) && isIntTypeName(fn->params[i + 1].name)) {
-                tryInferIntType(args[i], fn->params[i + 1]);
-            } else if (isFlexibleIntExpr(args[i]) && fn->params[i + 1].isNullable()) {
+            if (isFlexibleIntExpr(args[i]) && isIntTypeName(fn->paramType(i + 1).name)) {
+                tryInferIntType(args[i], fn->paramType(i + 1));
+            } else if (isFlexibleIntExpr(args[i]) && fn->paramType(i + 1).isNullable()) {
                 // Nullable<整数> 形参：按内层 T 推断灵活整数
-                auto inner = fn->params[i + 1].nullableInnerType();
+                auto inner = fn->paramType(i + 1).nullableInnerType();
                 if (inner && isIntTypeName(inner->name)) {
                     tryInferIntType(args[i], *inner);
                 }
             }
-            if (isFlexibleNullExpr(args[i]) && fn->params[i + 1].isNullable()) {
-                tryInferNullType(args[i], fn->params[i + 1]);
+            if (isFlexibleNullExpr(args[i]) && fn->paramType(i + 1).isNullable()) {
+                tryInferNullType(args[i], fn->paramType(i + 1));
             }
         }
     } else if (matches.size() > 1) {
@@ -369,7 +370,7 @@ void resolveMethodOverload(FileNode* file, FileNode* sdkFile, const string& base
             sigs += "\n  " + methodFullName + "(";
             for (size_t i = 1; i < m->params.size(); ++i) {
                 if (i > 1) sigs += ", ";
-                sigs += m->params[i].name;
+                sigs += m->paramType(i).name;
             }
             sigs += ')';
         }
@@ -439,17 +440,17 @@ void resolveFnOverload(FileNode* file, FileNode* sdkFile, const string& fnName, 
         // 唯一匹配: 推断灵活整数 / 灵活 null 的类型
         auto fn = matches[0];
         for (size_t i = 0; i < args.size(); ++i) {
-            if (isFlexibleIntExpr(args[i]) && isIntTypeName(fn->params[i].name)) {
-                tryInferIntType(args[i], fn->params[i]);
-            } else if (isFlexibleIntExpr(args[i]) && fn->params[i].isNullable()) {
+            if (isFlexibleIntExpr(args[i]) && isIntTypeName(fn->paramType(i).name)) {
+                tryInferIntType(args[i], fn->paramType(i));
+            } else if (isFlexibleIntExpr(args[i]) && fn->paramType(i).isNullable()) {
                 // Nullable<T> 形参：按内层 T 推断灵活整数
-                auto inner = fn->params[i].nullableInnerType();
+                auto inner = fn->paramType(i).nullableInnerType();
                 if (inner && isIntTypeName(inner->name)) {
                     tryInferIntType(args[i], *inner);
                 }
             }
-            if (isFlexibleNullExpr(args[i]) && fn->params[i].isNullable()) {
-                tryInferNullType(args[i], fn->params[i]);
+            if (isFlexibleNullExpr(args[i]) && fn->paramType(i).isNullable()) {
+                tryInferNullType(args[i], fn->paramType(i));
             }
         }
     } else if (matches.size() > 1) {
@@ -459,7 +460,7 @@ void resolveFnOverload(FileNode* file, FileNode* sdkFile, const string& fnName, 
             sigs += "\n  " + fnName + "(";
             for (size_t i = 0; i < m->params.size(); ++i) {
                 if (i) sigs += ", ";
-                sigs += m->params[i].name;
+                sigs += m->paramType(i).name;
             }
             sigs += ')';
         }
@@ -502,7 +503,7 @@ void resolveFnOverload(FileNode* file, FileNode* sdkFile, const string& fnName, 
                 sigs += "\n  " + fnName + "(";
                 for (size_t i = 0; i < c->params.size(); ++i) {
                     if (i) sigs += ", ";
-                    sigs += c->params[i].name;
+                    sigs += c->paramType(i).name;
                 }
                 sigs += ')';
             }
@@ -635,7 +636,7 @@ string callerFallibleErr(FnNode* fn, LambdaExprNode* lam) {
         return fallibleErrKey(lam->fallibleErrTypeNode()->getType());
     }
     if (lam) {
-        auto ft = lam->getType();
+        const TypeInfo& ft = lam->getType();
         if (ft.isFn() && ft.fnReturnType() && !ft.fnReturnType()->fallibleErr.empty()) {
             return ft.fnReturnType()->fallibleErr;
         }
@@ -1475,7 +1476,7 @@ void validateBuiltinIntrinsicTypeShape(const string& fnName, const vector<TypeIn
                         auto scope = objLit->findNearestScope();
                         if (scope) {
                             auto sym = scope->lookupSymbol(objLit->getValue().getText());
-                            if (sym && sym->type.isRef()) {
+                            if (sym && sym->type->isRef()) {
                                 argIsRef = true;
                                 break;
                             }
@@ -1549,7 +1550,7 @@ void validateBuiltinIntrinsicTypeShape(const string& fnName, const vector<TypeIn
             }
             if (!sd) return false;
             for (auto& field : sd->fields()) {
-                auto ft = field->getType();
+                const TypeInfo& ft = field->getType();
                 string inner;
                 if (hasRefDeep(ft, inner)) {
                     path = t.name + "." + field->name().getText() + " : " + inner;
@@ -1758,7 +1759,7 @@ void throwEnumCtorTypeArity(const string& name, size_t want, size_t got, int lin
 
 void validateEnumCtorShape(FileNode* file, FileNode* sdkFile, ExprPathCallNode* node) {
     if (!node) return;
-    TypeInfo enumTy = node->getType();
+    const TypeInfo& enumTy = node->getType();
     string enumName = enumTy.name; // 经别名 / 路径解析后的真实 enum 名
     string enumNameRaw = node->lhsPath().empty() ? node->enumName().getText() : node->lhsPath().dotted();
     string variantName = node->variantName().getText();
@@ -1945,7 +1946,7 @@ void validateGetRefPrivacy(FileNode* file, FileNode* sdkFile, ExprGetRefNode* no
     auto sym = scope->lookupSymbol(node->obj().getText());
     if (!sym) return; // E3030 由 getType 抢; 这里静默
 
-    TypeInfo currentType = sym->type;
+    TypeInfo currentType = *sym->type;
     if (currentType.isRef()) {
         if (auto inner = currentType.refElementType()) currentType = *inner;
     }
@@ -2170,7 +2171,7 @@ void validateBinOpMethodResolution(FileNode* file, FileNode* sdkFile, const Type
     int refCount = 0;
     for (auto* cand : candidates) {
         if (cand->params.size() != 2) continue; // 二元运算符：接收者 + 1 形参
-        const TypeInfo& candParam = cand->params[1];
+        const TypeInfo& candParam = cand->paramType(1);
 
         if (!candParam.isRef() && candParam == rightType) {
             exactCount++;
@@ -2187,7 +2188,7 @@ void validateBinOpMethodResolution(FileNode* file, FileNode* sdkFile, const Type
         string sigs;
         for (auto* cand : candidates) {
             if (cand->params.size() != 2) continue;
-            const TypeInfo& cp = cand->params[1];
+            const TypeInfo& cp = cand->paramType(1);
             bool matches = (!cp.isRef() && cp == rightType) ||
                            (cp.isRef() && cp.refElementType() && *cp.refElementType() == rightType);
             if (!matches) continue;

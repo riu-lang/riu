@@ -154,13 +154,13 @@ llvm::Value* Compiler::compileLiteralExpr(ExprLiteralNode* node) {
         // Phase B-1: E4033 use-after-move 检查已迁入 SemaPass，Compiler 端不再重复。
 
         if (sym && _localVarPtrs.contains(varName)) {
-            DEBUG_LOG_VAL("    Expr: VariableLoad", varName << " : " << sym->type.name);
+            DEBUG_LOG_VAL("    Expr: VariableLoad", varName << " : " << sym->type->name);
             // Phase 4a: T& 借用 — _localVarPtrs[name] 是底层 T 的地址（参数/局部统一），自动解引用
-            if (sym->type.isRef()) {
-                auto innerType = sym->type.refElementType();
+            if (sym->type->isRef()) {
+                auto innerType = sym->type->refElementType();
                 return _builder.CreateLoad(getLLVMType(*innerType), _localVarPtrs[varName]);
             }
-            return _builder.CreateLoad(getLLVMType(sym->type), _localVarPtrs[varName]);
+            return _builder.CreateLoad(getLLVMType(*sym->type), _localVarPtrs[varName]);
         }
 
         // 函数名作为值使用（非调用）：构造 fat-ptr { fn_ptr, null }
@@ -175,8 +175,8 @@ llvm::Value* Compiler::compileLiteralExpr(ExprLiteralNode* node) {
             if (fnSym) {
                 string ownerMod = fnSym->moduleName.empty() ? _file->moduleName() : fnSym->moduleName;
                 bool isPriv = !varName.empty() && varName[0] == '_';
-                string fnMangled =
-                    mangleFunction(ownerMod, varName, fnSym->params, isPriv, fnSym->retType, fnSym->fallibleErrType);
+                string fnMangled = mangleFunction(ownerMod, varName, fnSym->paramsCopy(), isPriv, fnSym->retTypeRef(),
+                                                  fnSym->fallibleErrType);
                 auto func = _module->getFunction(fnMangled);
                 if (func) {
                     DEBUG_LOG_VAL("    Expr: FunctionValue (fat-ptr)", varName << " -> " << fnMangled);
@@ -192,8 +192,8 @@ llvm::Value* Compiler::compileLiteralExpr(ExprLiteralNode* node) {
                         if (!thunk) {
                             vector<llvm::Type*> thunkParams;
                             thunkParams.push_back(ptrTy); // captures
-                            for (auto& p : fnSym->params)
-                                thunkParams.push_back(getLLVMType(p));
+                            for (auto* p : fnSym->params)
+                                thunkParams.push_back(getLLVMType(*p));
                             auto* thunkTy = llvm::FunctionType::get(funcTy->getReturnType(), thunkParams, false);
                             thunk =
                                 llvm::Function::Create(thunkTy, llvm::Function::InternalLinkage, thunkName, _module);
@@ -236,7 +236,7 @@ llvm::Value* Compiler::compileLiteralExpr(ExprLiteralNode* node) {
         auto inlineIt = _inlineConstantValues.find(mangledName);
         if (inlineIt != _inlineConstantValues.end()) {
             DEBUG_LOG_VAL("    Expr: InlineConst",
-                          varName << " : " << (sym ? sym->type.name : "unknown") << " [direct constant, no load]");
+                          varName << " : " << (sym ? sym->type->name : "unknown") << " [direct constant, no load]");
             return inlineIt->second;
         }
 
@@ -248,13 +248,13 @@ llvm::Value* Compiler::compileLiteralExpr(ExprLiteralNode* node) {
         // 仅当不在 lambda body 捕获上下文时才创建——lambda 捕获的外层局部变量
         // 走下方 _currentLambdaForCapture 分支，不应误创为全局常量。
         if (!globalVar && sym && !(_currentLambdaForCapture && _currentLambdaBodyScope)) {
-            auto llvmType = getLLVMType(sym->type);
+            auto llvmType = getLLVMType(*sym->type);
             globalVar = new llvm::GlobalVariable(*_module, llvmType, true, llvm::GlobalValue::ExternalLinkage, nullptr,
                                                  mangledName);
-            DEBUG_LOG_VAL("    Expr: GlobalConstDecl (cross-file)", varName << " : " << sym->type.name);
+            DEBUG_LOG_VAL("    Expr: GlobalConstDecl (cross-file)", varName << " : " << sym->type->name);
         }
         if (globalVar) {
-            DEBUG_LOG_VAL("    Expr: GlobalConstLoad", varName << " : " << (sym ? sym->type.name : "unknown"));
+            DEBUG_LOG_VAL("    Expr: GlobalConstLoad", varName << " : " << (sym ? sym->type->name : "unknown"));
             return _builder.CreateLoad(globalVar->getValueType(), globalVar, "global.load");
         }
 
@@ -269,7 +269,7 @@ llvm::Value* Compiler::compileLiteralExpr(ExprLiteralNode* node) {
         // - 命中：addCapture（首次出现）+ 生成 GEP 读 captures buffer
         // captures Rc payload 布局：[0..8] dtor fn ptr，[8..] capture 字段（4a-2 引入 dtor 槽）
         if (_currentLambdaForCapture && _currentLambdaBodyScope && sym && sym->kind == SymbolKind::Variable) {
-            const auto& t = sym->type;
+            const auto& t = *sym->type;
             bool isScalar = t.isNormal() && isBuiltinType(t.name);
             bool isHandle = t.isRcHandle();
             bool isRef = t.isRef();

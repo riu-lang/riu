@@ -371,7 +371,7 @@ bool Compiler::tryHeapNullableLvalueSlot(ExprNode* expr, llvm::Value*& outSlot, 
             if (it == _localVarPtrs.end()) return false;
             auto sym = lookupVarSymbol(name, litE);
             if (!sym) return false;
-            auto ty = applySubst(sym->type);
+            auto ty = applySubst(*sym->type);
             if (!isHeapNullable(ty)) return false;
             outSlot = it->second;
             outTy = getLLVMType(ty);
