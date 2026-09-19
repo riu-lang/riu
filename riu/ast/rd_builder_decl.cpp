@@ -606,7 +606,7 @@ void RdBuilder::addStruct(rd::NodeId id) {
             sf.isPrivate = !sf.name.getText().empty() && sf.name.getText()[0] == '_';
             sf.isCval = isCval;
             sf.isInline = isInline;
-            structDecl->addStaticField(std::move(sf));
+            structDecl->addStaticField(sf);
             continue;
         }
         auto* field = create<StructFieldNode>(f, structDecl, makeTok(f), ty);
@@ -839,6 +839,8 @@ void RdBuilder::addItem(rd::NodeId id) {
 }
 
 FileNode* RdBuilder::build() {
+    // 混测大量短 ident；预留避免 intern 表反复 rehash。
+    if (!_src.empty()) _riu.stringIntern().reserve(_src.size() / 16);
     auto parsed = rd::parseProgram(_src);
     _ast = std::move(parsed.ast);
     _errors = std::move(parsed.errors);

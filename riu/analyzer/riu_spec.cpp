@@ -16,6 +16,7 @@
 
 Riu::Riu() : _sdkFile(nullptr) {
     bindTypeIntern(&_typeIntern);
+    bindStringIntern(&_stringIntern);
 }
 
 Riu::~Riu() {
@@ -25,6 +26,7 @@ Riu::~Riu() {
         delete file;
     }
     delete _sdkFile;
+    bindStringIntern(nullptr);
     bindTypeIntern(nullptr);
 }
 

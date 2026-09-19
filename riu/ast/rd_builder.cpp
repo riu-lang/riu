@@ -200,9 +200,10 @@ size_t RdBuilder::tokenIndexAt(rd::i32 offset) const {
     return static_cast<size_t>(it->index);
 }
 
+// 文本进 Riu StringIntern；releaseParseTemps 可丢源 / FlatAst。
 Token RdBuilder::makeTok(std::string_view text, const rd::Pos& pos) const {
     const size_t stop = pos.end > 0 ? static_cast<size_t>(pos.end - 1) : 0;
-    return {string(text),
+    return {text,
             static_cast<size_t>(pos.line),
             static_cast<size_t>(pos.column),
             tokenIndexAt(pos.offset),
@@ -245,7 +246,7 @@ string RdBuilder::findEnclosingStructName() const {
 
 TypeNode* RdBuilder::wrapRefIf(TypeNode* inner, bool isAnd, const rd::Pos& pos) {
     if (!isAnd || !inner) return inner;
-    Token refName(string("Ref"), static_cast<size_t>(pos.line));
+    Token refName("Ref", static_cast<size_t>(pos.line));
     return static_cast<TypeNode*>(create<TypeGenericNode>(pos, currentScope(), refName, vector<TypeNode*>{inner}));
 }
 
@@ -256,7 +257,7 @@ TypeNode* RdBuilder::applyNullableSuffix(TypeNode* inner, const rd::Pos& questPo
             return inner;
         }
     }
-    Token nullableName(string("Nullable"), static_cast<size_t>(questPos.line));
+    Token nullableName("Nullable", static_cast<size_t>(questPos.line));
     return static_cast<TypeNode*>(
         create<TypeGenericNode>(questPos, currentScope(), nullableName, vector<TypeNode*>{inner}));
 }
@@ -339,7 +340,7 @@ TypeNode* RdBuilder::buildType(rd::NodeId id) {
     }
     case rd::NodeKind::TypeArray: {
         TypeNode* elem = n.children_count > 0 ? buildType(child(id, 0)) : nullptr;
-        Token count = n.children_count > 1 ? makeTok(child(id, 1)) : Token(string("0"), n.pos.line);
+        Token count = n.children_count > 1 ? makeTok(child(id, 1)) : Token("0", n.pos.line);
         auto* inner = static_cast<TypeNode*>(create<TypeArrayNode>(id, parent, elem, count));
         return wrapRefIf(inner, trailingAnd, n.pos);
     }

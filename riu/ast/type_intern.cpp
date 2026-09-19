@@ -6,14 +6,16 @@
 #include "node/file_node.h"
 #include "riu.h"
 
+#include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
 namespace {
 
 void hashCombine(size_t& h, size_t v) {
-    h ^= v + 0x9e3779b9u + (h << 6) + (h >> 2);
+    h ^= v + 0x9e3779b9u + (h << 6u) + (h >> 2u);
 }
 
 struct TypeInternKey {
@@ -169,4 +171,68 @@ sp<TypeInfo> internTypeSpAt(const Node* n, TypeInfo t) {
         }
     }
     return internTypeSp(std::move(t));
+}
+
+namespace {
+
+struct TokenTextHash {
+    using is_transparent = void;
+    size_t operator()(string_view s) const noexcept { return std::hash<string_view>{}(s); }
+    size_t operator()(const string& s) const noexcept { return std::hash<string_view>{}(s); }
+};
+
+struct TokenTextEq {
+    using is_transparent = void;
+    bool operator()(string_view a, string_view b) const noexcept { return a == b; }
+    bool operator()(const string& a, string_view b) const noexcept { return a == b; }
+    bool operator()(string_view a, const string& b) const noexcept { return a == b; }
+    bool operator()(const string& a, const string& b) const noexcept { return a == b; }
+};
+
+thread_local vector<StringIntern*> g_stringInterns;
+
+StringIntern& fallbackStringIntern() {
+    static StringIntern intern;
+    return intern;
+}
+
+StringIntern& currentStringIntern() {
+    return g_stringInterns.empty() ? fallbackStringIntern() : *g_stringInterns.back();
+}
+
+} // namespace
+
+struct StringIntern::Impl {
+    // 元素指针在 rehash 后仍有效；透明查找避免 makeTok 热路径再分配。
+    std::unordered_set<string, TokenTextHash, TokenTextEq> texts;
+};
+
+StringIntern::StringIntern() : _impl(std::make_unique<Impl>()) {}
+
+StringIntern::~StringIntern() = default;
+
+StringIntern::StringIntern(StringIntern&&) noexcept = default;
+
+StringIntern& StringIntern::operator=(StringIntern&&) noexcept = default;
+
+const string& StringIntern::intern(string_view s) {
+    if (s.empty()) return emptyTokenText();
+    if (auto it = _impl->texts.find(s); it != _impl->texts.end()) return *it;
+    return *_impl->texts.emplace(s).first;
+}
+
+void StringIntern::reserve(size_t n) {
+    _impl->texts.reserve(n);
+}
+
+void bindStringIntern(StringIntern* intern) {
+    if (intern)
+        g_stringInterns.push_back(intern);
+    else if (!g_stringInterns.empty())
+        g_stringInterns.pop_back();
+}
+
+const string& internTokenText(string_view s) {
+    if (s.empty()) return emptyTokenText();
+    return currentStringIntern().intern(s);
 }

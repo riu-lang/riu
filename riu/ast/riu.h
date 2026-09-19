@@ -40,6 +40,7 @@ struct PkgExportItem {
 class Riu {
     // 先于 FileNode 析构：intern 指针活过 AST。
     TypeIntern _typeIntern;
+    StringIntern _stringIntern;
     vector<FileNode*> _files;
     FileNode* _sdkFile;
 
@@ -78,6 +79,8 @@ public:
 
     TypeIntern& typeIntern() { return _typeIntern; }
     [[nodiscard]] const TypeIntern& typeIntern() const { return _typeIntern; }
+    StringIntern& stringIntern() { return _stringIntern; }
+    [[nodiscard]] const StringIntern& stringIntern() const { return _stringIntern; }
 
     void addFile(FileNode* file);
     FileNode* createFile(const string& moduleName);

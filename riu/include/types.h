@@ -62,8 +62,15 @@ extern bool debug;
 
 #endif
 
+// Token 文本 intern：空串进程单例；其余挂当前 StringIntern（Riu 构造 push）。
+[[nodiscard]] inline const string& emptyTokenText() {
+    static const string kEmpty;
+    return kEmpty;
+}
+[[nodiscard]] const string& internTokenText(string_view s);
+
 class TokenInfo {
-    string _text;
+    const string* _text = nullptr;
     size_t _line = 0;
     size_t _charPositionInLine = 0;
     size_t _tokenIndex = 0;
@@ -74,13 +81,13 @@ public:
     TokenInfo() = default;
 
     // 合成 Token：解糖时没有源 token 的节点（如 T? → Nullable<T> 的 "Nullable"）
-    TokenInfo(string text, size_t line) : _text(std::move(text)), _line(line) {}
+    TokenInfo(string_view text, size_t line) : _text(&internTokenText(text)), _line(line) {}
 
     // 从 rd::Pos 填行列与字节区间。charPositionInLine 是 0-based 行内 UTF-8 字节
     // （rd::Pos.column）；start/stop 为 UTF-8 字节，stop 是闭区间（半开 end-1）。
-    TokenInfo(string text, size_t line, size_t charPositionInLine, size_t tokenIndex, size_t startIndex,
+    TokenInfo(string_view text, size_t line, size_t charPositionInLine, size_t tokenIndex, size_t startIndex,
               size_t stopIndex)
-        : _text(std::move(text)), _line(line), _charPositionInLine(charPositionInLine), _tokenIndex(tokenIndex),
+        : _text(&internTokenText(text)), _line(line), _charPositionInLine(charPositionInLine), _tokenIndex(tokenIndex),
           _startIndex(startIndex), _stopIndex(stopIndex) {}
 
     TokenInfo(const TokenInfo& other) = default;
@@ -88,19 +95,19 @@ public:
     TokenInfo& operator=(const TokenInfo& other) = default;
     TokenInfo& operator=(TokenInfo&& other) noexcept = default;
 
-    [[nodiscard]] const string& getText() const { return _text; }
+    [[nodiscard]] const string& getText() const { return _text ? *_text : emptyTokenText(); }
     [[nodiscard]] size_t getLine() const { return _line; }
     [[nodiscard]] size_t getCharPositionInLine() const { return _charPositionInLine; } // 0-based 行内 UTF-8 字节
     [[nodiscard]] size_t getTokenIndex() const { return _tokenIndex; }
     [[nodiscard]] size_t getStartIndex() const { return _startIndex; }
     [[nodiscard]] size_t getStopIndex() const { return _stopIndex; }
 
-    [[nodiscard]] bool empty() const { return _text.empty(); }
-    [[nodiscard]] bool valid() const { return !_text.empty() || _line > 0; }
+    [[nodiscard]] bool empty() const { return !_text || _text->empty(); }
+    [[nodiscard]] bool valid() const { return !empty() || _line > 0; }
 
     explicit operator bool() const { return valid(); }
 
-    bool operator==(const TokenInfo& other) const { return _text == other._text && _line == other._line; }
+    bool operator==(const TokenInfo& other) const { return getText() == other.getText() && _line == other._line; }
     bool operator!=(const TokenInfo& other) const { return !(*this == other); }
 };
 
@@ -114,12 +121,12 @@ struct TypePath {
     vector<Token> rest; // segs[1..]
 
     TypePath() = default;
-    explicit TypePath(Token bare) : first(std::move(bare)) {}
+    explicit TypePath(Token bare) : first(bare) {}
     explicit TypePath(vector<Token> s) {
         if (s.empty()) return;
-        first = std::move(s[0]);
+        first = s[0];
         if (s.size() > 1) {
-            rest.assign(std::make_move_iterator(s.begin() + 1), std::make_move_iterator(s.end()));
+            rest.assign(s.begin() + 1, s.end());
         }
     }
 
@@ -143,9 +150,9 @@ struct TypePath {
     }
     void push_back(Token t) {
         if (empty())
-            first = std::move(t);
+            first = t;
         else
-            rest.push_back(std::move(t));
+            rest.push_back(t);
     }
     void pop_back() {
         if (!rest.empty())
@@ -1039,6 +1046,25 @@ inline const TypeInfo* internTypePtr(const TypeInfo& t) {
     if (!isLanguageNamedType(t.name)) return nullptr;
     return &internNamedType(t.name);
 }
+
+// Token 文本 intern 表（挂在 Riu 上，与 RdBuilder / arena 同寿）。
+class StringIntern {
+    struct Impl;
+    unique_ptr<Impl> _impl;
+
+public:
+    StringIntern();
+    ~StringIntern();
+    StringIntern(StringIntern&&) noexcept;
+    StringIntern& operator=(StringIntern&&) noexcept;
+    StringIntern(const StringIntern&) = delete;
+    StringIntern& operator=(const StringIntern&) = delete;
+
+    const string& intern(string_view s);
+    void reserve(size_t n);
+};
+
+void bindStringIntern(StringIntern* intern);
 
 // 编译期类型 intern 表（挂在 Riu 上）。子类型先 intern，按 kind / owner / name /
 // 子指针 / fallible 哈希。语言标量仍走 internNamedType 进程单例。
