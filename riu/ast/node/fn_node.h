@@ -24,14 +24,14 @@ protected:
     bool _isFrozen = false;
 
 public:
-    explicit FnParamNode(Node* parent, Token name, TypeNode* type)
-        : Node(parent), _name(std::move(name)), _type(type) {}
+    explicit FnParamNode(Node* parent, Token name, TypeNode* type) : Node(parent), _name(name), _type(type) {}
 
     [[nodiscard]] const Token& name() const;
     [[nodiscard]] TypeNode* type() const;
 
     void setFrozen(bool v) { _isFrozen = v; }
     [[nodiscard]] bool isFrozen() const { return _isFrozen; }
+    [[nodiscard]] bool isDiscard() const { return isDiscardName(_name.getText()); }
 };
 
 class FnHeaderNode : public Node, public Named, public Typed, public Annotated {
@@ -45,8 +45,7 @@ protected:
     TypeNode* _fallibleErrType{nullptr};
 
 public:
-    FnHeaderNode(Node* parent, Token name, TypeNode* retType)
-        : Node(parent), Named(std::move(name)), _retType(retType) {}
+    FnHeaderNode(Node* parent, Token name, TypeNode* retType) : Node(parent), Named(name), _retType(retType) {}
 
     void setFallibleErrType(TypeNode* errType) { _fallibleErrType = errType; }
     [[nodiscard]] TypeNode* fallibleErrTypeNode() const { return _fallibleErrType; }

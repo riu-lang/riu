@@ -418,7 +418,7 @@ void Compiler::compileRetVoidStatement(StatementRetVoidNode* node) {
 // 编译变量声明语句（无初始化）
 // 为变量分配栈空间，但不进行初始化
 void Compiler::compileDeclareStatement(StatementDeclareNode* node) {
-    auto varName = node->name().getText();
+    auto varName = localStorageName(node->name().getText());
     TypeInfo varType = node->varType()->getType();
 
     DEBUG_LOG_VAL("  Statement: Declare (uninitialized)", varName << " : " << varType.name);
@@ -440,7 +440,7 @@ void Compiler::compileDeclareStatement(StatementDeclareNode* node) {
 // 处理普通变量、数组初始化、Rc 类型、Array<T> 类型
 void Compiler::compileDeclareAssignStatement(StatementDeclareAssignNode* node) {
     auto expr = node->expr();
-    auto varName = node->name().getText();
+    auto varName = localStorageName(node->name().getText());
 
     // Phase 4c：lambda 字面量直接作 var/val 初始化值时，反推 fn 类型到 lambda
     // 以支持 0 参块 / 缺标注 lambda 的 retType 上下文反推。
@@ -828,7 +828,7 @@ void Compiler::compileDeclareAssignStatement(StatementDeclareAssignNode* node) {
 }
 
 // 编译元组解构声明语句：var (a, b, ...) = expr
-// Phase 5：仅支持一层平铺 ID，不支持嵌套和 _
+// `_` 槽丢掉该元素（仍求值 / 必要时析构），可重复。
 // 流程：
 //   1. 编译 expr 得 struct value（匿名 tuple struct）
 //   2. applySubst 解析 expr 类型 / 标注类型，要求是 Tuple
@@ -865,7 +865,7 @@ void Compiler::compileDeclareAssignTupleStatement(StatementDeclareAssignTupleNod
 
     // 逐元素 ExtractValue + alloca + Store；同步刷新符号表类型（visit 阶段 alias 路径用占位）
     for (size_t i = 0; i < names.size(); ++i) {
-        auto varName = names[i].getText();
+        auto varName = localStorageName(names[i].getText());
         const auto& elemType = *elems[i];
 
         auto llvmType = getLLVMType(elemType);
@@ -877,7 +877,7 @@ void Compiler::compileDeclareAssignTupleStatement(StatementDeclareAssignTupleNod
 
         // 刷新符号表类型（visit 阶段对 alias 路径登记的是空 TypeInfo）
         if (auto sc = node->findNearestScope()) {
-            if (auto sym = sc->lookupSymbol(varName)) {
+            if (auto sym = sc->lookupSymbol(names[i].getText())) {
                 sym->setType(elemType);
             }
         }
@@ -1259,14 +1259,15 @@ void Compiler::compileAssignStatement(StatementAssignNode* node) {
                                                 if (idx >= 0) {
                                                     sd = names().lookupStruct(structName);
                                                     if (sd) {
-                                                        int nonStaticCount = 0;
-                                                        for (auto& f : sd->fields()) {
-                                                            if (f->isStatic()) continue;
-                                                            if (nonStaticCount == static_cast<int>(idx)) {
-                                                                fieldIdx = sd->fieldIndex(f->name().getText());
+                                                        int namedCount = 0;
+                                                        for (size_t fi = 0; fi < sd->fields().size(); ++fi) {
+                                                            auto* f = sd->fields()[fi];
+                                                            if (!f || f->isStatic() || f->isDiscard()) continue;
+                                                            if (namedCount == static_cast<int>(idx)) {
+                                                                fieldIdx = static_cast<int>(fi);
                                                                 break;
                                                             }
-                                                            ++nonStaticCount;
+                                                            ++namedCount;
                                                         }
                                                     }
                                                 }
@@ -1294,14 +1295,15 @@ void Compiler::compileAssignStatement(StatementAssignNode* node) {
                                                     if (idx >= 0) {
                                                         sd = names().lookupStruct(structName);
                                                         if (sd) {
-                                                            int nonStaticCount = 0;
-                                                            for (auto& f : sd->fields()) {
-                                                                if (f->isStatic()) continue;
-                                                                if (nonStaticCount == static_cast<int>(idx)) {
-                                                                    fieldIdx = sd->fieldIndex(f->name().getText());
+                                                            int namedCount = 0;
+                                                            for (size_t fi = 0; fi < sd->fields().size(); ++fi) {
+                                                                auto* f = sd->fields()[fi];
+                                                                if (!f || f->isStatic() || f->isDiscard()) continue;
+                                                                if (namedCount == static_cast<int>(idx)) {
+                                                                    fieldIdx = static_cast<int>(fi);
                                                                     break;
                                                                 }
-                                                                ++nonStaticCount;
+                                                                ++namedCount;
                                                             }
                                                         }
                                                     }
@@ -1562,8 +1564,9 @@ void Compiler::compileLoopStatement(StatementLoopNode* node) {
             }
 
             auto llvmType = getLLVMType(varType);
-            auto alloca = _builder.CreateAlloca(llvmType, nullptr, names[0].getText());
-            registerLocalVar(names[0].getText(), alloca, varType);
+            auto loopName = localStorageName(names[0].getText());
+            auto alloca = _builder.CreateAlloca(llvmType, nullptr, loopName);
+            registerLocalVar(loopName, alloca, varType);
             _builder.CreateStore(initVal, alloca);
             if (typeNeedsDestructor(resolveAlias(varType))) {
             }
@@ -1586,7 +1589,7 @@ void Compiler::compileLoopStatement(StatementLoopNode* node) {
             }
 
             for (size_t i = 0; i < names.size(); ++i) {
-                auto varName = names[i].getText();
+                auto varName = localStorageName(names[i].getText());
                 const auto& elemType = *elems[i];
 
                 auto llvmType = getLLVMType(elemType);
@@ -1899,7 +1902,7 @@ void Compiler::compileForInStatement(StatementForInNode* node) {
     }
 
     TypeInfo itemTy("Ref", {std::make_shared<TypeInfo>(elemTy)});
-    registerLocalVar(node->item().getText(), elemPtr, itemTy);
+    registerLocalVar(localStorageName(node->item().getText()), elemPtr, itemTy);
 
     _loopExitBlocks.push_back({.label = node->label().getText(),
                                .exitBB = exitBB,
@@ -2041,7 +2044,7 @@ void Compiler::compileForInIterLoop(StatementForInNode* node, ExprNode* collExpr
     auto* loadedItem = loadPayload0(itemTy, "Item");
     _builder.CreateStore(loadedItem, itemAlloca);
     _builder.CreateStore(llvm::Constant::getNullValue(enumLLVM), nextAlloca);
-    registerLocalVar(node->item().getText(), itemAlloca, itemTy);
+    registerLocalVar(localStorageName(node->item().getText()), itemAlloca, itemTy);
 
     _loopExitBlocks.push_back({.label = node->label().getText(),
                                .exitBB = exitBB,

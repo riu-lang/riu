@@ -1228,13 +1228,14 @@ TypeInfo ExprDotNode::structuralType() const {
                                         }
                                     }
                                     if (sd) {
-                                        int nonStaticCount = 0;
-                                        for (auto& f : sd->fields()) {
-                                            if (f->isStatic()) continue;
-                                            if (nonStaticCount == idx) {
-                                                return {sd, sd->fieldIndex(f->name().getText())};
+                                        int namedCount = 0;
+                                        for (size_t fi = 0; fi < sd->fields().size(); ++fi) {
+                                            auto* f = sd->fields()[fi];
+                                            if (!f || f->isStatic() || f->isDiscard()) continue;
+                                            if (namedCount == idx) {
+                                                return {sd, static_cast<int>(fi)};
                                             }
-                                            ++nonStaticCount;
+                                            ++namedCount;
                                         }
                                     }
                                 }
@@ -1279,13 +1280,14 @@ TypeInfo ExprDotNode::structuralType() const {
                                         }
                                     }
                                     if (sd) {
-                                        int nonStaticCount = 0;
-                                        for (auto& f : sd->fields()) {
-                                            if (f->isStatic()) continue;
-                                            if (nonStaticCount == idx) {
-                                                return {sd, sd->fieldIndex(f->name().getText())};
+                                        int namedCount = 0;
+                                        for (size_t fi = 0; fi < sd->fields().size(); ++fi) {
+                                            auto* f = sd->fields()[fi];
+                                            if (!f || f->isStatic() || f->isDiscard()) continue;
+                                            if (namedCount == idx) {
+                                                return {sd, static_cast<int>(fi)};
                                             }
-                                            ++nonStaticCount;
+                                            ++namedCount;
                                         }
                                     }
                                 }
@@ -2405,7 +2407,7 @@ TypeInfo ExprPathCallNode::structuralType() const {
                 u64 N = 0;
                 if (rhs == "fields" && sd) {
                     for (auto& f : sd->fields()) {
-                        if (!f->isStatic()) ++N;
+                        if (!f->isStatic() && !f->isDiscard()) ++N;
                     }
                 }
                 // methods / variants: N=0 for now (not yet populated)

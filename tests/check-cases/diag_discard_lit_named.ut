@@ -1,0 +1,18 @@
+; 不准写出 `._ =`（没有叫 `_` 的字段名）
+
+struct S {
+  _ i32
+  a i32
+
+  #Static
+  fn make() S {
+    ret Self {
+      ._ = 0  ; check: E3126
+      .a = 1
+    }
+  }
+}
+
+fn main() {
+  ret
+}

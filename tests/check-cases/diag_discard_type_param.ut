@@ -1,0 +1,9 @@
+; 恰好 `_` 不能当类型形参
+
+struct Foo<_> {  ; check: E3161
+  x i32
+}
+
+fn main() {
+  ret
+}

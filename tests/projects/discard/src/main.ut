@@ -1,0 +1,39 @@
+use riu.core.*
+
+struct Pad {
+  a i32
+  _ i32
+  _ i32
+  b i32
+}
+
+enum Color {
+  Rgb(i32, i32, i32)
+}
+
+fn ignore(_ i32, keep i32, _ bool) i32 = keep
+
+fn blue(c Color) i32 {
+  ret match c {
+    Color::Rgb(_, _, b) => b
+  }
+}
+
+fn main() {
+  let p = Pad {
+    .a = 10
+    .b = 20
+  }
+  println(p.a)
+  println(p.b)
+  println(ignore(0, 7, true))
+  let (_, y) = (1, 2)
+  println(y)
+  let xs [i32 * 3] = [1, 2, 3]
+  #Mut let n i32 = 0
+  for _ in xs {
+    n = n + 1
+  }
+  println(n)
+  println(blue(Color::Rgb(1, 2, 9)))
+}

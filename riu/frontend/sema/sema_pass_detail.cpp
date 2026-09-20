@@ -267,7 +267,7 @@ LambdaCapKind classifyLambdaCapture(const TypeInfo& t) {
 bool isMorphologicalGenericCode(const char* code) {
     if (!code) return false;
     std::string_view sv(code);
-    constexpr std::array<std::string_view, 25> kKeep = {
+    constexpr std::array<std::string_view, 26> kKeep = {
         "E3030",                                              // 未定义符号
         "E6010", "E6011",                                     // 泛型 arity
         "E2037",                                              // enum 头边界
@@ -276,6 +276,7 @@ bool isMorphologicalGenericCode(const char* code) {
         "E2033",                                              // 非法转义
         "E4025", "E1132", "E4037", "E4038", "E4039", "E4040", // 容器禁令 / T& 位置
         "E2016", "E2017",                                     // 别名
+        "E3161",                                              // `_` 丢弃名禁止位置
         "E3130",                                              // 同名 ctor 定义
         "E3120", "E3121", "E3123",                            // Self:: / Type:: 静态调用形态
         "E3128",                                              // #Static 体内 $
@@ -1171,9 +1172,10 @@ std::pair<const StructDeclNode*, int> tryResolveReflectField(ExprNode* expr) {
     };
     auto fieldAtIndex = [](StructDeclNode* sd, i64 idx) -> int {
         int n = 0;
-        for (auto& f : sd->fields()) {
-            if (f->isStatic()) continue;
-            if (n == idx) return sd->fieldIndex(f->name().getText());
+        for (size_t i = 0; i < sd->fields().size(); ++i) {
+            auto* f = sd->fields()[i];
+            if (!f || f->isStatic() || f->isDiscard()) continue;
+            if (n == idx) return static_cast<int>(i);
             ++n;
         }
         return -1;

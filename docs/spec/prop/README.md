@@ -38,4 +38,4 @@
 | 17 | 类型别名 `type` / 块作用域 | 已落地 | [17-type-alias.md](17-type-alias.md) |
 | 18 | Drop spec / 默认无析构 | 提议 | [18-drop-spec.md](18-drop-spec.md) |
 | 19 | FFI 布局：`#Packed` / 对齐 / union 展开 | 提议 | [19-ffi-layout.md](19-ffi-layout.md) |
-| 20 | `_` 丢弃名 | 提议 | [20-discard.md](20-discard.md) |
+| 20 | `_` 丢弃名 | 已落地 | [20-discard.md](20-discard.md) |

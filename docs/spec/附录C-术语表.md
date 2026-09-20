@@ -10,6 +10,7 @@
 | 行内注释 | line-end comment | §1.3 / `LineEndComment` | 代码后由空格 + `;` 起的注释 |
 | 行注释 | line comment | §1.3 / `LineComment` | 行首列起的 `;...` 注释 |
 | 标识符 | identifier | §1.4 / `ID` | Unicode 标识符 token |
+| 丢弃槽 | discard | §1.4.3.1 | 恰好 `_`：字段 / 变量名占位，不绑定 |
 | 字面量 | literal | §1.6 | 数值 / 布尔 / 字符串 / 码点 / `null` |
 | 码点 | code point | §1.6.5 / `CODE_POINT` | `c'<ch>'`，类型 `u32` |
 | 产生式 | production | §2.1 | EBNF 文法规则 |
@@ -126,7 +127,7 @@
 | 通配导入 | wildcard import | §10.2.3 | `use a.b.*` 扁平化导入 |
 | 导出名 | exported name | §10.2.4.7 | `pkg` 行给出的名字；有 `as` 则只用别名 |
 | 定向开放 | directed export | §10.2.4 | `pkg` 行 `to`：只对名单内的包 / 模块可见 |
-| `_` 前缀私有 | underscore-private | §10.3.2 | 仅当前模块可见 |
+| `_` 前缀私有 | underscore-private | §10.3.2 | 仅当前模块可见（恰好 `_` 除外，见丢弃槽） |
 | `riu.core` | riu core SDK | §10.4 | 内置 SDK 模块名 |
 | `base.ut` | SDK base | §10.4 | 内置类型 / 内置函数声明源 |
 | 构建注解 | build annotation | §11 | `#Name` 形态 |

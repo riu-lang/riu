@@ -1,0 +1,15 @@
+; 全是 `_` 字段时没有可填的名字段 → E3129
+
+struct Z {
+  _ i32
+  _ i32
+
+  #Static
+  fn make() Z {
+    ret Z{ 1 }  ; check: E3129
+  }
+}
+
+fn main() {
+  ret
+}

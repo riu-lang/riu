@@ -49,6 +49,14 @@ u64 intMask(int width) {
     return (static_cast<u64>(1) << static_cast<unsigned>(width)) - 1;
 }
 
+std::optional<ConstantValue> zeroConst(const TypeInfo& t) {
+    if (t.name == "bool") return ConstantValue::makeBool(false);
+    if (isFloatType(t)) return ConstantValue::makeFloat(0, t);
+    if (t.isPtr()) return ConstantValue::makeNull();
+    if (isIntType(t)) return ConstantValue::makeInt(0, t);
+    return std::nullopt;
+}
+
 // 按 type 把 bits 解释为有符号 i64（符号扩展）。
 i64 signExtend(u64 bits, const TypeInfo& t) {
     int w = intBitWidth(t);
@@ -521,13 +529,23 @@ std::optional<ConstantValue> ConstEvaluator::evalStructLit(ExprStructLitNode* no
     vector<bool> filled(declFields.size(), false);
 
     if (node->positional()) {
-        if (declFields.size() != 1) {
+        const auto named = decl->namedInstanceFieldCount();
+        const int soleIdx = decl->soleNamedInstanceLayoutIndex();
+        if (named != 1 || soleIdx < 0) {
             throw RiuError(node->getLineNumber(), node->getColumn(), ErrorCode::E3129, sTy.name, sTy.name,
-                           std::to_string(declFields.size()));
+                           std::to_string(named));
         }
         auto v = eval(node->positional());
         if (!v) return std::nullopt;
-        vals[0] = std::move(*v);
+        vals[static_cast<size_t>(soleIdx)] = std::move(*v);
+        for (size_t i = 0; i < declFields.size(); ++i) {
+            if (std::cmp_equal(i, soleIdx)) continue;
+            auto* f = declFields[i];
+            if (!f || f->isStatic() || !f->isDiscard()) return std::nullopt;
+            auto z = zeroConst(f->getType());
+            if (!z) return std::nullopt;
+            vals[i] = std::move(*z);
+        }
         return ConstantValue::makeStruct(std::move(vals), sTy);
     }
 
@@ -539,8 +557,15 @@ std::optional<ConstantValue> ConstEvaluator::evalStructLit(ExprStructLitNode* no
         vals[static_cast<size_t>(idx)] = std::move(*v);
         filled[static_cast<size_t>(idx)] = true;
     }
-    for (bool f : filled) {
-        if (!f) return std::nullopt;
+    for (size_t i = 0; i < declFields.size(); ++i) {
+        auto* f = declFields[i];
+        if (f && f->isDiscard()) {
+            auto z = zeroConst(f->getType());
+            if (!z) return std::nullopt;
+            vals[i] = std::move(*z);
+            continue;
+        }
+        if (!filled[i]) return std::nullopt;
     }
     return ConstantValue::makeStruct(std::move(vals), sTy);
 }

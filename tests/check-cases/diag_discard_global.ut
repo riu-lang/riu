@@ -1,0 +1,8 @@
+; 恰好 `_` 不能当全局名
+
+#Cval
+let _ i32 = 1  ; check: E3161
+
+fn main() {
+  ret
+}

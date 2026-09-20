@@ -59,6 +59,7 @@ class Compiler : public AstVisitor {
     map<string, CastInfo> _castFunctions;        // 延迟类型转换缓存
     int _castCounter = 0;                        // 类型转换计数器，用于生成唯一名称
     int _forInSerial = 0;                        // for-in 临时集合名
+    int _discardSerial = 0;                      // `_` 丢弃槽 alloca 名
 
     // ==================== 泛型单态化 ====================
     // 实例表在 generic::Registry；Compiler 问已具体实例再发 LLVM 类型 / IR。

@@ -1,0 +1,19 @@
+; `_` 字段不进名字表，`s._` 与缺字段同码
+
+struct S {
+  _ i32
+  a i32
+
+  #Static
+  fn make() S {
+    ret Self {
+      .a = 1
+    }
+  }
+}
+
+fn main() {
+  let s = S::make()
+  s._  ; check: E3040
+  ret
+}

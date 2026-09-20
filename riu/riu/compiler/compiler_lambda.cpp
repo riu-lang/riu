@@ -159,7 +159,7 @@ llvm::Function* Compiler::emitLambdaFunction(LambdaExprNode* node, const TypeInf
     _currentLambdaCapturesArg = maskedPtr;
     ++argIt;
     for (size_t i = 0; i < paramTypes.size(); ++i, ++argIt) {
-        auto paramName = node->params()[i].name.getText();
+        auto paramName = localStorageName(node->params()[i].name.getText());
         argIt->setName(paramName);
         if (paramTypes[i].isRef()) {
             // 与普通 fn / method 一致：T& 的 LLVM 实参本身就是底层 T*。

@@ -282,7 +282,9 @@ string RdBuilder::requireBareTypeParamName(rd::NodeId id) {
         throw RiuError(n.pos.line, n.pos.column + 1, ErrorCode::E4037, std::string("type parameter"))
             .withHint("声明头写 `<T>`，借用写在形参上：`fn f<T>(x T&)`");
     }
-    return lastSeg(n.value);
+    string name = lastSeg(n.value);
+    checkDiscardDeclName(name, "type parameter", n.pos.line, n.pos.column + 1);
+    return name;
 }
 
 TypeNode* RdBuilder::buildType(rd::NodeId id) {
@@ -632,6 +634,7 @@ void RdBuilder::addUse(rd::NodeId id) {
     auto path = pathFromDotted(modName, n.pos);
     string alias = path.empty() ? string() : path.lastName();
     int line = n.pos.line;
+    checkDiscardDeclName(alias, "import alias", line, n.pos.column + 1);
 
     FileNode::UseSpec spec;
     spec.moduleName = modName;

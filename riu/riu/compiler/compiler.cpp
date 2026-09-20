@@ -1051,6 +1051,7 @@ void Compiler::compileFn(FnNode* node, llvm::Function* func) {
     _currentStructName.clear();
     _localVarPtrs.clear();
     _scopeFrames.clear();
+    _discardSerial = 0;
     pushScopeFrame();   // fn 顶层帧
     _movedVars.clear(); // Phase B-1
 
@@ -1064,7 +1065,7 @@ void Compiler::compileFn(FnNode* node, llvm::Function* func) {
     // 处理函数参数
     // 为每个参数创建栈上存储空间 (alloca)
     for (auto& arg : func->args()) {
-        auto paramName = node->header()->params()[arg.getArgNo()]->name().getText();
+        auto paramName = localStorageName(node->header()->params()[arg.getArgNo()]->name().getText());
         TypeInfo paramType = node->header()->params()[arg.getArgNo()]->type()
                                  ? node->header()->params()[arg.getArgNo()]->type()->getType()
                                  : TypeInfo();
@@ -1141,6 +1142,7 @@ void Compiler::compileMethodImpl(FnNode* node, llvm::Function* func, const strin
     _currentStructName = structName;
     _localVarPtrs.clear();
     _scopeFrames.clear();
+    _discardSerial = 0;
     pushScopeFrame();   // method 顶层帧
     _movedVars.clear(); // Phase B-1
 
@@ -1184,7 +1186,7 @@ void Compiler::compileMethodImpl(FnNode* node, llvm::Function* func, const strin
     for (auto& param : node->header()->params()) {
         if (argIt == args.end()) break;
 
-        auto paramName = param->name().getText();
+        auto paramName = localStorageName(param->name().getText());
         TypeInfo paramType = param->type() ? param->type()->getType() : TypeInfo();
         auto llvmType = getLLVMType(paramType);
 
@@ -1327,7 +1329,7 @@ llvm::GlobalVariable* Compiler::ensureReflectTypeGlobal(const TypeInfo& t, llvm:
     vector<llvm::Constant*> fieldConsts;
     if (decl) {
         for (auto& f : decl->fields()) {
-            if (f->isStatic()) continue;
+            if (f->isStatic() || f->isDiscard()) continue;
 
             // Field { .name = "<f.name>" }
             auto fNameCV = ConstantValue::makeString(cpsOf(f->name().getText()));

@@ -1,0 +1,10 @@
+; 恰好 `_` 不能当静态字段名
+
+struct Foo {
+  #Static
+  _ i32 = 0  ; check: E3161
+}
+
+fn main() {
+  ret
+}

@@ -1,0 +1,9 @@
+; 恰好 `_` 不能当结构体名
+
+struct _ {  ; check: E3161
+  x i32
+}
+
+fn main() {
+  ret
+}

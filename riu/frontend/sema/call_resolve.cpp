@@ -1892,6 +1892,7 @@ void validateMatchArms(EnumDeclNode* enumDecl, const TypeInfo& enumType, ExprMat
         set<string> seenBinds;
         for (auto& tk : pat->binds()) {
             const string& bn = tk.getText();
+            if (isDiscardName(bn)) continue;
             if (seenBinds.count(bn)) {
                 throw RiuError(pat->getLineNumber(), pat->getColumn(), ErrorCode::E2027, bn, shown, vName);
             }

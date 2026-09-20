@@ -109,6 +109,7 @@ void Riu::initProjectFromDir(const string& rootDir) {
         if (_projectName.empty()) {
             throw RiuError(1, ErrorCode::E5004);
         }
+        checkDiscardDeclName(_projectName, "package", 1, 1);
         if (data.contains("entry") && data.at("entry").is_string()) {
             _projectEntry = data.at("entry").as_string();
         }
@@ -185,6 +186,9 @@ string Riu::modulePath(const string& moduleName) const {
 
 FileNode* Riu::_parseFile(const string& absPath, const string& moduleName, int errorLine) {
     (void)errorLine;
+    if (lastPathSegIsDiscard(moduleName)) {
+        throw RiuError(1, ErrorCode::E3161, string("module"));
+    }
     std::ifstream in(absPath, std::ios::binary);
     if (!in) throw RiuError(1, ErrorCode::E5012, moduleName, absPath);
     string src((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());

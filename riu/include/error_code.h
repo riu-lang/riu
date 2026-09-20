@@ -302,6 +302,7 @@ DEF_ERR(3152, "Cannot access static field '{}' through an instance of '{}'; use 
 DEF_ERR(3158, "Cannot read uninitialized #Mut global '{}' (DRAFT-static-vars §6; #Mut globals must be initialized "
               "before first read)")
 DEF_ERR(3160, "`for-in` iterable must be Array<T>, [T*N], Indexed, or Iter, got '{}'")
+DEF_ERR(3161, "`_` is a discard slot, not a name; cannot be used as {}")
 
 // ── E315x DRAFT-static-vars Phase 6（跨模块 init 顺序） ──────────────────
 DEF_ERR(3153, "Circular module dependency detected involving '{}'; cannot determine global init order "
@@ -323,7 +324,7 @@ DEF_ERR(3125, "`Self {{ ... }}` for struct `{}` is missing field `.{}` (all fiel
 DEF_ERR(3126, "struct `{}` has no field `.{}` (DRAFT-static-fn)")
 DEF_ERR(3127, "duplicate field `.{}` in `Self {{ ... }}` literal (DRAFT-static-fn)")
 DEF_ERR(3128, "`$` (current instance) cannot be used inside a `#Static fn` body (DRAFT-static-fn)")
-DEF_ERR(3129, "positional struct literal `{}{{ expr }}` requires exactly one instance field; struct `{}` has {}")
+DEF_ERR(3129, "positional struct literal `{}{{ expr }}` requires exactly one named instance field; struct `{}` has {}")
 DEF_ERR(3130,
         "Same-name constructor `fn {}(...)` is no longer supported — define a `#Static fn` (e.g. `#Static fn "
         "make(...)` returning `{}` via `Self {{ ... }}`) and call it as `{}::make(...)` (DRAFT-static-fn Phase 6)")

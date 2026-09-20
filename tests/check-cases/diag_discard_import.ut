@@ -1,0 +1,7 @@
+; 恰好 `_` 不能当 use 别名（末段即别名）
+
+use foo._  ; check: E3161
+
+fn main() {
+  ret
+}

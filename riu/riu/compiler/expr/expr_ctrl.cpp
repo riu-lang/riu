@@ -441,6 +441,7 @@ llvm::Value* Compiler::compileMatchExpr(ExprMatchNode* node) {
 
             for (size_t k = 0; k < pat->binds().size(); ++k) {
                 const string& bn = pat->binds()[k].getText();
+                if (isDiscardName(bn)) continue;
                 auto bindType = substEnumPayload(enumDecl, scrutType, variant->payloadTypes()[k]);
                 auto bindLLVMType = getLLVMType(bindType);
 

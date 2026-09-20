@@ -327,6 +327,11 @@ void Compiler::registerLocalVar(const string& name, llvm::Value* alloca, const T
     pushScopeVar(name, resolved, prev, typeNeedsDestructor(resolved));
 }
 
+string Compiler::localStorageName(const string& name) {
+    if (!isDiscardName(name)) return name;
+    return ".discard." + std::to_string(_discardSerial++);
+}
+
 void Compiler::eraseScopeVar(const string& name) {
     for (auto& frame : _scopeFrames) {
         std::erase_if(frame, [&](const ScopeVar& v) { return v.name == name; });

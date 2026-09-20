@@ -18,6 +18,7 @@ const Token& Named::name() const {
 }
 
 void ScopeNode::registerSymbol(const string& name, SymbolInfo info) {
+    if (isDiscardName(name)) return;
     auto it = _symbols.find(name);
     if (it != _symbols.end()) {
         *it->second = std::move(info);

@@ -142,6 +142,9 @@ StatementNode* RdBuilder::buildLet(rd::NodeId id, bool global) {
     }
 
     Token nameTok = makeTok(id);
+    if (global) {
+        checkDiscardDeclName(nameTok.getText(), "global", n.pos.line, n.pos.column + 1);
+    }
     TypeNode* type = nullptr;
     ExprNode* expr = nullptr;
     if (i < n.children_count && isTypeKindStmt(at(child(id, i)).kind)) {

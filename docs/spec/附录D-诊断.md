@@ -265,6 +265,14 @@ for-in（E3160；§5.5.4）：
 
 `#Impl(Iter<U, E>)` 且 `E` 不是 SDK `End` 时，这条 `for` 走既有失败通道：**E7006**（外层既无 `try` 也无同型 `!`）、**E7004**（`!` 的 E 与 Iter 的 E 不一）。`E = End` 不报。手写 `it.next()` 本身不触发 E7006。
 
+丢弃名（E3161；§1.4.3.1）：
+
+| 码 | 模板 |
+|---|---|
+| E3161 | `` `_` is a discard slot, not a name; cannot be used as {} `` |
+
+`{}` 为禁止位置（`struct` / `enum` / `#Spec` / `type alias` / `function` / `global` / `static field` / `type parameter` / `import alias` / `module` / `package`）。合法位置的 `_` 不报此码；`s._` / 裸 `_` 走 **E3040** / **E3030**。
+
 构造模型重构（E3120..E3129；引入自 [draft/DRAFT-static-fn.md](draft/DRAFT-static-fn.md)，落地章节 §7.10）：
 
 | 码     | 模板 |
@@ -278,7 +286,7 @@ for-in（E3160；§5.5.4）：
 | E3126 | `` struct `{}` has no field `.{}` (DRAFT-static-fn) `` |
 | E3127 | `` duplicate field `.{}` in `Self {{ ... }}` literal (DRAFT-static-fn) `` |
 | E3128 | `` `$` (current instance) cannot be used inside a `#Static fn` body (DRAFT-static-fn) `` |
-| E3129 | `` positional struct literal `{}{{ expr }}` requires exactly one instance field; struct `{}` has {} `` |
+| E3129 | `` positional struct literal `{}{{ expr }}` requires exactly one named instance field; struct `{}` has {} `` |
 
 ### D.3.4 E4xxx — 所有权 / 借用
 

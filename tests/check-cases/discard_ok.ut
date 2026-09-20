@@ -1,0 +1,58 @@
+; #20：`_` 丢弃槽——字段 / 形参 / let / 元组 / match 载荷可重复、不绑定
+
+struct Pad {
+  a i32
+  _ i32
+  _ i32
+  b i32
+
+  #Static
+  fn make(x i32, y i32) Pad {
+    ret Self {
+      .a = x
+      .b = y
+    }
+  }
+}
+
+struct Wrap {
+  _ i32
+  v i32
+
+  #Static
+  fn of(x i32) Wrap = Wrap{ x }
+}
+
+enum Color {
+  Rgb(i32, i32, i32)
+}
+
+fn ignore(_ i32, keep i32, _ bool) i32 = keep
+
+fn grouped(_, _ i32) i32 = 0
+
+fn blue(c Color) i32 {
+  ret match c {
+    Color::Rgb(_, _, b) => b
+  }
+}
+
+fn main() {
+  let p = Pad::make(1, 2)
+  let s = p.a + p.b
+  let w = Wrap::of(9)
+  let _ = s + w.v
+  let (_, keep) = (1, 2)
+  let n = ignore(0, 7, true)
+  grouped(1, 2)
+  let g = (_ i32) => 1
+  g(9)
+  let xs [i32 * 2] = [1, 2]
+  #Mut let k i32 = 0
+  for _ in xs {
+    k = k + 1
+  }
+  blue(Color::Rgb(1, 2, 3))
+  n + keep + k
+  ret
+}

@@ -74,8 +74,8 @@ TypeInfo Compiler::resolvedOrInferredType(ExprNode* node) const {
 // 处理整数、浮点数、指针、引用等类型之间的转换
 // NOLINTBEGIN(bugprone-branch-clone)
 llvm::Value* Compiler::createCast(llvm::Value* val, const TypeInfo& rawSrc, const TypeInfo& rawDst) {
-    const TypeInfo srcType = rawSrc.withoutFallible();
-    const TypeInfo dstType = rawDst.withoutFallible();
+    const TypeInfo& srcType = rawSrc.withoutFallible();
+    const TypeInfo& dstType = rawDst.withoutFallible();
     // 相同类型无需转换（含透明别名：IntUnOp = Function<i32, i32>）
     if (srcType == dstType || resolveAlias(srcType) == resolveAlias(dstType)) {
         DEBUG_LOG_VAL("    Cast: no-op", srcType.name);
@@ -352,10 +352,12 @@ llvm::Value* Compiler::compileStructLitExpr(ExprStructLitNode* node) {
     std::unique_ptr<FieldInitNode> positionalInit;
     vector<FieldInitNode*> fieldInits = structLitNode->fields();
     if (auto* pos = structLitNode->positional()) {
-        if (decl->fields().size() != 1) {
+        const int soleIdx = decl->soleNamedInstanceLayoutIndex();
+        if (soleIdx < 0) {
             throwSemaGap(line, col);
         }
-        positionalInit = std::make_unique<FieldInitNode>(structLitNode, decl->fields()[0]->name(), pos);
+        positionalInit =
+            std::make_unique<FieldInitNode>(structLitNode, decl->fields()[static_cast<size_t>(soleIdx)]->name(), pos);
         fieldInits = {positionalInit.get()};
     }
     for (auto& fi : fieldInits) {

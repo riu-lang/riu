@@ -45,6 +45,7 @@ public:
     [[nodiscard]] bool isStatic() const { return _isStatic; }
     [[nodiscard]] bool isCval() const { return _isCval; }
     [[nodiscard]] bool isInline() const { return _isInline; }
+    [[nodiscard]] bool isDiscard() const { return isDiscardName(_name.getText()); }
 };
 
 class StructDeclNode : public ScopeNode, public Named, public Annotated {
@@ -75,14 +76,36 @@ public:
     }
 
     void addField(StructFieldNode* field) {
-        _fieldIndices[field->name().getText()] = _fields.size();
+        const string n = field->name().getText();
+        if (!isDiscardName(n)) {
+            _fieldIndices[n] = _fields.size();
+        }
         _fields.push_back(field);
     }
 
     [[nodiscard]] const vector<StructFieldNode*>& fields() const { return _fields; }
     [[nodiscard]] int fieldIndex(const string& name) const {
+        if (isDiscardName(name)) return -1;
         auto it = _fieldIndices.find(name);
         return it != _fieldIndices.end() ? static_cast<int>(it->second) : -1;
+    }
+    [[nodiscard]] size_t namedInstanceFieldCount() const {
+        size_t n = 0;
+        for (auto* f : _fields) {
+            if (!f || f->isStatic() || f->isDiscard()) continue;
+            ++n;
+        }
+        return n;
+    }
+    [[nodiscard]] int soleNamedInstanceLayoutIndex() const {
+        int found = -1;
+        for (size_t i = 0; i < _fields.size(); ++i) {
+            auto* f = _fields[i];
+            if (!f || f->isStatic() || f->isDiscard()) continue;
+            if (found >= 0) return -1;
+            found = static_cast<int>(i);
+        }
+        return found;
     }
     [[nodiscard]] const StructFieldNode* field(const string& name) const {
         int idx = fieldIndex(name);
@@ -98,7 +121,7 @@ public:
     [[nodiscard]] const string& sourceText() const { return _sourceText; }
 
     // DRAFT-static-vars Phase 4: 静态字段
-    void addStaticField(StaticFieldEntry sf) { _staticFields.push_back(std::move(sf)); }
+    void addStaticField(StaticFieldEntry sf) { _staticFields.push_back(sf); }
     [[nodiscard]] const vector<StaticFieldEntry>& staticFields() const { return _staticFields; }
     [[nodiscard]] const StaticFieldEntry* staticField(const string& name) const {
         for (auto& sf : _staticFields) {

@@ -25,6 +25,7 @@
     [[nodiscard]] size_t scopeFrameDepth() const { return _scopeFrames.size(); }
     // 登记局部：写入 _localVarPtrs，并入当前帧（支持同名遮蔽恢复）
     void registerLocalVar(const string& name, llvm::Value* alloca, const TypeInfo& type);
+    [[nodiscard]] string localStorageName(const string& name); // `_` → `.discard.N`
     void pushScopeVar(const string& name, const TypeInfo& type, llvm::Value* prevPtr, bool needsDtor);
     void eraseScopeVar(const string& name); // 从所有帧摘除（move-out / ret 移出）
     // 局部变量符号：优先 from 的词法 scope（块作用域），再回退 FnNode（参数 / 旧路径）

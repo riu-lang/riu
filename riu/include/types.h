@@ -69,6 +69,17 @@ extern bool debug;
 }
 [[nodiscard]] const string& internTokenText(string_view s);
 
+// 恰好 `_`：丢弃槽（[#20]）。`_foo` 仍是普通私有名。
+[[nodiscard]] inline bool isDiscardName(string_view name) noexcept {
+    return name.size() == 1 && name.front() == '_';
+}
+
+[[nodiscard]] inline bool lastPathSegIsDiscard(string_view dotted) noexcept {
+    auto pos = dotted.rfind('.');
+    auto last = pos == string_view::npos ? dotted : dotted.substr(pos + 1);
+    return isDiscardName(last);
+}
+
 class TokenInfo {
     const string* _text = nullptr;
     size_t _line = 0;
@@ -313,6 +324,12 @@ public:
     RiuError& operator=(RiuError&&) noexcept = default;
     // NOLINTEND(bugprone-exception-escape)
 };
+
+inline void checkDiscardDeclName(string_view name, string_view kind, int line, int col) {
+    if (isDiscardName(name)) {
+        throw RiuError(line, col, ErrorCode::E3161, string(kind));
+    }
+}
 
 enum class TypeKind : u8 {
     Normal,       // 普通具名类型（内置标量 / 用户 struct 名 / Self）

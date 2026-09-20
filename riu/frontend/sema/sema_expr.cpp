@@ -1835,11 +1835,12 @@ void SemaPass::visitStructLit(ExprStructLitNode& node) {
         throw RiuError(line, col, ErrorCode::E3124);
     }
     if (n->positional()) {
-        const auto nFields = decl->fields().size();
-        if (nFields != 1) {
-            throw RiuError(line, col, ErrorCode::E3129, structName, structName, std::to_string(nFields));
+        const auto named = decl->namedInstanceFieldCount();
+        const int soleIdx = decl->soleNamedInstanceLayoutIndex();
+        if (named != 1 || soleIdx < 0) {
+            throw RiuError(line, col, ErrorCode::E3129, structName, structName, std::to_string(named));
         }
-        auto* f = decl->fields()[0];
+        auto* f = decl->fields()[static_cast<size_t>(soleIdx)];
         TypeInfo fieldExpected;
         const TypeInfo* fieldExpPtr = nullptr;
         if (!decl->isGeneric()) {
@@ -1895,11 +1896,10 @@ void SemaPass::visitStructLit(ExprStructLitNode& node) {
         }
     }
     writeResolved(n, [&] { return sema::typeOfStructLit(n); });
-    if (seen.size() != decl->fields().size()) {
-        for (auto& f : decl->fields()) {
-            if (!seen.count(f->name().getText())) {
-                throw RiuError(line, col, ErrorCode::E3125, structName, f->name().getText());
-            }
+    for (auto& f : decl->fields()) {
+        if (f->isStatic() || f->isDiscard()) continue;
+        if (!seen.count(f->name().getText())) {
+            throw RiuError(line, col, ErrorCode::E3125, structName, f->name().getText());
         }
     }
     return;

@@ -62,6 +62,8 @@ FnHeaderNode* RdBuilder::buildFnHeader(rd::NodeId id, FileNode* file, const vect
     }
     Token nameTok = makeTok(n.value, n.pos);
     const rd::Pos headerPos = annos.empty() ? n.pos : at(annos.front()).pos;
+    checkDiscardDeclName(nameTok.getText(), "function", static_cast<int>(headerPos.line),
+                         static_cast<int>(headerPos.column) + 1);
     auto* header = create<FnHeaderNode>(headerPos, file, nameTok, retType);
 
     RdAnnoList al;
@@ -418,6 +420,7 @@ void RdBuilder::addStruct(rd::NodeId id) {
             }
         }
     }
+    checkDiscardDeclName(structName, isSpec ? "#Spec" : "struct", n.pos.line, n.pos.column + 1);
 
     rd::NodeId generic = rd::kEmptyNode;
     if (i < n.children_count && at(child(id, i)).kind == rd::NodeKind::Generic) {
@@ -593,6 +596,7 @@ void RdBuilder::addStruct(rd::NodeId id) {
         if (isStatic) {
             if (isInline && !isCval) throw RiuError(fn.pos.line, fn.pos.column + 1, ErrorCode::E3117);
             if (!typeParams.empty()) throw RiuError(fn.pos.line, fn.pos.column + 1, ErrorCode::E3157, structName);
+            checkDiscardDeclName(fn.value, "static field", fn.pos.line, fn.pos.column + 1);
             if (!init) throw RiuError(fn.pos.line, fn.pos.column + 1, ErrorCode::E3150, string(fn.value));
             inferFlexibleIntForType(init, ty->getType());
             if (exprContainsTryCatch(init)) {
@@ -623,6 +627,7 @@ void RdBuilder::addStruct(rd::NodeId id) {
     file->addStructDecl(structDecl);
 
     for (auto* field : structDecl->fields()) {
+        if (field->isDiscard()) continue;
         string methodKey = dottedJoin(structName, field->name().getText());
         SymbolInfo fieldSym(SymbolKind::Variable, field->name().getText(), field->getType());
         fieldSym.moduleName = moduleName;
@@ -688,9 +693,10 @@ void RdBuilder::addStruct(rd::NodeId id) {
 
 void RdBuilder::addEnum(rd::NodeId id) {
     auto* file = dynamic_cast<FileNode*>(currentScope());
+    const auto& n = at(id);
+    checkDiscardDeclName(n.value, "enum", n.pos.line, n.pos.column + 1);
     auto* enumDecl = create<EnumDeclNode>(id, file, makeTok(id));
     enumDecl->setParentScope(file);
-    const auto& n = at(id);
     rd::i32 i = 0;
     if (i < n.children_count && at(child(id, i)).kind == rd::NodeKind::Generic) {
         vector<string> typeParams;
@@ -725,6 +731,7 @@ StatementNode* RdBuilder::addAlias(rd::NodeId id) {
     string name = nameTok.getText();
     int line = at(id).pos.line;
     int col = at(id).pos.column + 1;
+    checkDiscardDeclName(name, "type alias", line, col);
     auto* aliasDecl = create<AliasDeclNode>(id, scope, nameTok, static_cast<TypeNode*>(nullptr));
     TypeNode* target = at(id).children_count > 0 ? buildType(child(id, 0)) : nullptr;
     aliasDecl->setTarget(target);

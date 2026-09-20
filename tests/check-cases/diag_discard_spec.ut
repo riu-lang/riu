@@ -1,0 +1,10 @@
+; 恰好 `_` 不能当 #Spec 名
+
+#Spec
+struct _ {  ; check: E3161
+  fn f()
+}
+
+fn main() {
+  ret
+}
