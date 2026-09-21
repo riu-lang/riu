@@ -95,9 +95,11 @@ FnHeaderNode* RdBuilder::buildFnHeader(rd::NodeId id, FileNode* file, const vect
     if (generic != rd::kEmptyNode) {
         vector<string> typeParams;
         vector<vector<SpecRef>> typeParamBounds;
-        parseTypeParams(generic, typeParams, typeParamBounds);
+        vector<TypeNode*> typeParamDefaults;
+        parseTypeParams(generic, typeParams, typeParamBounds, &typeParamDefaults);
         header->setTypeParams(typeParams);
         header->setTypeParamBounds(typeParamBounds);
+        header->setTypeParamDefaults(std::move(typeParamDefaults));
     }
 
     if (retFallibleFromType) header->setFallibleErrType(retFallibleFromType);
@@ -453,7 +455,8 @@ void RdBuilder::addStruct(rd::NodeId id) {
     }
     vector<string> typeParams;
     vector<vector<SpecRef>> typeParamBounds;
-    parseTypeParams(generic, typeParams, typeParamBounds);
+    vector<TypeNode*> typeParamDefaults;
+    parseTypeParams(generic, typeParams, typeParamBounds, &typeParamDefaults);
     (void)typeParamBounds;
 
     auto splitFieldsFns = [&](vector<rd::NodeId>& fields, vector<rd::NodeId>& aliases, rd::NodeId& clean,
@@ -490,6 +493,7 @@ void RdBuilder::addStruct(rd::NodeId id) {
         auto* draft = create<SpecDeclNode>(locPos, file, makeTok(id));
         draft->setAnnos(annos.names, annos.args);
         draft->setTypeParams(typeParams);
+        draft->setTypeParamDefaults(std::move(typeParamDefaults));
         if (_keepSourceText) draft->setSourceText(srcSlice(n.pos));
         _scopeStack.push_back(draft);
         for (auto& tp : draft->typeParams())
@@ -580,6 +584,7 @@ void RdBuilder::addStruct(rd::NodeId id) {
     structDecl->setAnnos(annos.names, annos.args);
     if (_keepSourceText) structDecl->setSourceText(srcSlice(n.pos));
     structDecl->setTypeParams(typeParams);
+    structDecl->setTypeParamDefaults(std::move(typeParamDefaults));
     _scopeStack.push_back(structDecl);
     for (auto& tp : structDecl->typeParams())
         structDecl->registerSymbol(tp, {SymbolKind::TypeParam, tp, TypeInfo(tp)});
@@ -741,9 +746,11 @@ void RdBuilder::addEnum(rd::NodeId id) {
     if (i < n.children_count && at(child(id, i)).kind == rd::NodeKind::Generic) {
         vector<string> typeParams;
         vector<vector<SpecRef>> typeParamBounds;
-        parseTypeParams(child(id, i), typeParams, typeParamBounds);
+        vector<TypeNode*> typeParamDefaults;
+        parseTypeParams(child(id, i), typeParams, typeParamBounds, &typeParamDefaults);
         enumDecl->setTypeParams(typeParams);
         enumDecl->setTypeParamBounds(typeParamBounds);
+        enumDecl->setTypeParamDefaults(std::move(typeParamDefaults));
         ++i;
     }
     _scopeStack.push_back(enumDecl);

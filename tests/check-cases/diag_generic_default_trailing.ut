@@ -1,0 +1,8 @@
+; #21：有默认的形参必须尾部连续
+struct Bad<T=i32, U> {  ; check: E2041
+  x i32
+}
+
+fn main() {
+  ret;
+}

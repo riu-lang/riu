@@ -168,6 +168,8 @@ DEF_ERR(2037, "enum `{}` type parameter `{}` cannot have spec bound (`: D`)")
 DEF_ERR(2038, "`#Align` argument `{}` must be a positive power of two (spec §7.5.3 / #19)")
 DEF_ERR(2039, "`overlay` requires C-layout types; `{}` is not C-layout (spec §7.5.3.8)")
 DEF_ERR(2040, "`overlay` size/align mismatch: size_of({})={} align_of={} vs size_of({})={} align_of={} (spec #19)")
+DEF_ERR(2041, "type parameter `{}` is missing a default after an earlier parameter with a default")
+DEF_ERR(2042, "default for type parameter `{}` refers to a later or cyclic parameter `{}`")
 
 // ── E3xxx 类型 — 类型不匹配 ───────────────────────────────────────────
 // E3001: 统一二元运算类型不匹配（原 E3001-E3004, E3075-E3077 合并）

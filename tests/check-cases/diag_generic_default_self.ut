@@ -1,0 +1,8 @@
+; #21：默认不得引用自身
+struct Bad<T=T> {  ; check: E2042
+  x i32
+}
+
+fn main() {
+  ret;
+}

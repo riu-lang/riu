@@ -1,0 +1,8 @@
+; #21：默认不得引用更右形参
+struct Bad<T=U, U=i32> {  ; check: E2042
+  x i32
+}
+
+fn main() {
+  ret;
+}

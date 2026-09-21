@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| 状态 | 待实施 |
+| 状态 | 实施中 |
 | 开 | 2026-09-21 |
 | 旧档 | §9.7.2.1 / CHANGELOG 2026-07-06：`Ptr` 即 `void*`，不引入 `Ptr<T>`。`genericDef` / `typeParam` 无默认实参。相关：[#19](19-ffi-layout.md)；Win32 生成把 C 指针收成透明 `type X = Ptr` |
 
@@ -197,11 +197,11 @@ Win32 生成（语言之后）：`void*` 仍 `Ptr`；`DWORD*` → `Ptr<u32>`；`
 
 ## 落地
 
-（实施后按切片追加。）
+- 2026-09-21（`notes/0.23`）：切片 1：`typeParam` `= type`；AST 默认槽；`.ud` v6；E2041 / E2042（声明期）。使用点补齐仍是切片 2。
 
 ## 实施入口（下次从这里动手）
 
-第一刀只做**语法 + AST + 使用点补齐**，先不要改 SDK `Ptr` / Win32。改 bnf 后 `./build.ps1 riu riu-check riu-ast`。
+切片 1 已落地。下次切片 2：`validateGenericNamedTypeArity` 尾部补齐；check-cases `generic_default_ok` / `diag_generic_default_*`（E6011）；`tests/projects/generic_default`。改 frontend → `./build.ps1 riu riu-check`。
 
 ### 切片 1：bnf / rd / AST / `.ud`
 

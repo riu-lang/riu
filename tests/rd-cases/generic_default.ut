@@ -1,0 +1,18 @@
+struct Foo<T=i32> {
+  x T
+}
+
+fn f<T=()>() {
+}
+
+struct Bound<T : Eq = i32> {
+  x T
+}
+
+fn g<T, U=i32>(a T, b U) U {
+  b
+}
+
+enum Box<T=i32> {
+  A
+}

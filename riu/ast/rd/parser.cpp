@@ -193,16 +193,22 @@ NodeId Parser::parseGenericDef() {
     std::vector<NodeId> params;
     auto parseParam = [this, &params]() {
         NodeId t = parseType();
-        if (!eat(Kind::SymbolColon)) {
+        std::vector<NodeId> kids;
+        appendIf(kids, t);
+        if (eat(Kind::SymbolColon)) {
+            kids.push_back(parseType());
+            while (eat(Kind::SymbolAdd))
+                kids.push_back(parseType());
+        }
+        const bool hasDefault = eat(Kind::SymbolEq);
+        if (hasDefault) appendIf(kids, parseType());
+        // 无边界也无默认：只挂裸 name，与旧 dump 一致。
+        if (!hasDefault && kids.size() <= 1) {
             appendIf(params, t);
             return;
         }
-        std::vector<NodeId> kids;
-        appendIf(kids, t);
-        kids.push_back(parseType());
-        while (eat(Kind::SymbolAdd))
-            kids.push_back(parseType());
-        params.push_back(ast_.add(NodeKind::Generic, ast_.at(t).pos, {}, kids));
+        const Kind op = hasDefault ? Kind::SymbolEq : Kind::Invalid;
+        params.push_back(ast_.add(NodeKind::Generic, ast_.at(t).pos, {}, kids, op));
     };
     if (!at(Kind::SymbolMt)) {
         parseParam();

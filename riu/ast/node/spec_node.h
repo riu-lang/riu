@@ -17,6 +17,8 @@ class SpecDeclNode : public ScopeNode, public Named, public Annotated {
     vector<FnHeaderNode*> _signatures;
     vector<FnNode*> _defaultBodies;
     vector<string> _typeParams;
+    // 与 _typeParams 等长；nullptr = 无默认（#21）。
+    vector<TypeNode*> _typeParamDefaults;
     // DRAFT-spec-reflect Phase 1: spec body 内允许的 `#Static` 字段段
     // (type-bound 契约, [#1.Q] 例外 / [#1.Z]). instance 字段段仍拒 (E2011).
     vector<StructFieldNode*> _staticFields;
@@ -44,6 +46,9 @@ public:
     void setTypeParams(vector<string> params) { _typeParams = std::move(params); }
     [[nodiscard]] const vector<string>& typeParams() const { return _typeParams; }
     [[nodiscard]] bool isGeneric() const { return !_typeParams.empty(); }
+
+    void setTypeParamDefaults(vector<TypeNode*> defaults) { _typeParamDefaults = std::move(defaults); }
+    [[nodiscard]] const vector<TypeNode*>& typeParamDefaults() const { return _typeParamDefaults; }
 
     // DRAFT-spec-reflect Phase 1: `#Static` 字段段承载 (Phase 3 起填充 Reflect spec 的
     // type/fields/methods/variants 4 个字段; 用户 spec 亦可用作 type-bound 契约).

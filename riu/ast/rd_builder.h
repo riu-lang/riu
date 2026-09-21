@@ -112,7 +112,8 @@ class RdBuilder {
     TypeNode* applyNullableSuffix(TypeNode* inner, const rd::Pos& questPos);
     TypeNode* makeFunctionType(const rd::Pos& pos, vector<TypeNode*> typeArgs, bool nullable);
     TypeNode* buildType(rd::NodeId id);
-    void parseTypeParams(rd::NodeId generic, vector<string>& names, vector<vector<SpecRef>>& bounds);
+    void parseTypeParams(rd::NodeId generic, vector<string>& names, vector<vector<SpecRef>>& bounds,
+                         vector<TypeNode*>* defaults = nullptr);
     string requireBareTypeParamName(rd::NodeId id);
 
     ExprNode* buildExpr(rd::NodeId id);

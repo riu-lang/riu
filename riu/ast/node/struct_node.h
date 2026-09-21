@@ -69,6 +69,8 @@ private:
     vector<StructFieldNode*> _fields;
     map<string, size_t> _fieldIndices;
     vector<string> _typeParams;
+    // 与 _typeParams 等长；nullptr = 无默认（#21）。
+    vector<TypeNode*> _typeParamDefaults;
     bool _isPrivate;
     // DRAFT-static-vars Phase 4: 静态字段（命名空间内，与实例字段独立）
     vector<StaticFieldEntry> _staticFields;
@@ -120,6 +122,9 @@ public:
     void setTypeParams(vector<string> params) { _typeParams = std::move(params); }
     [[nodiscard]] const vector<string>& typeParams() const { return _typeParams; }
     [[nodiscard]] bool isGeneric() const { return !_typeParams.empty(); }
+
+    void setTypeParamDefaults(vector<TypeNode*> defaults) { _typeParamDefaults = std::move(defaults); }
+    [[nodiscard]] const vector<TypeNode*>& typeParamDefaults() const { return _typeParamDefaults; }
 
     void setSourceText(string s) { _sourceText = std::move(s); }
     [[nodiscard]] const string& sourceText() const { return _sourceText; }

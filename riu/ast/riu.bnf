@@ -250,7 +250,7 @@ type ::=
     ;
 
 typeParam ::=
-    type (SymbolColon type (SymbolAdd type)*)?
+    type (SymbolColon type (SymbolAdd type)*)? (SymbolEq type)?
     ;
 
 genericDef ::=

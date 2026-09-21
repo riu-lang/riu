@@ -159,6 +159,18 @@ void walkStmtForSpecDefault(StatementNode* s, SpecDeclNode* spec) {
     }
     // Block / Declare(无 init) / RetVoid / Break 等 Phase 2 不处理
 }
+
+bool typeMentionsParamNames(const TypeInfo& t, const std::set<string>& names, string& found) {
+    if (t.isNormal() && !t.name.empty() && names.contains(t.name)) {
+        found = t.name;
+        return true;
+    }
+    if (t.elementType && typeMentionsParamNames(*t.elementType, names, found)) return true;
+    for (auto& g : t.genericArgs) {
+        if (g && typeMentionsParamNames(*g, names, found)) return true;
+    }
+    return false;
+}
 } // namespace
 
 SemaPass::SemaPass(FileNode* file, Riu* riu)
@@ -170,6 +182,39 @@ void SemaPass::checkTypeAnn(const TypeInfo& t, TypeNode* tn, int fallbackLine, i
     int line = (tn && tn->getLineNumber() > 0) ? tn->getLineNumber() : fallbackLine;
     int col = (tn && tn->getColumn() >= 0) ? tn->getColumn() : fallbackCol;
     sema::validateGenericNamedTypeArity(t, _names, line, col, _currentStructName);
+}
+
+void SemaPass::validateTypeParamDefaults(const vector<string>& names, const vector<TypeNode*>& defaults, int line,
+                                         int col) {
+    if (names.empty()) return;
+    bool seenDefault = false;
+    for (size_t i = 0; i < names.size(); ++i) {
+        TypeNode* d = i < defaults.size() ? defaults[i] : nullptr;
+        if (d)
+            seenDefault = true;
+        else if (seenDefault) {
+            throw RiuError(line, col, ErrorCode::E2041, names[i])
+                .withHint("有默认的类型形参必须在尾部连续：`Foo<T, U=i32>` 合法，`Foo<T=i32, U>` 非法");
+        }
+    }
+    std::set<string> forbidden;
+    for (auto& n : names)
+        forbidden.insert(n);
+    for (size_t i = 0; i < names.size(); ++i) {
+        TypeNode* d = i < defaults.size() ? defaults[i] : nullptr;
+        if (d) {
+            const TypeInfo& t = d->getType();
+            int dLine = d->getLineNumber() > 0 ? d->getLineNumber() : line;
+            int dCol = d->getColumn() >= 0 ? d->getColumn() : col;
+            string found;
+            if (typeMentionsParamNames(t, forbidden, found)) {
+                throw RiuError(dLine, dCol, ErrorCode::E2042, names[i], found)
+                    .withHint("默认类型只能引用更左的形参，不能引用自身或更右的形参");
+            }
+            checkTypeAnn(t, d, dLine, dCol, false);
+        }
+        forbidden.erase(names[i]);
+    }
 }
 
 void SemaPass::run() {
@@ -187,6 +232,7 @@ void SemaPass::run() {
         for (const auto& tp : sd->typeParams()) {
             _currentTypeParams.insert(tp);
         }
+        validateTypeParamDefaults(sd->typeParams(), sd->typeParamDefaults(), sd->getLineNumber(), sd->getColumn());
         for (auto& f : sd->fields()) {
             if (!f || !f->type()) continue;
             try {
@@ -299,6 +345,7 @@ void SemaPass::run() {
             throw RiuError(line, col, ErrorCode::E2037, ed->name().getText(), tp)
                 .withHint("简单切片 enum 头只写 `<T>` / `<T, U>`；边界是后切片");
         }
+        validateTypeParamDefaults(ed->typeParams(), ed->typeParamDefaults(), ed->getLineNumber(), ed->getColumn());
         auto savedEnumParams = _currentTypeParams;
         for (const auto& tp : tps)
             _currentTypeParams.insert(tp);
@@ -403,6 +450,13 @@ void SemaPass::visitSpecDefaults() {
     if (!_file) return;
     for (auto& spec : _file->getSpecDecls()) {
         if (!spec) continue;
+        validateTypeParamDefaults(spec->typeParams(), spec->typeParamDefaults(), spec->getLineNumber(),
+                                  spec->getColumn());
+        for (auto* sig : spec->signatures()) {
+            if (!sig) continue;
+            validateTypeParamDefaults(sig->typeParams(), sig->typeParamDefaults(), sig->getLineNumber(),
+                                      sig->getColumn());
+        }
         const auto& bodies = spec->defaultBodies();
         for (auto& body : bodies) {
             if (!body) continue;
@@ -440,6 +494,7 @@ void SemaPass::visitFn(FnNode* fn) {
         for (const auto& tp : hdr->typeParams()) {
             _currentTypeParams.insert(tp);
         }
+        validateTypeParamDefaults(hdr->typeParams(), hdr->typeParamDefaults(), fn->getLineNumber(), fn->getColumn());
     }
 
     // E4025 / E1132：形参 / 返回类型上的容器禁令（getLLVMType 同款，补 riu-check）

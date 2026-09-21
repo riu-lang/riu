@@ -175,12 +175,41 @@ vector<string> readStrings(Reader& r) {
     return v;
 }
 
+struct OptType {
+    bool has = false;
+    TypeInfo type;
+};
+
+void writeTypeParamDefaults(Writer& w, const vector<TypeNode*>& defs, size_t nParams) {
+    w.u32(static_cast<uint32_t>(nParams));
+    for (size_t i = 0; i < nParams; ++i) {
+        TypeNode* d = i < defs.size() ? defs[i] : nullptr;
+        if (d) {
+            w.u8(1);
+            writeType(w, d->getType());
+        } else {
+            w.u8(0);
+        }
+    }
+}
+
+vector<OptType> readTypeParamDefaults(Reader& r) {
+    uint32_t n = r.u32();
+    vector<OptType> v(n);
+    for (uint32_t i = 0; i < n; ++i) {
+        v[i].has = r.u8() != 0;
+        if (v[i].has) v[i].type = readType(r);
+    }
+    return v;
+}
+
 void writeHeader(Writer& w, FnHeaderNode* h) {
     w.str(h->name().getText());
     w.i32(h->getLineNumber());
     w.i32(h->getColumn());
     writeAnnos(w, *h);
     writeStrings(w, h->typeParams());
+    writeTypeParamDefaults(w, h->typeParamDefaults(), h->typeParams().size());
     w.u32(static_cast<uint32_t>(h->typeParamBounds().size()));
     for (auto& slot : h->typeParamBounds()) {
         w.u32(static_cast<uint32_t>(slot.size()));
@@ -420,6 +449,7 @@ struct HeaderData {
     vector<string> annoArgs;
     vector<string> typeParams;
     vector<vector<SpecRef>> bounds;
+    vector<OptType> typeParamDefaults;
     struct Param {
         string name;
         int line = 0;
@@ -441,6 +471,7 @@ HeaderData readHeaderData(Reader& r) {
     d.col = r.i32();
     readAnnos(r, d.annos, d.annoArgs);
     d.typeParams = readStrings(r);
+    d.typeParamDefaults = readTypeParamDefaults(r);
     uint32_t nb = r.u32();
     d.bounds.resize(nb);
     for (uint32_t i = 0; i < nb; ++i) {
@@ -479,6 +510,13 @@ FnHeaderNode* makeHeader(NodeOwner& own, Node* parent, const HeaderData& d) {
     header->setAnnos(d.annos, d.annoArgs);
     header->setTypeParams(d.typeParams);
     header->setTypeParamBounds(d.bounds);
+    {
+        vector<TypeNode*> defs;
+        defs.reserve(d.typeParamDefaults.size());
+        for (auto& o : d.typeParamDefaults)
+            defs.push_back(o.has ? typeNodeFromInfo(own, header, o.type, d.line) : nullptr);
+        header->setTypeParamDefaults(std::move(defs));
+    }
     for (auto& pd : d.params) {
         TypeNode* ty = pd.hasType ? typeNodeFromInfo(own, header, pd.type, pd.line) : nullptr;
         auto* param = own.make<FnParamNode>(header, Token(pd.name, static_cast<size_t>(pd.line > 0 ? pd.line : 1)), ty);
@@ -631,6 +669,7 @@ void write(FileNode* file, const std::string& srcAbs, const std::string& declPat
         w.i32(d->getColumn());
         writeAnnos(w, *d);
         writeStrings(w, d->typeParams());
+        writeTypeParamDefaults(w, d->typeParamDefaults(), d->typeParams().size());
         w.u32(static_cast<uint32_t>(d->fields().size()));
         for (auto f : d->fields()) {
             w.str(f->name().getText());
@@ -669,6 +708,7 @@ void write(FileNode* file, const std::string& srcAbs, const std::string& declPat
         w.i32(e->getColumn());
         writeAnnos(w, *e);
         writeStrings(w, e->typeParams());
+        writeTypeParamDefaults(w, e->typeParamDefaults(), e->typeParams().size());
         w.u32(static_cast<uint32_t>(e->variants().size()));
         for (auto v : e->variants()) {
             w.str(v->name().getText());
@@ -698,6 +738,7 @@ void write(FileNode* file, const std::string& srcAbs, const std::string& declPat
         w.i32(s->getColumn());
         writeAnnos(w, *s);
         writeStrings(w, s->typeParams());
+        writeTypeParamDefaults(w, s->typeParamDefaults(), s->typeParams().size());
         w.u32(static_cast<uint32_t>(s->signatures().size()));
         for (auto sig : s->signatures())
             writeHeader(w, sig);
@@ -803,10 +844,18 @@ FileNode* tryLoad(Riu& riu, const std::string& declPath, const std::string& srcA
             vector<string> annos, annoArgs;
             readAnnos(r, annos, annoArgs);
             auto tps = readStrings(r);
+            auto tpDefs = readTypeParamDefaults(r);
             auto* decl = owner->make<StructDeclNode>(file, Token(name, static_cast<size_t>(line > 0 ? line : 1)));
             decl->setLocation(line, col);
             decl->setAnnos(std::move(annos), std::move(annoArgs));
             decl->setTypeParams(tps);
+            {
+                vector<TypeNode*> defs;
+                defs.reserve(tpDefs.size());
+                for (auto& o : tpDefs)
+                    defs.push_back(o.has ? typeNodeFromInfo(*owner, decl, o.type, line) : nullptr);
+                decl->setTypeParamDefaults(std::move(defs));
+            }
             for (auto& tp : tps) {
                 decl->registerSymbol(tp, {SymbolKind::TypeParam, tp, TypeInfo(tp)});
             }
@@ -891,11 +940,19 @@ FileNode* tryLoad(Riu& riu, const std::string& declPath, const std::string& srcA
             vector<string> annos, annoArgs;
             readAnnos(r, annos, annoArgs);
             auto tps = readStrings(r);
+            auto tpDefs = readTypeParamDefaults(r);
             auto* en = owner->make<EnumDeclNode>(file, Token(name, static_cast<size_t>(line > 0 ? line : 1)));
             en->setLocation(line, col);
             en->setAnnos(std::move(annos), std::move(annoArgs));
             en->setParentScope(file);
             en->setTypeParams(tps);
+            {
+                vector<TypeNode*> defs;
+                defs.reserve(tpDefs.size());
+                for (auto& o : tpDefs)
+                    defs.push_back(o.has ? typeNodeFromInfo(*owner, en, o.type, line) : nullptr);
+                en->setTypeParamDefaults(std::move(defs));
+            }
             for (auto& tp : tps) {
                 en->registerSymbol(tp, {SymbolKind::TypeParam, tp, TypeInfo(tp)});
             }
@@ -933,10 +990,18 @@ FileNode* tryLoad(Riu& riu, const std::string& declPath, const std::string& srcA
             vector<string> annos, annoArgs;
             readAnnos(r, annos, annoArgs);
             auto tps = readStrings(r);
+            auto tpDefs = readTypeParamDefaults(r);
             auto* spec = owner->make<SpecDeclNode>(file, Token(name, static_cast<size_t>(line > 0 ? line : 1)));
             spec->setLocation(line, col);
             spec->setAnnos(std::move(annos), std::move(annoArgs));
             spec->setTypeParams(tps);
+            {
+                vector<TypeNode*> defs;
+                defs.reserve(tpDefs.size());
+                for (auto& o : tpDefs)
+                    defs.push_back(o.has ? typeNodeFromInfo(*owner, spec, o.type, line) : nullptr);
+                spec->setTypeParamDefaults(std::move(defs));
+            }
             for (auto& tp : tps) {
                 spec->registerSymbol(tp, {SymbolKind::TypeParam, tp, TypeInfo(tp)});
             }

@@ -1,0 +1,8 @@
+; #21：默认不得根裸 &
+struct Bad<T=i32&> {  ; check: E4037
+  x i32
+}
+
+fn main() {
+  ret;
+}

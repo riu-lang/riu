@@ -1,0 +1,42 @@
+Program
+  Struct "Foo"
+    Generic
+      Generic op=SymbolEq
+        TypePath "T"
+        TypePath "i32"
+    Field "x"
+      TypePath "T"
+  Fn "f"
+    Generic
+      Generic op=SymbolEq
+        TypePath "T"
+        TypeUnit
+    Block
+  Struct "Bound"
+    Generic
+      Generic op=SymbolEq
+        TypePath "T"
+        TypePath "Eq"
+        TypePath "i32"
+    Field "x"
+      TypePath "T"
+  Fn "g"
+    Generic
+      TypePath "T"
+      Generic op=SymbolEq
+        TypePath "U"
+        TypePath "i32"
+    Param "a"
+      TypePath "T"
+    Param "b"
+      TypePath "U"
+    TypePath "U"
+    Block
+      ExprStmt
+        Ident "b"
+  Enum "Box"
+    Generic
+      Generic op=SymbolEq
+        TypePath "T"
+        TypePath "i32"
+    EnumVariant "A"

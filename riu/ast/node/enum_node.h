@@ -47,6 +47,8 @@ class EnumDeclNode : public ScopeNode, public Named, public Annotated {
     vector<string> _typeParams;
     // 与 _typeParams 等长；头上 `<T : D>` 原样进 AST，Sema 报 E2037。
     vector<vector<SpecRef>> _typeParamBounds;
+    // 与 _typeParams 等长；nullptr = 无默认（#21）。
+    vector<TypeNode*> _typeParamDefaults;
     bool _isPrivate;
 
 public:
@@ -85,6 +87,9 @@ public:
 
     void setTypeParamBounds(vector<vector<SpecRef>> bounds) { _typeParamBounds = std::move(bounds); }
     [[nodiscard]] const vector<vector<SpecRef>>& typeParamBounds() const { return _typeParamBounds; }
+
+    void setTypeParamDefaults(vector<TypeNode*> defaults) { _typeParamDefaults = std::move(defaults); }
+    [[nodiscard]] const vector<TypeNode*>& typeParamDefaults() const { return _typeParamDefaults; }
 };
 
 #endif // RIU_LANG_ENUM_NODE_H

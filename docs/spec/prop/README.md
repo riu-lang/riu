@@ -39,4 +39,4 @@
 | 18 | Drop spec / 默认无析构 | 提议 | [18-drop-spec.md](18-drop-spec.md) |
 | 19 | FFI 布局：`#Packed` / 对齐 / union 展开 | 已落地 | [19-ffi-layout.md](19-ffi-layout.md) |
 | 20 | `_` 丢弃名 | 已落地 | [20-discard.md](20-discard.md) |
-| 21 | `Ptr<T=()>` / 默认类型实参 | 待实施 | [21-ptr-generic.md](21-ptr-generic.md) |
+| 21 | `Ptr<T=()>` / 默认类型实参 | 实施中 | [21-ptr-generic.md](21-ptr-generic.md) |

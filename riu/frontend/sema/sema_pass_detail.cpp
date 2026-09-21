@@ -267,10 +267,11 @@ LambdaCapKind classifyLambdaCapture(const TypeInfo& t) {
 bool isMorphologicalGenericCode(const char* code) {
     if (!code) return false;
     std::string_view sv(code);
-    constexpr std::array<std::string_view, 26> kKeep = {
+    constexpr std::array<std::string_view, 28> kKeep = {
         "E3030",                                              // 未定义符号
         "E6010", "E6011",                                     // 泛型 arity
         "E2037",                                              // enum 头边界
+        "E2041", "E2042",                                     // 类型形参默认（#21）
         "E4031", "E4032",                                     // #NoCopy
         "E3103",                                              // 整数字面量越界
         "E2033",                                              // 非法转义

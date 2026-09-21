@@ -380,22 +380,34 @@ TypeNode* RdBuilder::buildType(rd::NodeId id) {
     }
 }
 
-void RdBuilder::parseTypeParams(rd::NodeId generic, vector<string>& names, vector<vector<SpecRef>>& bounds) {
+void RdBuilder::parseTypeParams(rd::NodeId generic, vector<string>& names, vector<vector<SpecRef>>& bounds,
+                                vector<TypeNode*>* defaults) {
     if (generic == rd::kEmptyNode) return;
     const auto& g = at(generic);
     for (rd::i32 i = 0; i < g.children_count; ++i) {
         rd::NodeId p = child(generic, i);
         const auto& pn = at(p);
+        TypeNode* def = nullptr;
         if (pn.kind == rd::NodeKind::Generic && pn.children_count >= 1) {
             names.push_back(requireBareTypeParamName(child(p, 0)));
+            const bool hasDefault = pn.op == rd::Kind::SymbolEq;
+            const rd::i32 boundEnd = hasDefault ? pn.children_count - 1 : pn.children_count;
             vector<SpecRef> b;
-            for (rd::i32 j = 1; j < pn.children_count; ++j)
+            for (rd::i32 j = 1; j < boundEnd; ++j)
                 b.push_back(specRefFromType(child(p, j)));
             bounds.push_back(std::move(b));
+            if (hasDefault && boundEnd >= 1) {
+                def = buildType(child(p, boundEnd));
+                if (def) {
+                    TypeInfo ti = def->getType();
+                    validateOwnedTypeArgs("type parameter default", {ti}, def->getLineNumber(), def->getColumn());
+                }
+            }
         } else {
             names.push_back(requireBareTypeParamName(p));
             bounds.emplace_back();
         }
+        if (defaults) defaults->push_back(def);
     }
 }
 

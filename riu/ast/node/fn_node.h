@@ -41,6 +41,8 @@ protected:
     // 与 _typeParams 等长；每个槽位的 spec 边界（`ToString` / `To<i32>`）。
     // 空 vector 表示该类型形参无 bound。spec §12 / §6.4.4。
     vector<vector<SpecRef>> _typeParamBounds;
+    // 与 _typeParams 等长；nullptr = 该形参无默认类型（#21）。
+    vector<TypeNode*> _typeParamDefaults;
     TypeNode* _retType;
     TypeNode* _fallibleErrType{nullptr};
 
@@ -59,6 +61,9 @@ public:
 
     void setTypeParamBounds(vector<vector<SpecRef>> bounds) { _typeParamBounds = std::move(bounds); }
     [[nodiscard]] const vector<vector<SpecRef>>& typeParamBounds() const { return _typeParamBounds; }
+
+    void setTypeParamDefaults(vector<TypeNode*> defaults) { _typeParamDefaults = std::move(defaults); }
+    [[nodiscard]] const vector<TypeNode*>& typeParamDefaults() const { return _typeParamDefaults; }
 
     [[nodiscard]] const Token& name() const override;
     [[nodiscard]] TypeNode* retType() const;

@@ -116,6 +116,8 @@ N | <源码行原文>
 | E2038 | `` `#Align` argument `{}` must be a positive power of two (spec §7.5.3 / #19) `` |
 | E2039 | `` `overlay` requires C-layout types; `{}` is not C-layout (spec §7.5.3.8) `` |
 | E2040 | `` `overlay` size/align mismatch: size_of({})={} align_of={} vs size_of({})={} align_of={} (spec #19) `` |
+| E2041 | `type parameter \`{}\` is missing a default after an earlier parameter with a default` |
+| E2042 | `default for type parameter \`{}\` refers to a later or cyclic parameter \`{}\`` |
 
 ### D.3.3 E3xxx — 类型
 

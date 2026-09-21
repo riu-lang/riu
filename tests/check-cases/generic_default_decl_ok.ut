@@ -1,0 +1,17 @@
+; #21 切片 1：声明位默认类型实参进 AST。使用点仍须写满实参。
+struct Pair<T, U=i32> {
+  a T
+  b U
+}
+
+fn id<T=()>(x T) T {
+  x
+}
+
+enum Box<T=i32> {
+  A
+}
+
+fn main() {
+  ret;
+}

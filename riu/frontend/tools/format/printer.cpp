@@ -139,7 +139,8 @@ private:
     Doc lambdaParamsFromSlots(const std::vector<LambdaParamSlot>& slots);
     Doc binExpr(ExprNode* left, const char* op, ExprNode* right);
     Doc specRefDoc(const SpecRef& r);
-    Doc genericDefDoc(const std::vector<std::string>& names, const std::vector<std::vector<SpecRef>>& bounds);
+    Doc genericDefDoc(const std::vector<std::string>& names, const std::vector<std::vector<SpecRef>>& bounds,
+                      const std::vector<TypeNode*>& defaults = {});
     Doc annoDoc(const std::string& name, const std::string& arg);
     Doc headerAnnosDoc(const FnHeaderNode& h);
     Doc fnHeaderDoc(FnHeaderNode* h);
@@ -401,7 +402,8 @@ Doc Printer::specRefDoc(const SpecRef& r) {
     return concat(std::move(parts));
 }
 
-Doc Printer::genericDefDoc(const std::vector<std::string>& names, const std::vector<std::vector<SpecRef>>& bounds) {
+Doc Printer::genericDefDoc(const std::vector<std::string>& names, const std::vector<std::vector<SpecRef>>& bounds,
+                           const std::vector<TypeNode*>& defaults) {
     if (names.empty()) return text("");
     std::vector<Doc> parts;
     parts.push_back(text("<"));
@@ -414,6 +416,10 @@ Doc Printer::genericDefDoc(const std::vector<std::string>& names, const std::vec
                 if (b > 0) parts.push_back(text(" + "));
                 parts.push_back(specRefDoc(bounds[i][b]));
             }
+        }
+        if (i < defaults.size() && defaults[i]) {
+            parts.push_back(text("="));
+            parts.push_back(typeDocAst(defaults[i]));
         }
     }
     parts.push_back(text(">"));
@@ -466,7 +472,7 @@ Doc Printer::fnHeaderDoc(FnHeaderNode* h) {
     parts.push_back(headerAnnosDoc(*h));
     parts.push_back(text("fn "));
     parts.push_back(text(h->name().getText()));
-    parts.push_back(genericDefDoc(h->typeParams(), h->typeParamBounds()));
+    parts.push_back(genericDefDoc(h->typeParams(), h->typeParamBounds(), h->typeParamDefaults()));
     parts.push_back(text("("));
     parts.push_back(fnParamsDoc(h));
     parts.push_back(text(")"));
@@ -630,7 +636,7 @@ Doc Printer::enumDeclDoc(EnumDeclNode* en) {
     std::vector<Doc> parts;
     parts.push_back(text("enum "));
     parts.push_back(text(en->name().getText()));
-    parts.push_back(genericDefDoc(en->typeParams(), en->typeParamBounds()));
+    parts.push_back(genericDefDoc(en->typeParams(), en->typeParamBounds(), en->typeParamDefaults()));
     parts.push_back(text(" {"));
     std::vector<Doc> inner;
     for (auto* v : en->variants()) {
