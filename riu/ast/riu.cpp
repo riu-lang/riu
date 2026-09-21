@@ -258,17 +258,29 @@ Riu::ModulePathKind Riu::modulePathKind(const string& moduleName) const {
     if (hasFile && hasDir) return ModulePathKind::Conflict;
     if (hasFile) return ModulePathKind::File;
     if (hasDir) return ModulePathKind::Package;
+    auto extraIt = _modulePaths.find(moduleName);
+    if (extraIt != _modulePaths.end()) {
+        fs::path extra(extraIt->second);
+        if (fs::is_directory(extra)) return ModulePathKind::Package;
+        if (fs::is_regular_file(extra)) return ModulePathKind::File;
+    }
     return ModulePathKind::NotFound;
 }
 
 vector<string> Riu::listPackageRiuChildren(const string& moduleName) const {
     namespace fs = std::filesystem;
     vector<string> out;
-    string rel = moduleName;
-    for (auto& c : rel)
-        if (c == '.') c = '/';
-    fs::path root = _sourceRoot.empty() ? fs::path() : fs::path(_sourceRoot);
-    fs::path dirPath = root.empty() ? fs::path(rel) : (root / rel);
+    fs::path dirPath;
+    auto it = _modulePaths.find(moduleName);
+    if (it != _modulePaths.end() && fs::is_directory(it->second)) {
+        dirPath = it->second;
+    } else {
+        string rel = moduleName;
+        for (auto& c : rel)
+            if (c == '.') c = '/';
+        fs::path root = _sourceRoot.empty() ? fs::path() : fs::path(_sourceRoot);
+        dirPath = root.empty() ? fs::path(rel) : (root / rel);
+    }
     if (!fs::exists(dirPath) || !fs::is_directory(dirPath)) return out;
     for (auto& entry : fs::directory_iterator(dirPath)) {
         if (!entry.is_regular_file()) continue;
@@ -283,11 +295,17 @@ vector<string> Riu::listPackageRiuChildren(const string& moduleName) const {
 vector<string> Riu::listPackageSubdirs(const string& moduleName) const {
     namespace fs = std::filesystem;
     vector<string> out;
-    string rel = moduleName;
-    for (auto& c : rel)
-        if (c == '.') c = '/';
-    fs::path root = _sourceRoot.empty() ? fs::path() : fs::path(_sourceRoot);
-    fs::path dirPath = root.empty() ? fs::path(rel) : (root / rel);
+    fs::path dirPath;
+    auto it = _modulePaths.find(moduleName);
+    if (it != _modulePaths.end() && fs::is_directory(it->second)) {
+        dirPath = it->second;
+    } else {
+        string rel = moduleName;
+        for (auto& c : rel)
+            if (c == '.') c = '/';
+        fs::path root = _sourceRoot.empty() ? fs::path() : fs::path(_sourceRoot);
+        dirPath = root.empty() ? fs::path(rel) : (root / rel);
+    }
     if (!fs::exists(dirPath) || !fs::is_directory(dirPath)) return out;
     for (auto& entry : fs::directory_iterator(dirPath)) {
         if (!entry.is_directory()) continue;
@@ -309,6 +327,10 @@ string Riu::packageSourceDir(const string& package) const {
     std::ranges::replace(rel, '.', '/');
     fs::path local = fs::path(_sourceRoot) / rel;
     if (fs::is_directory(local)) return local.string();
+    auto registered = _modulePaths.find(package);
+    if (registered != _modulePaths.end() && fs::is_directory(registered->second)) {
+        return registered->second;
+    }
     // 已加载依赖的源路径也能定位包，不为检查可见性加载额外模块。
     for (const auto& [name, path] : _modulePaths) {
         if (!name.starts_with(package + ".")) continue;
@@ -584,8 +606,13 @@ FileNode* Riu::loadModule(const string& moduleName, int errorLine) {
     std::filesystem::path fullPath =
         _sourceRoot.empty() ? std::filesystem::path(relPath) : std::filesystem::path(_sourceRoot) / relPath;
 
-    if (!std::filesystem::exists(fullPath)) {
-        throw RiuError(errorLine, ErrorCode::E5012, moduleName, fullPath.string());
+    if (!std::filesystem::exists(fullPath) || !std::filesystem::is_regular_file(fullPath)) {
+        auto pit = _modulePaths.find(moduleName);
+        if (pit != _modulePaths.end() && std::filesystem::is_regular_file(pit->second)) {
+            fullPath = pit->second;
+        } else {
+            throw RiuError(errorLine, ErrorCode::E5012, moduleName, fullPath.string());
+        }
     }
 
     string absPath = std::filesystem::absolute(fullPath).string();

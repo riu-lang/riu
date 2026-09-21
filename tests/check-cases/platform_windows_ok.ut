@@ -1,0 +1,9 @@
+; require-sdk-modules
+; use 之后包孩子可调用
+
+use riu.platform.windows
+
+fn main() {
+  windows.consts.winver();
+  riu.platform.windows.consts.winver();
+}

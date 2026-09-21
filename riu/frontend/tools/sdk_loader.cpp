@@ -104,6 +104,30 @@ std::vector<SdkExtraPkg> extraSdkPackages(const std::string& sdkDir) {
         out.push_back(
             {.absPath = fs::absolute(f).lexically_normal().generic_string(), .moduleName = std::string("riu.") + name});
     }
+    // 目录包：须有 pkg，避免空目录被当成模块。
+    fs::path winDir = parent / "platform" / "windows";
+    if (fs::is_directory(winDir) && fs::is_regular_file(winDir / "pkg")) {
+        out.push_back({.absPath = fs::absolute(winDir).lexically_normal().generic_string(),
+                       .moduleName = "riu.platform.windows",
+                       .isDir = true});
+    }
+    return out;
+}
+
+std::vector<SdkExtraPkg> extraSdkSourceModules(const SdkExtraPkg& extra) {
+    if (!extra.isDir) return {extra};
+    std::vector<SdkExtraPkg> out;
+    fs::path dir(extra.absPath);
+    if (!fs::is_directory(dir)) return out;
+    for (const auto& entry : fs::directory_iterator(dir)) {
+        if (!entry.is_regular_file()) continue;
+        std::string filename = entry.path().filename().string();
+        if (!filename.ends_with(".ut") || filename.ends_with(".test.ut")) continue;
+        std::string stem = entry.path().stem().string();
+        out.push_back({.absPath = fs::absolute(entry.path()).lexically_normal().generic_string(),
+                       .moduleName = extra.moduleName + "." + stem});
+    }
+    std::ranges::sort(out, [](const SdkExtraPkg& a, const SdkExtraPkg& b) { return a.moduleName < b.moduleName; });
     return out;
 }
 
@@ -114,6 +138,9 @@ void parseSdkDir(const std::string& sdkDir, Riu& riu, bool allowDecl,
     auto extras = extraSdkPackages(sdkDir);
     for (const auto& extra : extras) {
         riu.registerModulePath(extra.absPath, extra.moduleName);
+        for (const auto& src : extraSdkSourceModules(extra)) {
+            riu.registerModulePath(src.absPath, src.moduleName);
+        }
     }
 
     std::vector<std::string> riuFiles;
@@ -158,7 +185,18 @@ void parseSdkDir(const std::string& sdkDir, Riu& riu, bool allowDecl,
     // riu-check 无项目名，但这里仍写 sdk/riu/build/*.ud；必须保留 skeleton 原文。
     if (allowDecl && !declRoot.empty()) riu.setKeepItemSourceText(true);
 
+    auto attachSdkParent = [&](FileNode* fileNode, bool flattenToCore) {
+        if (!sdk || !fileNode || sdk == fileNode) return;
+        fileNode->setParentScope(sdk);
+        fileNode->addImport("riu.core");
+        if (flattenToCore) sdk->addWildcardImport(fileNode);
+    };
+
     auto loadOne = [&](const std::string& riuFile, const std::string& moduleName, bool flattenToCore) {
+        if (auto* existing = riu.module(moduleName)) {
+            attachSdkParent(existing, flattenToCore);
+            return;
+        }
         std::string abs = fs::absolute(riuFile).lexically_normal().generic_string();
         FileNode* fileNode = nullptr;
         const bool forceFull = forceFullParseAbs && forceFullParseAbs->contains(abs);
@@ -172,11 +210,7 @@ void parseSdkDir(const std::string& sdkDir, Riu& riu, bool allowDecl,
                 mod_decl::write(fileNode, abs, mod_decl::pathFor(declRoot, declBuild, abs));
             }
         }
-        if (sdk && sdk != fileNode) {
-            fileNode->setParentScope(sdk);
-            fileNode->addImport("riu.core");
-            if (flattenToCore) sdk->addWildcardImport(fileNode);
-        }
+        attachSdkParent(fileNode, flattenToCore);
     };
 
     for (const auto& riuFile : riuFiles) {
@@ -193,9 +227,11 @@ void parseSdkDir(const std::string& sdkDir, Riu& riu, bool allowDecl,
         loadOne(riuFile, moduleName, flattenToCore);
     }
 
-    // 独立包：不扁平进 core，未 use 时不可点 `riu.io` / `riu.time` / 裸名。
+    // 独立包：不扁平进 core，未 use 时不可点 `riu.io` / `riu.time` / `riu.platform.windows` / 裸名。
     for (const auto& extra : extras) {
-        loadOne(extra.absPath, extra.moduleName, false);
+        for (const auto& src : extraSdkSourceModules(extra)) {
+            loadOne(src.absPath, src.moduleName, false);
+        }
     }
 
     registerSdkModulePaths(riu, pkgMap);

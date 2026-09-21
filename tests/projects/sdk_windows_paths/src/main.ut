@@ -1,0 +1,8 @@
+; 用户项目：`use riu.platform.windows` 命中 SDK 目录包；全限定不靠扁平
+
+use riu.platform.windows
+
+fn main() {
+  println(windows.consts.winver())
+  println(riu.platform.windows.consts.winver())
+}

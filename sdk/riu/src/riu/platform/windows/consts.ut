@@ -1,0 +1,4 @@
+; riu.platform.windows 常量。占位；scripts/win32 生成后覆盖。
+; `winver` 仅作加载探测，A 切片换成真实宏。
+
+fn winver() u32 = 0x0A00u32

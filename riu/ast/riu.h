@@ -130,6 +130,7 @@ public:
     enum class ModulePathKind : std::uint8_t { NotFound, File, Package, Conflict };
     // 将点分模块名解析到项目根下的路径，判断其形态。
     // Conflict = 同名 `<m>.ut` 与 `<m>/` 并存。
+    // 项目根没有时，再认 `registerModulePath` 的 SDK 独立包（文件或目录）。
     [[nodiscard]] ModulePathKind modulePathKind(const string& moduleName) const;
     // 列出包（目录）下的直接 `.ut` 子项（去掉 .ut 后缀的简单名）。
     [[nodiscard]] vector<string> listPackageRiuChildren(const string& moduleName) const;

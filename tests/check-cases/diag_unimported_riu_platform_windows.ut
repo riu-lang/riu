@@ -1,0 +1,6 @@
+; require-sdk
+; 未 use riu.platform.windows：全限定不引入
+
+fn main() {
+  riu.platform.windows.consts.winver()  ; check: E6001
+}

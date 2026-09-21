@@ -582,7 +582,9 @@ int runBuildCommand(const BuildCmdOptions& opts) {
                 consider(fs::absolute(entry.path()).lexically_normal().generic_string());
             }
             for (const auto& extra : sdk_loader::extraSdkPackages(sdkPath)) {
-                consider(extra.absPath);
+                for (const auto& src : sdk_loader::extraSdkSourceModules(extra)) {
+                    consider(src.absPath);
+                }
             }
         }
         try {

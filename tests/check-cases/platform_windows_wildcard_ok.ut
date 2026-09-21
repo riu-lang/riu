@@ -1,0 +1,8 @@
+; require-sdk-modules
+; `consts.*` 扁平后裸名可用
+
+use riu.platform.windows.*
+
+fn main() {
+  winver();
+}

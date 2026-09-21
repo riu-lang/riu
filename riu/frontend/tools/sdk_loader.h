@@ -2,7 +2,8 @@
 // MPL-2.0
 //
 // SDK 加载工具：把 sdk/riu/src/riu/core 下的源文件 parse + ASTBuild 到 Riu 中，
-// 并加载独立包（`../io.ut` → `riu.io`，`../time.ut` → `riu.time`，不扁平进 core）。
+// 并加载独立包（`../io.ut` → `riu.io`，`../time.ut` → `riu.time`，
+// `../platform/windows/` → `riu.platform.windows`，不扁平进 core）。
 // 0 LLVM 依赖, 主程序与 riu-check 共用。
 //
 // 错误处理: 解析失败抛 RiuError (路径见 sourcePath()), 调用方决定如何渲染 / exit.
@@ -27,10 +28,11 @@ struct SdkPkgEntry {
     bool isPublic;
 };
 
-// core 同级独立文件模块（`io.ut` → `riu.io`，`time.ut` → `riu.time`）。
+// 独立包：文件模块（`io.ut` → `riu.io`）或目录包（`platform/windows/` → `riu.platform.windows`）。
 struct SdkExtraPkg {
     std::string absPath;
     std::string moduleName;
+    bool isDir = false;
 };
 
 namespace sdk_loader {
@@ -45,11 +47,15 @@ std::map<std::string, SdkPkgEntry> readSdkPkg(const std::string& sdkDir);
 // 在 _sdkFile 上登记默认已导入的 `riu.core` 路径前缀：
 // - 仅公开清单项登记导出名别名（`map.Map` / `math.abs`）
 // - 包根 `riu` 只挂公开的 `core.<导出名>` 子路径（`riu.core.map.Map`）
-// 不把 `riu` 做成可点任意子包的根：未 use 的包（`riu.io` / `riu.time`）不能靠包根漏出来。
+// 不把 `riu` 做成可点任意子包的根：未 use 的包（`riu.io` / `riu.time` / `riu.platform.windows`）
+// 不能靠包根漏出来。
 void registerSdkModulePaths(Riu& riu, const std::map<std::string, SdkPkgEntry>& pkgMap);
 
-// core 的父目录下、已存在的独立包源文件（用于登记路径、加载、以及 SDK 自构建 freshness）。
+// core 的父目录下、已存在的独立包（用于登记路径、加载、以及 SDK 自构建 freshness）。
 std::vector<SdkExtraPkg> extraSdkPackages(const std::string& sdkDir);
+
+// 目录包展开成各 `.ut` 子模块；文件包原样一项。不包含 `*.test.ut`。
+std::vector<SdkExtraPkg> extraSdkSourceModules(const SdkExtraPkg& extra);
 
 // 把 sdkDir 下所有非 .test.ut 解析进 riu。出错抛 RiuError (含解析失败 / AST 错误)。
 // 错误时附带的 sourcePath 是触发错误的具体 .ut 文件。
