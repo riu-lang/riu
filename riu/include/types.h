@@ -341,7 +341,7 @@ enum class TypeKind : u8 {
     Dyn,          // 内置 Dyn<D> 动态分发
     ArrayGeneric, // 内置 Array<T> 动态数组
     Nullable,     // 内置 Nullable<T> / T?
-    Ptr,          // 内置原始指针（void*）
+    Ptr,          // 内置 Ptr<T=()>；ABI 永远一指针字
     Array,        // 固定大小数组 [T * N]
     Tuple,        // 元组 (T1, T2, ...)
     Fn            // 函数类型 Function<P1, ..., Pn, Ret>（结构等同；末位为返回类型）
@@ -363,6 +363,7 @@ inline TypeKind kindForBuiltinWrapper(string_view name) {
     if (name == "Dyn") return TypeKind::Dyn;
     if (name == "Array") return TypeKind::ArrayGeneric;
     if (name == "Nullable") return TypeKind::Nullable;
+    if (name == "Ptr") return TypeKind::Ptr;
     return TypeKind::Generic;
 }
 
@@ -383,14 +384,16 @@ struct TypeInfo {
     TypeInfo() = default;
 
     // 普通具名类型构造（内置标量 / 用户 struct 名 / Self）
-    // "Ptr" 自动识别为 TypeKind::Ptr（null 字面量类型）
-    // owner：声明模块；空 = 内建或尚未 resolveTypePath
+    // 裸 "Ptr" ≡ Ptr<()>（#21）；owner：声明模块；空 = 内建或尚未 resolveTypePath
     explicit TypeInfo(string n, string owner = {}) : name(std::move(n)), ownerModule(std::move(owner)) {
-        if (name == "Ptr") kind = TypeKind::Ptr;
+        if (name == "Ptr") {
+            kind = TypeKind::Ptr;
+            genericArgs.push_back(std::make_shared<TypeInfo>(TupleTag{}, vector<sp<TypeInfo>>{}));
+        }
     }
 
     // 泛型实例化构造：根据 name 自动分发到正确的 TypeKind
-    // 内置包装（Rc/Ref/Weak/Heap/Dyn/Array/Nullable）→ 对应专有 kind
+    // 内置包装（Rc/Ref/Weak/Heap/Dyn/Array/Nullable/Ptr）→ 对应专有 kind
     // Function<P..., Ret> → TypeKind::Fn（末位为返回类型）
     // Nullable<Function<...>> 折叠为 Fn + fnNullable（可空仍是 16 字节 fat-ptr）
     // 其他 → TypeKind::Generic（用户定义泛型结构体）
@@ -623,6 +626,7 @@ struct TypeInfo {
         case TypeKind::Dyn:
         case TypeKind::ArrayGeneric:
         case TypeKind::Nullable:
+        case TypeKind::Ptr:
             return true;
         default:
             return false;
@@ -738,8 +742,8 @@ struct TypeInfo {
         return result;
     }
 
-    // 应用类型形参替换。无类型实参的具名类型（Normal / Ptr / 空 Generic）匹配 subst 键则整体替换。
-    // T ! E 的 E 按 getFullName 还原后再 subst（`i32 ! Box<T>` → `i32 ! Box<String>`）。
+    // 应用类型形参替换。无类型实参的具名类型（Normal / 空 Generic）匹配 subst 键则整体替换。
+    // Ptr<T> 走下方 genericArgs 替换（#21）。T ! E 的 E 按 getFullName 还原后再 subst。
     [[nodiscard]] TypeInfo substitute(const std::map<std::string, TypeInfo>& subst) const {
         auto withErr = [&](TypeInfo r) -> TypeInfo {
             if (fallibleErr.empty()) return r;
@@ -747,7 +751,7 @@ struct TypeInfo {
             r.attachFallibleErr(err.getFullName());
             return r;
         };
-        if (kind == TypeKind::Normal || kind == TypeKind::Ptr || (kind == TypeKind::Generic && genericArgs.empty())) {
+        if (kind == TypeKind::Normal || (kind == TypeKind::Generic && genericArgs.empty())) {
             auto it = subst.find(name);
             if (it != subst.end()) return withErr(it->second);
             if (kind != TypeKind::Generic) return withErr(*this);
@@ -795,6 +799,22 @@ struct TypeInfo {
             if (!elementType && !other.elementType) return true;
             if (!elementType || !other.elementType) return false;
             return *elementType == *other.elementType;
+        }
+        // 裸 Ptr 与 Ptr<()> 同型（旧 .ud / 未 intern 的空 genericArgs）
+        if (kind == TypeKind::Ptr) {
+            auto payload = [](const TypeInfo& t) -> const TypeInfo* {
+                return t.genericArgs.size() == 1 ? t.genericArgs[0].get() : nullptr;
+            };
+            const TypeInfo* a = payload(*this);
+            const TypeInfo* b = payload(other);
+            const bool aUnit = !a || a->isUnit();
+            const bool bUnit = !b || b->isUnit();
+            if (aUnit && bUnit) {
+                return name == other.name && sameOwner(other);
+            }
+            if (!a || !b) return false;
+            if (*a != *b) return false;
+            return name == other.name && sameOwner(other);
         }
         if (hasGenericArgs() || kind == TypeKind::Tuple) {
             if (genericArgs.size() != other.genericArgs.size()) return false;
@@ -871,6 +891,9 @@ inline TypeInfo::TypeInfo(string n, vector<sp<TypeInfo>> args) {
     kind = kindForBuiltinWrapper(n);
     name = std::move(n);
     genericArgs = std::move(args);
+    if (kind == TypeKind::Ptr && genericArgs.empty()) {
+        genericArgs.push_back(std::make_shared<TypeInfo>(TupleTag{}, vector<sp<TypeInfo>>{}));
+    }
 }
 
 // T ! E 错误通道的比较 / 存储键：完整写法（`Box<String>` 而非裸名 `Box`）
@@ -909,6 +932,7 @@ inline TypeInfo TypeInfo::fromFullName(const string& s) {
                 return {std::move(n), std::move(args)};
             }
             if (n.empty()) return {};
+            if (n == "()") return TypeInfo(TupleTag{}, vector<sp<TypeInfo>>{});
             return TypeInfo(std::move(n));
         }
     };
@@ -1054,12 +1078,26 @@ inline const TypeInfo& internNamedType(string_view name) {
 }
 
 // 无实参 / 无 fallible / 无 owner 的语言具名类型 → intern 单例；其余 nullptr。
+// 裸 Ptr 与 Ptr<()> 同一单例（#21）；空 genericArgs 的旧 Ptr 也归一。
+inline void ensurePtrGenericArg(TypeInfo& t) {
+    if (t.kind != TypeKind::Ptr || !t.genericArgs.empty()) return;
+    t.genericArgs.push_back(std::make_shared<TypeInfo>(TupleTag{}, vector<sp<TypeInfo>>{}));
+}
+
 inline const TypeInfo* internTypePtr(const TypeInfo& t) {
-    if (!t.fallibleErr.empty() || t.fnNullable || t.elementType || !t.genericArgs.empty() || t.arraySize != 0) {
+    if (!t.fallibleErr.empty() || t.fnNullable || t.elementType || t.arraySize != 0) {
         return nullptr;
     }
     if (!t.ownerModule.empty()) return nullptr;
-    if (t.kind != TypeKind::Normal && t.kind != TypeKind::Ptr) return nullptr;
+    if (t.kind == TypeKind::Ptr && t.name == "Ptr") {
+        if (t.genericArgs.empty()) return &internNamedType("Ptr");
+        if (t.genericArgs.size() == 1 && t.genericArgs[0] && t.genericArgs[0]->isUnit()) {
+            return &internNamedType("Ptr");
+        }
+        return nullptr;
+    }
+    if (!t.genericArgs.empty()) return nullptr;
+    if (t.kind != TypeKind::Normal) return nullptr;
     if (!isLanguageNamedType(t.name)) return nullptr;
     return &internNamedType(t.name);
 }
@@ -1285,7 +1323,7 @@ inline void validateTypeArgRefPolicy(const TypeInfo& t, int line, int col, bool 
     }
 
     const bool ownedSlots =
-        t.isArrayGeneric() || t.isRc() || t.isWeak() || t.isHeap() || t.isNullable() || t.isGeneric();
+        t.isArrayGeneric() || t.isRc() || t.isWeak() || t.isHeap() || t.isNullable() || t.isGeneric() || t.isPtr();
     if (!ownedSlots) return;
 
     for (const auto& g : t.genericArgs) {

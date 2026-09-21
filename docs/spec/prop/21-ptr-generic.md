@@ -199,10 +199,11 @@ Win32 生成（语言之后）：`void*` 仍 `Ptr`；`DWORD*` → `Ptr<u32>`；`
 
 - 2026-09-21（`notes/0.23`）：切片 1：`typeParam` `= type`；AST 默认槽；`.ud` v6；E2041 / E2042（声明期）。使用点补齐仍是切片 2。
 - 2026-09-21（`notes/0.23`）：切片 2：`fillGenericNamedTypeArity` 尾部补齐；类型位 + turbofish；调用点先推断再填默认。
+- 2026-09-21（`notes/0.23`）：切片 3：`#Builtin struct Ptr<T=()>`；`kindForBuiltinWrapper` / `hasGenericArgs`；intern 一律带 1 个 `genericArgs`；裸 `Ptr` ≡ `Ptr<()>`。
 
 ## 实施入口（下次从这里动手）
 
-切片 2 已落地。下次切片 3：`Ptr<T=()>`（`kindForBuiltinWrapper` / `hasGenericArgs` / SDK `struct Ptr<T=()>`）。改 frontend + SDK → `./build.ps1 riu riu-check`。
+切片 3 已落地。下次切片 4：`ptr_of` → `Ptr<payload>`；`ptr_cast`；extern 隐式只进 `Ptr<()>`。改 frontend + SDK → `./build.ps1 riu riu-check`。
 
 ### 切片 1：bnf / rd / AST / `.ud`
 

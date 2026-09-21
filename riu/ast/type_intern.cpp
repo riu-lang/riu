@@ -101,6 +101,7 @@ TypeIntern::TypeIntern(TypeIntern&&) noexcept = default;
 TypeIntern& TypeIntern::operator=(TypeIntern&&) noexcept = default;
 
 sp<TypeInfo> TypeIntern::internSp(TypeInfo t) {
+    ensurePtrGenericArg(t);
     if (isEmptyType(t)) return shareStatic(emptyType());
     if (const TypeInfo* p = internTypePtr(t)) return shareStatic(*p);
 
@@ -140,18 +141,21 @@ TypeIntern& currentTypeIntern() {
 }
 
 const TypeInfo& internType(TypeInfo t) {
+    ensurePtrGenericArg(t);
     if (isEmptyType(t)) return emptyType();
     if (const TypeInfo* p = internTypePtr(t)) return *p;
     return currentTypeIntern().intern(std::move(t));
 }
 
 sp<TypeInfo> internTypeSp(TypeInfo t) {
+    ensurePtrGenericArg(t);
     if (isEmptyType(t)) return shareStatic(emptyType());
     if (const TypeInfo* p = internTypePtr(t)) return shareStatic(*p);
     return currentTypeIntern().internSp(std::move(t));
 }
 
 const TypeInfo& internTypeAt(const Node* n, TypeInfo t) {
+    ensurePtrGenericArg(t);
     if (isEmptyType(t)) return emptyType();
     if (const TypeInfo* p = internTypePtr(t)) return *p;
     if (n) {
@@ -163,6 +167,7 @@ const TypeInfo& internTypeAt(const Node* n, TypeInfo t) {
 }
 
 sp<TypeInfo> internTypeSpAt(const Node* n, TypeInfo t) {
+    ensurePtrGenericArg(t);
     if (isEmptyType(t)) return shareStatic(emptyType());
     if (const TypeInfo* p = internTypePtr(t)) return shareStatic(*p);
     if (n) {

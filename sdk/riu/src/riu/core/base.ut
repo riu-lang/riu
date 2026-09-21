@@ -169,8 +169,8 @@ struct Ref<T> {
 }
 
 #Builtin
-struct Ptr {
-  ; 编译为 C void*
+struct Ptr<T=()> {
+  ; ABI 永远一指针字，与 T 的 size / align 无关
   #Builtin
   fn to_int() u64
 }

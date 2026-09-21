@@ -69,9 +69,9 @@ static bool overloadMatchesFlexible(const vector<ExprNode*>& args, const vector<
             }
             return false;
         }
-        // 灵活 null 可以匹配任何 Nullable<T> 形参
+        // 灵活 null 可以匹配任何 Nullable<T> / Ptr<T> 形参
         if (isFlexibleNullExpr(args[i])) {
-            if (pi.isNullable()) continue;
+            if (pi.isNullable() || pi.isPtr()) continue;
             try {
                 if (paramAccepts(pi, args[i]->getType())) continue;
             } catch (...) { // NOLINT(bugprone-empty-catch)
@@ -160,7 +160,7 @@ void resolveCtorOverload(FileNode* file, const string& structName, const vector<
                 return false;
             }
             if (isFlexibleNullExpr(args[i])) {
-                if (c->paramType(i + 1).isNullable()) continue;
+                if (c->paramType(i + 1).isNullable() || c->paramType(i + 1).isPtr()) continue;
                 try {
                     if (paramAccepts(c->paramType(i + 1), args[i]->getType())) continue;
                 } catch (...) { // NOLINT(bugprone-empty-catch)
@@ -201,7 +201,7 @@ void resolveCtorOverload(FileNode* file, const string& structName, const vector<
                     tryInferIntType(args[i], *inner);
                 }
             }
-            if (isFlexibleNullExpr(args[i]) && fn->paramType(i + 1).isNullable()) {
+            if (isFlexibleNullExpr(args[i]) && (fn->paramType(i + 1).isNullable() || fn->paramType(i + 1).isPtr())) {
                 tryInferNullType(args[i], fn->paramType(i + 1));
             }
         }
@@ -321,7 +321,7 @@ void resolveMethodOverload(FileNode* file, FileNode* sdkFile, const string& base
                 return false;
             }
             if (isFlexibleNullExpr(args[i])) {
-                if (c->paramType(i + 1).isNullable()) continue;
+                if (c->paramType(i + 1).isNullable() || c->paramType(i + 1).isPtr()) continue;
                 try {
                     if (paramAccepts(c->paramType(i + 1), args[i]->getType())) continue;
                 } catch (...) { // NOLINT(bugprone-empty-catch)
@@ -362,7 +362,7 @@ void resolveMethodOverload(FileNode* file, FileNode* sdkFile, const string& base
                     tryInferIntType(args[i], *inner);
                 }
             }
-            if (isFlexibleNullExpr(args[i]) && fn->paramType(i + 1).isNullable()) {
+            if (isFlexibleNullExpr(args[i]) && (fn->paramType(i + 1).isNullable() || fn->paramType(i + 1).isPtr())) {
                 tryInferNullType(args[i], fn->paramType(i + 1));
             }
         }
@@ -451,7 +451,7 @@ void resolveFnOverload(FileNode* file, FileNode* sdkFile, const string& fnName, 
                     tryInferIntType(args[i], *inner);
                 }
             }
-            if (isFlexibleNullExpr(args[i]) && fn->paramType(i).isNullable()) {
+            if (isFlexibleNullExpr(args[i]) && (fn->paramType(i).isNullable() || fn->paramType(i).isPtr())) {
                 tryInferNullType(args[i], fn->paramType(i));
             }
         }

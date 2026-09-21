@@ -1,0 +1,13 @@
+; #21 切片 3：裸 Ptr ≡ Ptr<()>；null 可赋任意 Ptr<T>
+fn take_erased(p Ptr) {}
+fn take_unit(p Ptr<()>) {}
+
+fn main() {
+  #Mut let a Ptr = null
+  #Mut let b Ptr<()> = a
+  take_erased(b)
+  take_unit(a)
+  a = b
+  #Mut let t Ptr<i32> = null
+  ret;
+}

@@ -139,6 +139,7 @@ TypeInfo readType(Reader& r) {
     }
     t.fnNullable = r.u8() != 0;
     t.fallibleErr = r.str();
+    ensurePtrGenericArg(t);
     return t;
 }
 

@@ -1,0 +1,5 @@
+; #21 切片 3：Ptr 只有 1 个类型实参
+fn main() {
+  #Mut let p Ptr<i32, bool>  ; check: E6011
+  ret;
+}

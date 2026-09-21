@@ -507,9 +507,20 @@ TypeInfo fillGenericNamedTypeArity(const TypeInfo& raw, const NameResolver& nr, 
         // 泛型 impl 里 `Self` / 裸名即当前单态，不要求写出实参。
         const bool currentInst =
             t0.isSelf() || (!currentStructName.empty() && t0.name == currentStructName && t0.genericArgs.empty());
+        if (t0.isPtr()) {
+            const size_t got = newArgs.size();
+            if (got > 1) {
+                if (throwOnArityError) throwGenericNamedArity("Ptr", 1, got, line, col);
+            } else if (got == 0) {
+                newArgs.push_back(internTypeSp(TypeInfo(TupleTag{}, vector<sp<TypeInfo>>{})));
+                changed = true;
+            }
+            if (!changed) return t0;
+            return rebuildNamedType(t0, std::move(newArgs));
+        }
         const string fillKey = t0.ownerModule + "::" + t0.name;
         const bool skipNamed = currentInst || t0.isRef() || t0.isRc() || t0.isWeak() || t0.isHeap() || t0.isDyn() ||
-                               t0.isPtr() || t0.isArray() || t0.isArrayGeneric() || t0.isTuple() || t0.name.empty() ||
+                               t0.isArray() || t0.isArrayGeneric() || t0.isTuple() || t0.name.empty() ||
                                isBuiltinType(t0.name) || filling.contains(fillKey);
         if (!skipNamed) {
             auto appendDefaults = [&](const vector<string>& names, const vector<TypeNode*>& defaults) {

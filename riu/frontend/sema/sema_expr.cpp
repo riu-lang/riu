@@ -195,7 +195,7 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
                 if (isIntTypeName(inner->name)) tryInferIntType(expr, *inner);
             }
         }
-        if (isFlexibleNullExpr(expr) && want.isNullable()) {
+        if (isFlexibleNullExpr(expr) && (want.isNullable() || want.isPtr())) {
             tryInferNullType(expr, want);
         }
         if (auto n = dynamic_cast<ExprArrayNode*>(expr)) {

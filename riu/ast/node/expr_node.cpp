@@ -596,17 +596,17 @@ bool isFlexibleNullExpr(ExprNode* expr) {
     return false;
 }
 
-bool tryInferNullType(ExprNode* expr, const TypeInfo& nullableTarget) {
-    if (!expr || !nullableTarget.isNullable()) return false;
+bool tryInferNullType(ExprNode* expr, const TypeInfo& target) {
+    if (!expr || !(target.isNullable() || target.isPtr())) return false;
     if (auto paren = dynamic_cast<ExprParenNode*>(expr)) {
-        bool ok = tryInferNullType(paren->expr(), nullableTarget);
-        if (ok) paren->setResolvedType(nullableTarget);
+        bool ok = tryInferNullType(paren->expr(), target);
+        if (ok) paren->setResolvedType(target);
         return ok;
     }
     if (auto lit = dynamic_cast<ExprLiteralNode*>(expr)) {
         if (auto nullLit = dynamic_cast<LiteralNullNode*>(lit->literal())) {
-            nullLit->setType(nullableTarget);
-            lit->setResolvedType(nullableTarget);
+            nullLit->setType(target);
+            lit->setResolvedType(target);
             return true;
         }
     }

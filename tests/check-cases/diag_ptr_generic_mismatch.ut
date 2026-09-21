@@ -1,0 +1,7 @@
+; #21 切片 3：Ptr<i32> 不能赋给裸 Ptr（≡ Ptr<()>）
+fn main() {
+  #Mut let a Ptr = null
+  #Mut let b Ptr<i32> = null
+  a = b  ; check: E3014
+  ret;
+}

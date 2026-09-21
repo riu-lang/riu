@@ -419,7 +419,7 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
             {"Ref", 1},
             {"Dyn", 1},
             {"Function", 1},
-            {"Ptr", 0},
+            {"Ptr", 1},
         }};
         for (auto [bname, arity] : kBuiltinGenerics) {
             (void)arity;

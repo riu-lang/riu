@@ -79,13 +79,12 @@ void applyUnaryNegToIntLits(ExprNode* expr);
 std::vector<LiteralIntNode*> collectFlexibleIntLits(ExprNode* expr);
 
 // 如果表达式是 null 字面量（或其简单包装，如括号），返回 true。
-// "灵活 null"：可以在上下文中推断为任意 Nullable<T>。
+// "灵活 null"：可以在上下文中推断为任意 Nullable<T> 或 Ptr<T>。
 bool isFlexibleNullExpr(ExprNode* expr);
 
-// 尝试将 null 字面量的类型设置为目标 Nullable<T>。
-// 成功返回 true（target 确实是 Nullable<T> 且 expr 是灵活 null）；
-// 失败返回 false。
-bool tryInferNullType(ExprNode* expr, const TypeInfo& nullableTarget);
+// 尝试将 null 字面量的类型设置为目标 Nullable<T> 或 Ptr<T>。
+// 成功返回 true（target 是 Nullable / Ptr 且 expr 是灵活 null）；失败返回 false。
+bool tryInferNullType(ExprNode* expr, const TypeInfo& target);
 
 inline bool isIntTypeName(const string& n) {
     return n == "i8" || n == "i16" || n == "i32" || n == "i64" || n == "u8" || n == "u16" || n == "u32" || n == "u64" ||

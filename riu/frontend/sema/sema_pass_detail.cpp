@@ -746,6 +746,8 @@ void checkRetExpr(ExprNode* expr, const TypeInfo& declRet, bool hasDeclRet, int 
                        retType.empty() ? string("void") : retType.getFullName());
     }
 
+    if (hasDeclRet && decl.isPtr() && isFlexibleNullExpr(expr)) return;
+
     if (hasDeclRet) {
         if (retType.empty()) {
             throw RiuError(line, ErrorCode::E3014, decl.getFullName(), "void");
@@ -790,6 +792,7 @@ void checkAssignRhs(ExprNode* expr, const TypeInfo& want, int line, int col, Fil
     auto w = sema::resolveAlias(w0, file, sdk);
     if (g == w) return;
     if (isEmptyArrayType(g) && (w.isArray() || w.isArrayGeneric())) return;
+    if (w.isPtr() && isFlexibleNullExpr(expr)) return;
     if (w.isNullable()) {
         if (isFlexibleNullExpr(expr)) return;
         if (auto inner = w.nullableInnerType()) {
@@ -908,6 +911,7 @@ void checkCallArgAgainst(ExprNode* arg, const TypeInfo& want, int line, int col,
                                   inner ? inner->name : "?"));
     }
     if (isEmptyArrayType(g) && (w.isArray() || w.isArrayGeneric())) return;
+    if (w.isPtr() && isFlexibleNullExpr(arg)) return;
     if (w.isNullable()) {
         if (isFlexibleNullExpr(arg)) return;
         if (auto inner = w.nullableInnerType()) {

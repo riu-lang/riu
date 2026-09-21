@@ -927,7 +927,7 @@ void SemaPass::visitDeclareAssign(StatementDeclareAssignNode& node) {
         if (handleTy.isRc() || handleTy.isWeak() || handleTy.isArrayGeneric()) {
             checkDeclareHandleRhs(da->expr(), handleTy, da->getLineNumber(), da->getColumn(), _file, _sdkFile,
                                   _currentTypeParams, currentInstSubst());
-        } else if (_names.lookupEnum(handleTy)) {
+        } else if (handleTy.isPtr() || _names.lookupEnum(handleTy)) {
             checkAssignRhs(da->expr(), handleTy, da->getLineNumber(), da->getColumn(), _file, _sdkFile,
                            _currentTypeParams, currentInstSubst());
         }
