@@ -3,6 +3,7 @@
 
 #include "sema/name_resolver.h"
 
+#include "type_validate.h"
 #include "types.h"
 
 namespace sema {

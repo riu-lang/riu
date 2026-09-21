@@ -12,6 +12,7 @@
 #include "sema/const_eval.h"
 #include "sema/name_resolver.h"
 #include "sema/sema_pass_detail.h"
+#include "type_validate.h"
 
 #include <algorithm>
 #include <array>

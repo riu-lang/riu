@@ -15,7 +15,8 @@
 #ifndef RIU_LANG_DIAGNOSTIC_H
 #define RIU_LANG_DIAGNOSTIC_H
 
-#include "types.h"
+#include "primitives.h"
+#include "riu_error.h"
 
 // DiagSeverity 在 error_code.h 中定义（Note < Warning < Error）
 

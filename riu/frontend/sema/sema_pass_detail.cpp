@@ -8,6 +8,7 @@
 #include "generic/generic.h"
 #include "sema/call_resolve.h"
 #include "sema/name_resolver.h"
+#include "type_validate.h"
 
 #include <array>
 #include <cstddef>

@@ -19,6 +19,7 @@
 #include "ast/node/type_node.h"
 #include "ast/riu.h"
 #include "tools/diagnostic.h"
+#include "type_validate.h"
 #include "types.h"
 #include <algorithm>
 #include <format>

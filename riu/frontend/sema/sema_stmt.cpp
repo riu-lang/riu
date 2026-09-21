@@ -8,6 +8,7 @@
 #include "sema/name_resolver.h"
 #include "sema/sema_pass.h"
 #include "sema/sema_pass_detail.h"
+#include "type_validate.h"
 
 #include <algorithm>
 #include <array>

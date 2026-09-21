@@ -21,6 +21,7 @@
 #include "compiler.h"
 #include "sema/call_resolve.h"
 #include "sema/name_resolver.h"
+#include "type_validate.h"
 #include <array>
 #include <llvm/ADT/Twine.h>
 #include <llvm/IR/DerivedTypes.h>

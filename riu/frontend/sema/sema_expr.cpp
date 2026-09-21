@@ -24,6 +24,7 @@
 #include "sema/type_of_ops.h"
 #include "sema/type_of_rest.h"
 #include "sema/type_of_struct.h"
+#include "type_validate.h"
 
 #include <algorithm>
 #include <array>

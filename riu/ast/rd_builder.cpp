@@ -15,6 +15,7 @@
 #include "node/statement_node.h"
 #include "node/struct_node.h"
 #include "node/type_node.h"
+#include "type_validate.h"
 
 #include <algorithm>
 #include <cstddef>

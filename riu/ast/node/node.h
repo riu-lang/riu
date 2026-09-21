@@ -7,6 +7,7 @@
 #include "types.h"
 
 #include <memory>
+#include <optional>
 #include <unordered_map>
 
 inline vector<const TypeInfo*> internTypeList(vector<TypeInfo> types) {
