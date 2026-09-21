@@ -1,0 +1,16 @@
+; require-sdk-modules
+; B 切片：进程 / 同步 / 内存 struct + 宏可从包通配导入
+
+use riu.platform.windows.*
+
+fn main() {
+  winver();
+  let s u64 = size_of:<STARTUPINFOW>()
+  let o u64 = size_of:<OVERLAPPED>()
+  let l u64 = size_of:<LARGE_INTEGER>()
+  let c u32 = CREATE_SUSPENDED
+  let p u32 = PAGE_READWRITE
+  let m u32 = MEM_COMMIT
+  let w u32 = WAIT_OBJECT_0
+  let i u32 = INFINITE
+}

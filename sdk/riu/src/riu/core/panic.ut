@@ -11,7 +11,11 @@
 ; stderr 模板（DRAFT-错误.md §8.6）：`panic: <msg>\n` → 走 _stderr_write 通道，
 ; 与 stdout 业务输出隔离；用户重定向 `2>` 才能拿到。
 
-use riu.platform.windows.kernel32.*
+; `kernel32.RaiseException` 点链对无返回/#NoReturn extern 会 E3091；这里重复声明。
+extern {
+  #NoReturn
+  fn RaiseException(dwExceptionCode u32, dwExceptionFlags u32, nNumberOfArguments u32, lpArguments Ptr)
+}
 
 #NoReturn
 fn _riu_panic_failed(msg String) {

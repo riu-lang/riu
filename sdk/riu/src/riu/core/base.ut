@@ -1,8 +1,15 @@
 ; riu SDK - 自举运行时
 ; 使用 Windows API 进行 I/O
 
-use riu.platform.windows.kernel32.*
-use riu.platform.windows.consts.*
+use riu.platform.windows.kernel32
+
+; STD_* 是 consts 里的 #Cval，不能写 `consts.NAME`（E5016，同 math.PI）
+#Cval
+#Inline
+let _STD_OUTPUT_HANDLE u32 = 0xFFFFFFF5u32
+#Cval
+#Inline
+let _STD_ERROR_HANDLE u32 = 0xFFFFFFF4u32
 
 ; 外部函数声明（内存管理走 riurt；Win32 在 riu.platform.windows）
 extern {
@@ -21,18 +28,18 @@ extern {
 
 ; 内部：向 stdout 写入
 fn _stdout_write(buf Ptr, off i64, len i64) {
-  #Mut let hStdout Ptr = GetStdHandle(STD_OUTPUT_HANDLE)
+  #Mut let hStdout Ptr = kernel32.GetStdHandle(_STD_OUTPUT_HANDLE)
   #Mut let bufWithOff Ptr = _ptr_offset(buf, off)
   #Mut let written u32 = 0
-  WriteFile(hStdout, bufWithOff, len.to_u32(), &written, null);
+  kernel32.WriteFile(hStdout, bufWithOff, len.to_u32(), &written, null);
 }
 
 ; 内部：向 stderr 写入（panic / eprint* 模板用，DRAFT-错误.md §8.6）
 fn _stderr_write(buf Ptr, off i64, len i64) {
-  #Mut let hStderr Ptr = GetStdHandle(STD_ERROR_HANDLE)
+  #Mut let hStderr Ptr = kernel32.GetStdHandle(_STD_ERROR_HANDLE)
   #Mut let bufWithOff Ptr = _ptr_offset(buf, off)
   #Mut let written u32 = 0
-  WriteFile(hStderr, bufWithOff, len.to_u32(), &written, null);
+  kernel32.WriteFile(hStderr, bufWithOff, len.to_u32(), &written, null);
 }
 
 #Builtin
@@ -734,9 +741,9 @@ fn _from_wide_chars(p Ptr) String {
 
 ; 进程命令行。含 argv[0]（exe 路径）；用户参数从 [1] 起。失败 → []。
 fn args() Array<String> {
-  let cmd Ptr = GetCommandLineW()
+  let cmd Ptr = kernel32.GetCommandLineW()
   #Mut let n i32 = 0
-  let argv Ptr = CommandLineToArgvW(cmd, &n)
+  let argv Ptr = kernel32.CommandLineToArgvW(cmd, &n)
   if argv.to_int() == 0u64 {
     ret []
   }
@@ -751,11 +758,11 @@ fn args() Array<String> {
     out.push(_from_wide_chars(wstr))
     i += 1
   }
-  LocalFree(argv);
+  kernel32.LocalFree(argv);
   out
 }
 
 ; 自开机起的毫秒（GetTickCount，约 49 天回绕）。CLI 种子用，不承诺单调高精度。
 fn tick_ms() u32 {
-  GetTickCount()
+  kernel32.GetTickCount()
 }

@@ -9,7 +9,11 @@
 ; 失败时编译器合成的 IR 调用本文件 __riu_test_assert_failed()，
 ; 后者触发自定义 SEH 异常码 0xE0FA17ED；riu test 的 SEH wrapper 翻译为 ASSERT_FAILED。
 
-use riu.platform.windows.kernel32.*
+; `kernel32.RaiseException` 点链对无返回/#NoReturn extern 会 E3091；这里重复声明。
+extern {
+  #NoReturn
+  fn RaiseException(dwExceptionCode u32, dwExceptionFlags u32, nNumberOfArguments u32, lpArguments Ptr)
+}
 
 #Builtin
 fn assert_eq<T>(actual T, expected T)

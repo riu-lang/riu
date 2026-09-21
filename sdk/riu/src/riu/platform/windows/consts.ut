@@ -1,5 +1,5 @@
 ; 生成，勿手改。
-; 目标 x86_64-pc-windows-msvc；WINVER/_WIN32_WINNT=0x0A00
+; 目标 x86_64-pc-windows-msvc；WINVER/_WIN32_WINNT=0x0A00；NTDDI_VERSION=0x0A00000D（Win10 CU）
 #Cval
 #Inline
 let WINVER u32 = 0xA00u32
@@ -14,11 +14,27 @@ let GENERIC_WRITE u32 = 0x40000000u32
 
 #Cval
 #Inline
+let GENERIC_EXECUTE u32 = 0x20000000u32
+
+#Cval
+#Inline
+let GENERIC_ALL u32 = 0x10000000u32
+
+#Cval
+#Inline
 let FILE_SHARE_READ u32 = 1u32
 
 #Cval
 #Inline
 let FILE_SHARE_WRITE u32 = 2u32
+
+#Cval
+#Inline
+let FILE_SHARE_DELETE u32 = 4u32
+
+#Cval
+#Inline
+let CREATE_NEW u32 = 1u32
 
 #Cval
 #Inline
@@ -31,6 +47,10 @@ let OPEN_EXISTING u32 = 3u32
 #Cval
 #Inline
 let OPEN_ALWAYS u32 = 4u32
+
+#Cval
+#Inline
+let TRUNCATE_EXISTING u32 = 5u32
 
 #Cval
 #Inline
@@ -62,6 +82,18 @@ let FILE_FLAG_BACKUP_SEMANTICS u32 = 0x2000000u32
 
 #Cval
 #Inline
+let FILE_FLAG_OVERLAPPED u32 = 0x40000000u32
+
+#Cval
+#Inline
+let FILE_BEGIN u32 = 0u32
+
+#Cval
+#Inline
+let FILE_CURRENT u32 = 1u32
+
+#Cval
+#Inline
 let FILE_END u32 = 2u32
 
 #Cval
@@ -90,6 +122,18 @@ let INVALID_FILE_ATTRIBUTES u32 = 0xFFFFFFFFu32
 
 #Cval
 #Inline
+let INVALID_FILE_SIZE u32 = 0xFFFFFFFFu32
+
+#Cval
+#Inline
+let MAX_PATH u32 = 0x104u32
+
+#Cval
+#Inline
+let ERROR_SUCCESS u32 = 0u32
+
+#Cval
+#Inline
 let ERROR_FILE_NOT_FOUND u32 = 2u32
 
 #Cval
@@ -102,11 +146,51 @@ let ERROR_ACCESS_DENIED u32 = 5u32
 
 #Cval
 #Inline
+let ERROR_INVALID_HANDLE u32 = 6u32
+
+#Cval
+#Inline
+let ERROR_NOT_ENOUGH_MEMORY u32 = 8u32
+
+#Cval
+#Inline
+let ERROR_INVALID_PARAMETER u32 = 0x57u32
+
+#Cval
+#Inline
+let ERROR_BROKEN_PIPE u32 = 0x6Du32
+
+#Cval
+#Inline
 let ERROR_HANDLE_EOF u32 = 0x26u32
 
 #Cval
 #Inline
 let ERROR_NO_MORE_FILES u32 = 0x12u32
+
+#Cval
+#Inline
+let ERROR_ALREADY_EXISTS u32 = 0xB7u32
+
+#Cval
+#Inline
+let ERROR_INSUFFICIENT_BUFFER u32 = 0x7Au32
+
+#Cval
+#Inline
+let ERROR_MORE_DATA u32 = 0xEAu32
+
+#Cval
+#Inline
+let ERROR_NO_DATA u32 = 0xE8u32
+
+#Cval
+#Inline
+let ERROR_PIPE_BUSY u32 = 0xE7u32
+
+#Cval
+#Inline
+let ERROR_IO_PENDING u32 = 0x3E5u32
 
 #Cval
 #Inline
@@ -138,6 +222,1434 @@ let FORMAT_MESSAGE_IGNORE_INSERTS u32 = 0x200u32
 
 #Cval
 #Inline
+let FORMAT_MESSAGE_ALLOCATE_BUFFER u32 = 0x100u32
+
+#Cval
+#Inline
+let INFINITE u32 = 0xFFFFFFFFu32
+
+#Cval
+#Inline
+let WAIT_OBJECT_0 u32 = 0u32
+
+#Cval
+#Inline
+let WAIT_ABANDONED u32 = 0x80u32
+
+#Cval
+#Inline
+let WAIT_TIMEOUT u32 = 0x102u32
+
+#Cval
+#Inline
+let WAIT_FAILED u32 = 0xFFFFFFFFu32
+
+#Cval
+#Inline
+let WAIT_IO_COMPLETION u32 = 0xC0u32
+
+#Cval
+#Inline
+let CREATE_SUSPENDED u32 = 4u32
+
+#Cval
+#Inline
+let CREATE_NEW_CONSOLE u32 = 0x10u32
+
+#Cval
+#Inline
+let CREATE_NO_WINDOW u32 = 0x8000000u32
+
+#Cval
+#Inline
+let CREATE_UNICODE_ENVIRONMENT u32 = 0x400u32
+
+#Cval
+#Inline
+let DETACHED_PROCESS u32 = 8u32
+
+#Cval
+#Inline
+let STARTF_USESHOWWINDOW u32 = 1u32
+
+#Cval
+#Inline
+let STARTF_USESTDHANDLES u32 = 0x100u32
+
+#Cval
+#Inline
+let PAGE_NOACCESS u32 = 1u32
+
+#Cval
+#Inline
+let PAGE_READONLY u32 = 2u32
+
+#Cval
+#Inline
+let PAGE_READWRITE u32 = 4u32
+
+#Cval
+#Inline
+let PAGE_EXECUTE u32 = 0x10u32
+
+#Cval
+#Inline
+let PAGE_EXECUTE_READ u32 = 0x20u32
+
+#Cval
+#Inline
+let PAGE_EXECUTE_READWRITE u32 = 0x40u32
+
+#Cval
+#Inline
+let MEM_COMMIT u32 = 0x1000u32
+
+#Cval
+#Inline
+let MEM_RESERVE u32 = 0x2000u32
+
+#Cval
+#Inline
+let MEM_RELEASE u32 = 0x8000u32
+
+#Cval
+#Inline
+let MEM_FREE u32 = 0x10000u32
+
+#Cval
+#Inline
+let PROCESS_ALL_ACCESS u32 = 0x1FFFFFu32
+
+#Cval
+#Inline
+let PROCESS_QUERY_INFORMATION u32 = 0x400u32
+
+#Cval
+#Inline
+let PROCESS_VM_READ u32 = 0x10u32
+
+#Cval
+#Inline
+let PROCESS_VM_WRITE u32 = 0x20u32
+
+#Cval
+#Inline
+let PROCESS_TERMINATE u32 = 1u32
+
+#Cval
+#Inline
+let THREAD_ALL_ACCESS u32 = 0x1FFFFFu32
+
+#Cval
+#Inline
+let DUPLICATE_SAME_ACCESS u32 = 2u32
+
+#Cval
+#Inline
+let DUPLICATE_CLOSE_SOURCE u32 = 1u32
+
+#Cval
+#Inline
+let HEAP_ZERO_MEMORY u32 = 8u32
+
+#Cval
+#Inline
+let LOCKFILE_FAIL_IMMEDIATELY u32 = 1u32
+
+#Cval
+#Inline
+let LOCKFILE_EXCLUSIVE_LOCK u32 = 2u32
+
+#Cval
+#Inline
+let PIPE_ACCESS_DUPLEX u32 = 3u32
+
+#Cval
+#Inline
+let PIPE_ACCESS_INBOUND u32 = 1u32
+
+#Cval
+#Inline
+let PIPE_ACCESS_OUTBOUND u32 = 2u32
+
+#Cval
+#Inline
+let PIPE_TYPE_BYTE u32 = 0u32
+
+#Cval
+#Inline
+let PIPE_TYPE_MESSAGE u32 = 4u32
+
+#Cval
+#Inline
+let PIPE_READMODE_BYTE u32 = 0u32
+
+#Cval
+#Inline
+let PIPE_READMODE_MESSAGE u32 = 2u32
+
+#Cval
+#Inline
+let PIPE_WAIT u32 = 0u32
+
+#Cval
+#Inline
+let STILL_ACTIVE u32 = 0x103u32
+
+#Cval
+#Inline
+let TLS_OUT_OF_INDEXES u32 = 0xFFFFFFFFu32
+
+#Cval
+#Inline
+let CONDITION_VARIABLE_LOCKMODE_SHARED u32 = 1u32
+
+#Cval
+#Inline
+let CONTROL_C_EXIT u32 = 0xC000013Au32
+
+#Cval
+#Inline
+let CREATE_EVENT_INITIAL_SET u32 = 2u32
+
+#Cval
+#Inline
+let CREATE_EVENT_MANUAL_RESET u32 = 1u32
+
+#Cval
+#Inline
+let CREATE_MUTEX_INITIAL_OWNER u32 = 1u32
+
+#Cval
+#Inline
+let CREATE_PROCESS_DEBUG_EVENT u32 = 3u32
+
+#Cval
+#Inline
+let CREATE_THREAD_DEBUG_EVENT u32 = 2u32
+
+#Cval
+#Inline
+let CREATE_WAITABLE_TIMER_HIGH_RESOLUTION u32 = 2u32
+
+#Cval
+#Inline
+let CREATE_WAITABLE_TIMER_MANUAL_RESET u32 = 1u32
+
+#Cval
+#Inline
+let CURRENT_IMPORT_REDIRECTION_VERSION u32 = 1u32
+
+#Cval
+#Inline
+let DONT_RESOLVE_DLL_REFERENCES u32 = 1u32
+
+#Cval
+#Inline
+let EXCEPTION_ACCESS_VIOLATION u32 = 0xC0000005u32
+
+#Cval
+#Inline
+let EXCEPTION_ARRAY_BOUNDS_EXCEEDED u32 = 0xC000008Cu32
+
+#Cval
+#Inline
+let EXCEPTION_BREAKPOINT u32 = 0x80000003u32
+
+#Cval
+#Inline
+let EXCEPTION_DATATYPE_MISALIGNMENT u32 = 0x80000002u32
+
+#Cval
+#Inline
+let EXCEPTION_DEBUG_EVENT u32 = 1u32
+
+#Cval
+#Inline
+let EXCEPTION_FLT_DENORMAL_OPERAND u32 = 0xC000008Du32
+
+#Cval
+#Inline
+let EXCEPTION_FLT_DIVIDE_BY_ZERO u32 = 0xC000008Eu32
+
+#Cval
+#Inline
+let EXCEPTION_FLT_INEXACT_RESULT u32 = 0xC000008Fu32
+
+#Cval
+#Inline
+let EXCEPTION_FLT_INVALID_OPERATION u32 = 0xC0000090u32
+
+#Cval
+#Inline
+let EXCEPTION_FLT_OVERFLOW u32 = 0xC0000091u32
+
+#Cval
+#Inline
+let EXCEPTION_FLT_STACK_CHECK u32 = 0xC0000092u32
+
+#Cval
+#Inline
+let EXCEPTION_FLT_UNDERFLOW u32 = 0xC0000093u32
+
+#Cval
+#Inline
+let EXCEPTION_GUARD_PAGE u32 = 0x80000001u32
+
+#Cval
+#Inline
+let EXCEPTION_ILLEGAL_INSTRUCTION u32 = 0xC000001Du32
+
+#Cval
+#Inline
+let EXCEPTION_INT_DIVIDE_BY_ZERO u32 = 0xC0000094u32
+
+#Cval
+#Inline
+let EXCEPTION_INT_OVERFLOW u32 = 0xC0000095u32
+
+#Cval
+#Inline
+let EXCEPTION_INVALID_DISPOSITION u32 = 0xC0000026u32
+
+#Cval
+#Inline
+let EXCEPTION_INVALID_HANDLE u32 = 0xC0000008u32
+
+#Cval
+#Inline
+let EXCEPTION_IN_PAGE_ERROR u32 = 0xC0000006u32
+
+#Cval
+#Inline
+let EXCEPTION_NONCONTINUABLE_EXCEPTION u32 = 0xC0000025u32
+
+#Cval
+#Inline
+let EXCEPTION_PRIV_INSTRUCTION u32 = 0xC0000096u32
+
+#Cval
+#Inline
+let EXCEPTION_SINGLE_STEP u32 = 0x80000004u32
+
+#Cval
+#Inline
+let EXCEPTION_STACK_OVERFLOW u32 = 0xC00000FDu32
+
+#Cval
+#Inline
+let EXIT_PROCESS_DEBUG_EVENT u32 = 5u32
+
+#Cval
+#Inline
+let EXIT_THREAD_DEBUG_EVENT u32 = 4u32
+
+#Cval
+#Inline
+let FILE_ATTRIBUTE_ARCHIVE u32 = 0x20u32
+
+#Cval
+#Inline
+let FILE_ATTRIBUTE_COMPRESSED u32 = 0x800u32
+
+#Cval
+#Inline
+let FILE_ATTRIBUTE_EA u32 = 0x40000u32
+
+#Cval
+#Inline
+let FILE_ATTRIBUTE_ENCRYPTED u32 = 0x4000u32
+
+#Cval
+#Inline
+let FILE_ATTRIBUTE_HIDDEN u32 = 2u32
+
+#Cval
+#Inline
+let FILE_ATTRIBUTE_INTEGRITY_STREAM u32 = 0x8000u32
+
+#Cval
+#Inline
+let FILE_ATTRIBUTE_NOT_CONTENT_INDEXED u32 = 0x2000u32
+
+#Cval
+#Inline
+let FILE_ATTRIBUTE_NO_SCRUB_DATA u32 = 0x20000u32
+
+#Cval
+#Inline
+let FILE_ATTRIBUTE_OFFLINE u32 = 0x1000u32
+
+#Cval
+#Inline
+let FILE_ATTRIBUTE_PINNED u32 = 0x80000u32
+
+#Cval
+#Inline
+let FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS u32 = 0x400000u32
+
+#Cval
+#Inline
+let FILE_ATTRIBUTE_RECALL_ON_OPEN u32 = 0x40000u32
+
+#Cval
+#Inline
+let FILE_ATTRIBUTE_SPARSE_FILE u32 = 0x200u32
+
+#Cval
+#Inline
+let FILE_ATTRIBUTE_STRICTLY_SEQUENTIAL u32 = 0x20000000u32
+
+#Cval
+#Inline
+let FILE_ATTRIBUTE_SYSTEM u32 = 4u32
+
+#Cval
+#Inline
+let FILE_ATTRIBUTE_TEMPORARY u32 = 0x100u32
+
+#Cval
+#Inline
+let FILE_ATTRIBUTE_UNPINNED u32 = 0x100000u32
+
+#Cval
+#Inline
+let FILE_ATTRIBUTE_VIRTUAL u32 = 0x10000u32
+
+#Cval
+#Inline
+let FILE_CACHE_MAX_HARD_DISABLE u32 = 2u32
+
+#Cval
+#Inline
+let FILE_CACHE_MAX_HARD_ENABLE u32 = 1u32
+
+#Cval
+#Inline
+let FILE_CACHE_MIN_HARD_DISABLE u32 = 8u32
+
+#Cval
+#Inline
+let FILE_CACHE_MIN_HARD_ENABLE u32 = 4u32
+
+#Cval
+#Inline
+let FILE_MAP_ALL_ACCESS u32 = 0xF001Fu32
+
+#Cval
+#Inline
+let FILE_MAP_COPY u32 = 1u32
+
+#Cval
+#Inline
+let FILE_MAP_EXECUTE u32 = 0x20u32
+
+#Cval
+#Inline
+let FILE_MAP_LARGE_PAGES u32 = 0x20000000u32
+
+#Cval
+#Inline
+let FILE_MAP_READ u32 = 4u32
+
+#Cval
+#Inline
+let FILE_MAP_RESERVE u32 = 0x80000000u32
+
+#Cval
+#Inline
+let FILE_MAP_TARGETS_INVALID u32 = 0x40000000u32
+
+#Cval
+#Inline
+let FILE_MAP_WRITE u32 = 2u32
+
+#Cval
+#Inline
+let FIND_FIRST_EX_CASE_SENSITIVE u32 = 1u32
+
+#Cval
+#Inline
+let FIND_FIRST_EX_LARGE_FETCH u32 = 2u32
+
+#Cval
+#Inline
+let FIND_FIRST_EX_ON_DISK_ENTRIES_ONLY u32 = 4u32
+
+#Cval
+#Inline
+let HEAP_CREATE_ALIGN_16 u32 = 0x10000u32
+
+#Cval
+#Inline
+let HEAP_CREATE_ENABLE_EXECUTE u32 = 0x40000u32
+
+#Cval
+#Inline
+let HEAP_CREATE_ENABLE_TRACING u32 = 0x20000u32
+
+#Cval
+#Inline
+let HEAP_CREATE_HARDENED u32 = 0x200u32
+
+#Cval
+#Inline
+let HEAP_CREATE_SEGMENT_HEAP u32 = 0x100u32
+
+#Cval
+#Inline
+let HEAP_DISABLE_COALESCE_ON_FREE u32 = 0x80u32
+
+#Cval
+#Inline
+let HEAP_FREE_CHECKING_ENABLED u32 = 0x40u32
+
+#Cval
+#Inline
+let HEAP_GENERATE_EXCEPTIONS u32 = 4u32
+
+#Cval
+#Inline
+let HEAP_GROWABLE u32 = 2u32
+
+#Cval
+#Inline
+let HEAP_MAXIMUM_TAG u32 = 0xFFFu32
+
+#Cval
+#Inline
+let HEAP_NO_SERIALIZE u32 = 1u32
+
+#Cval
+#Inline
+let HEAP_OPTIMIZE_RESOURCES_CURRENT_VERSION u32 = 1u32
+
+#Cval
+#Inline
+let HEAP_PSEUDO_TAG_FLAG u32 = 0x8000u32
+
+#Cval
+#Inline
+let HEAP_REALLOC_IN_PLACE_ONLY u32 = 0x10u32
+
+#Cval
+#Inline
+let HEAP_TAG_SHIFT u32 = 0x12u32
+
+#Cval
+#Inline
+let HEAP_TAIL_CHECKING_ENABLED u32 = 0x20u32
+
+#Cval
+#Inline
+let INIT_ONCE_ASYNC u32 = 2u32
+
+#Cval
+#Inline
+let INIT_ONCE_CHECK_ONLY u32 = 1u32
+
+#Cval
+#Inline
+let INIT_ONCE_CTX_RESERVED_BITS u32 = 2u32
+
+#Cval
+#Inline
+let INIT_ONCE_INIT_FAILED u32 = 4u32
+
+#Cval
+#Inline
+let LMEM_DISCARDABLE u32 = 0xF00u32
+
+#Cval
+#Inline
+let LMEM_DISCARDED u32 = 0x4000u32
+
+#Cval
+#Inline
+let LMEM_FIXED u32 = 0u32
+
+#Cval
+#Inline
+let LMEM_INVALID_HANDLE u32 = 0x8000u32
+
+#Cval
+#Inline
+let LMEM_LOCKCOUNT u32 = 0xFFu32
+
+#Cval
+#Inline
+let LMEM_MODIFY u32 = 0x80u32
+
+#Cval
+#Inline
+let LMEM_MOVEABLE u32 = 2u32
+
+#Cval
+#Inline
+let LMEM_NOCOMPACT u32 = 0x10u32
+
+#Cval
+#Inline
+let LMEM_NODISCARD u32 = 0x20u32
+
+#Cval
+#Inline
+let LMEM_VALID_FLAGS u32 = 0xF72u32
+
+#Cval
+#Inline
+let LMEM_ZEROINIT u32 = 0x40u32
+
+#Cval
+#Inline
+let LOAD_DLL_DEBUG_EVENT u32 = 6u32
+
+#Cval
+#Inline
+let LOAD_IGNORE_CODE_AUTHZ_LEVEL u32 = 0x10u32
+
+#Cval
+#Inline
+let LOAD_LIBRARY_AS_DATAFILE u32 = 2u32
+
+#Cval
+#Inline
+let LOAD_LIBRARY_AS_DATAFILE_EXCLUSIVE u32 = 0x40u32
+
+#Cval
+#Inline
+let LOAD_LIBRARY_AS_IMAGE_RESOURCE u32 = 0x20u32
+
+#Cval
+#Inline
+let LOAD_LIBRARY_OS_INTEGRITY_CONTINUITY u32 = 0x8000u32
+
+#Cval
+#Inline
+let LOAD_LIBRARY_REQUIRE_SIGNED_TARGET u32 = 0x80u32
+
+#Cval
+#Inline
+let LOAD_LIBRARY_SAFE_CURRENT_DIRS u32 = 0x2000u32
+
+#Cval
+#Inline
+let LOAD_LIBRARY_SEARCH_APPLICATION_DIR u32 = 0x200u32
+
+#Cval
+#Inline
+let LOAD_LIBRARY_SEARCH_DEFAULT_DIRS u32 = 0x1000u32
+
+#Cval
+#Inline
+let LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR u32 = 0x100u32
+
+#Cval
+#Inline
+let LOAD_LIBRARY_SEARCH_SYSTEM32 u32 = 0x800u32
+
+#Cval
+#Inline
+let LOAD_LIBRARY_SEARCH_SYSTEM32_NO_FORWARDER u32 = 0x4000u32
+
+#Cval
+#Inline
+let LOAD_LIBRARY_SEARCH_USER_DIRS u32 = 0x400u32
+
+#Cval
+#Inline
+let LOAD_WITH_ALTERED_SEARCH_PATH u32 = 8u32
+
+#Cval
+#Inline
+let MEHC_PATROL_SCRUBBER_PRESENT u32 = 1u32
+
+#Cval
+#Inline
+let MEM_4MB_PAGES u32 = 0x80000000u32
+
+#Cval
+#Inline
+let MEM_COALESCE_PLACEHOLDERS u32 = 1u32
+
+#Cval
+#Inline
+let MEM_DECOMMIT u32 = 0x4000u32
+
+#Cval
+#Inline
+let MEM_DIFFERENT_IMAGE_BASE_OK u32 = 0x800000u32
+
+#Cval
+#Inline
+let MEM_EXTENDED_PARAMETER_EC_CODE u32 = 0x40u32
+
+#Cval
+#Inline
+let MEM_EXTENDED_PARAMETER_GRAPHICS u32 = 1u32
+
+#Cval
+#Inline
+let MEM_EXTENDED_PARAMETER_NONPAGED u32 = 2u32
+
+#Cval
+#Inline
+let MEM_EXTENDED_PARAMETER_NONPAGED_HUGE u32 = 0x10u32
+
+#Cval
+#Inline
+let MEM_EXTENDED_PARAMETER_NONPAGED_LARGE u32 = 8u32
+
+#Cval
+#Inline
+let MEM_EXTENDED_PARAMETER_SOFT_FAULT_PAGES u32 = 0x20u32
+
+#Cval
+#Inline
+let MEM_EXTENDED_PARAMETER_TYPE_BITS u32 = 8u32
+
+#Cval
+#Inline
+let MEM_EXTENDED_PARAMETER_ZERO_PAGES_OPTIONAL u32 = 4u32
+
+#Cval
+#Inline
+let MEM_IMAGE u32 = 0x1000000u32
+
+#Cval
+#Inline
+let MEM_LARGE_PAGES u32 = 0x20000000u32
+
+#Cval
+#Inline
+let MEM_MAPPED u32 = 0x40000u32
+
+#Cval
+#Inline
+let MEM_PHYSICAL u32 = 0x400000u32
+
+#Cval
+#Inline
+let MEM_PRESERVE_PLACEHOLDER u32 = 2u32
+
+#Cval
+#Inline
+let MEM_PRIVATE u32 = 0x20000u32
+
+#Cval
+#Inline
+let MEM_REPLACE_PLACEHOLDER u32 = 0x4000u32
+
+#Cval
+#Inline
+let MEM_RESERVE_PLACEHOLDER u32 = 0x40000u32
+
+#Cval
+#Inline
+let MEM_RESET u32 = 0x80000u32
+
+#Cval
+#Inline
+let MEM_RESET_UNDO u32 = 0x1000000u32
+
+#Cval
+#Inline
+let MEM_ROTATE u32 = 0x800000u32
+
+#Cval
+#Inline
+let MEM_TOP_DOWN u32 = 0x100000u32
+
+#Cval
+#Inline
+let MEM_UNMAP_WITH_TRANSIENT_BOOST u32 = 1u32
+
+#Cval
+#Inline
+let MEM_WRITE_WATCH u32 = 0x200000u32
+
+#Cval
+#Inline
+let MUTEX_ALL_ACCESS u32 = 0x1F0001u32
+
+#Cval
+#Inline
+let MUTEX_MODIFY_STATE u32 = 1u32
+
+#Cval
+#Inline
+let OUTPUT_DEBUG_STRING_EVENT u32 = 8u32
+
+#Cval
+#Inline
+let PAGE_ENCLAVE_MASK u32 = 0x10000000u32
+
+#Cval
+#Inline
+let PAGE_ENCLAVE_THREAD_CONTROL u32 = 0x80000000u32
+
+#Cval
+#Inline
+let PAGE_ENCLAVE_UNVALIDATED u32 = 0x20000000u32
+
+#Cval
+#Inline
+let PAGE_EXECUTE_WRITECOPY u32 = 0x80u32
+
+#Cval
+#Inline
+let PAGE_GRAPHICS_COHERENT u32 = 0x20000u32
+
+#Cval
+#Inline
+let PAGE_GRAPHICS_EXECUTE u32 = 0x4000u32
+
+#Cval
+#Inline
+let PAGE_GRAPHICS_EXECUTE_READ u32 = 0x8000u32
+
+#Cval
+#Inline
+let PAGE_GRAPHICS_EXECUTE_READWRITE u32 = 0x10000u32
+
+#Cval
+#Inline
+let PAGE_GRAPHICS_NOACCESS u32 = 0x800u32
+
+#Cval
+#Inline
+let PAGE_GRAPHICS_NOCACHE u32 = 0x40000u32
+
+#Cval
+#Inline
+let PAGE_GRAPHICS_READONLY u32 = 0x1000u32
+
+#Cval
+#Inline
+let PAGE_GRAPHICS_READWRITE u32 = 0x2000u32
+
+#Cval
+#Inline
+let PAGE_GUARD u32 = 0x100u32
+
+#Cval
+#Inline
+let PAGE_NOCACHE u32 = 0x200u32
+
+#Cval
+#Inline
+let PAGE_REVERT_TO_FILE_MAP u32 = 0x80000000u32
+
+#Cval
+#Inline
+let PAGE_TARGETS_INVALID u32 = 0x40000000u32
+
+#Cval
+#Inline
+let PAGE_TARGETS_NO_UPDATE u32 = 0x40000000u32
+
+#Cval
+#Inline
+let PAGE_WRITECOMBINE u32 = 0x400u32
+
+#Cval
+#Inline
+let PAGE_WRITECOPY u32 = 8u32
+
+#Cval
+#Inline
+let PME_CURRENT_VERSION u32 = 1u32
+
+#Cval
+#Inline
+let PME_FAILFAST_ON_COMMIT_FAIL_DISABLE u32 = 0u32
+
+#Cval
+#Inline
+let PME_FAILFAST_ON_COMMIT_FAIL_ENABLE u32 = 1u32
+
+#Cval
+#Inline
+let PROCESS_AFFINITY_ENABLE_AUTO_UPDATE u32 = 1u32
+
+#Cval
+#Inline
+let PROCESS_HEAP_ENTRY_BUSY u32 = 4u32
+
+#Cval
+#Inline
+let PROCESS_HEAP_ENTRY_DDESHARE u32 = 0x20u32
+
+#Cval
+#Inline
+let PROCESS_HEAP_ENTRY_MOVEABLE u32 = 0x10u32
+
+#Cval
+#Inline
+let PROCESS_HEAP_REGION u32 = 1u32
+
+#Cval
+#Inline
+let PROCESS_HEAP_SEG_ALLOC u32 = 8u32
+
+#Cval
+#Inline
+let PROCESS_HEAP_UNCOMMITTED_RANGE u32 = 2u32
+
+#Cval
+#Inline
+let PROCESS_LEAP_SECOND_INFO_FLAG_ENABLE_SIXTY_SECOND u32 = 1u32
+
+#Cval
+#Inline
+let PROCESS_POWER_THROTTLING_CURRENT_VERSION u32 = 1u32
+
+#Cval
+#Inline
+let PROCESS_POWER_THROTTLING_EXECUTION_SPEED u32 = 1u32
+
+#Cval
+#Inline
+let PROCESS_POWER_THROTTLING_IGNORE_TIMER_RESOLUTION u32 = 4u32
+
+#Cval
+#Inline
+let PROC_THREAD_ATTRIBUTE_REPLACE_VALUE u32 = 1u32
+
+#Cval
+#Inline
+let RIP_EVENT u32 = 9u32
+
+#Cval
+#Inline
+let SCEX2_ALT_NETBIOS_NAME u32 = 1u32
+
+#Cval
+#Inline
+let SEC_64K_PAGES u32 = 0x80000u32
+
+#Cval
+#Inline
+let SEC_COMMIT u32 = 0x8000000u32
+
+#Cval
+#Inline
+let SEC_FILE u32 = 0x800000u32
+
+#Cval
+#Inline
+let SEC_HUGE_PAGES u32 = 0x20000u32
+
+#Cval
+#Inline
+let SEC_IMAGE u32 = 0x1000000u32
+
+#Cval
+#Inline
+let SEC_LARGE_PAGES u32 = 0x80000000u32
+
+#Cval
+#Inline
+let SEC_NOCACHE u32 = 0x10000000u32
+
+#Cval
+#Inline
+let SEC_PARTITION_OWNER_HANDLE u32 = 0x40000u32
+
+#Cval
+#Inline
+let SEC_PROTECTED_IMAGE u32 = 0x2000000u32
+
+#Cval
+#Inline
+let SEC_RESERVE u32 = 0x4000000u32
+
+#Cval
+#Inline
+let SEC_WRITECOMBINE u32 = 0x40000000u32
+
+#Cval
+#Inline
+let SUPPORT_LANG_NUMBER u32 = 0x20u32
+
+#Cval
+#Inline
+let SYNCHRONIZATION_BARRIER_FLAGS_BLOCK_ONLY u32 = 2u32
+
+#Cval
+#Inline
+let SYNCHRONIZATION_BARRIER_FLAGS_NO_DELETE u32 = 4u32
+
+#Cval
+#Inline
+let SYNCHRONIZATION_BARRIER_FLAGS_SPIN_ONLY u32 = 1u32
+
+#Cval
+#Inline
+let THREAD_BASE_PRIORITY_LOWRT u32 = 0xFu32
+
+#Cval
+#Inline
+let THREAD_BASE_PRIORITY_MAX u32 = 2u32
+
+#Cval
+#Inline
+let THREAD_DYNAMIC_CODE_ALLOW u32 = 1u32
+
+#Cval
+#Inline
+let THREAD_POWER_THROTTLING_CURRENT_VERSION u32 = 1u32
+
+#Cval
+#Inline
+let THREAD_POWER_THROTTLING_EXECUTION_SPEED u32 = 1u32
+
+#Cval
+#Inline
+let THREAD_PROFILING_FLAG_DISPATCH u32 = 1u32
+
+#Cval
+#Inline
+let UNLOAD_DLL_DEBUG_EVENT u32 = 7u32
+
+#Cval
+#Inline
+let USER_CET_ENVIRONMENT_SGX2_ENCLAVE u32 = 2u32
+
+#Cval
+#Inline
+let USER_CET_ENVIRONMENT_VBS_BASIC_ENCLAVE u32 = 0x11u32
+
+#Cval
+#Inline
+let USER_CET_ENVIRONMENT_VBS_ENCLAVE u32 = 0x10u32
+
+#Cval
+#Inline
+let USER_CET_ENVIRONMENT_WIN32_PROCESS u32 = 0u32
+
+#Cval
+#Inline
+let ComputerNameDnsDomain i32 = 2
+
+#Cval
+#Inline
+let ComputerNameDnsFullyQualified i32 = 3
+
+#Cval
+#Inline
+let ComputerNameDnsHostname i32 = 1
+
+#Cval
+#Inline
+let ComputerNameMax i32 = 8
+
+#Cval
+#Inline
+let ComputerNameNetBIOS i32 = 0
+
+#Cval
+#Inline
+let ComputerNamePhysicalDnsDomain i32 = 6
+
+#Cval
+#Inline
+let ComputerNamePhysicalDnsFullyQualified i32 = 7
+
+#Cval
+#Inline
+let ComputerNamePhysicalDnsHostname i32 = 5
+
+#Cval
+#Inline
+let ComputerNamePhysicalNetBIOS i32 = 4
+
+#Cval
+#Inline
+let FileAlignmentInfo i32 = 17i32
+
+#Cval
+#Inline
+let FileAllocationInfo i32 = 5
+
+#Cval
+#Inline
+let FileAttributeTagInfo i32 = 9
+
+#Cval
+#Inline
+let FileBasicInfo i32 = 0
+
+#Cval
+#Inline
+let FileCaseSensitiveInfo i32 = 23i32
+
+#Cval
+#Inline
+let FileCompressionInfo i32 = 8
+
+#Cval
+#Inline
+let FileDispositionInfo i32 = 4
+
+#Cval
+#Inline
+let FileDispositionInfoEx i32 = 21i32
+
+#Cval
+#Inline
+let FileEndOfFileInfo i32 = 6
+
+#Cval
+#Inline
+let FileFullDirectoryInfo i32 = 14i32
+
+#Cval
+#Inline
+let FileFullDirectoryRestartInfo i32 = 15i32
+
+#Cval
+#Inline
+let FileIdBothDirectoryInfo i32 = 10i32
+
+#Cval
+#Inline
+let FileIdBothDirectoryRestartInfo i32 = 11i32
+
+#Cval
+#Inline
+let FileIdExtdDirectoryInfo i32 = 19i32
+
+#Cval
+#Inline
+let FileIdExtdDirectoryRestartInfo i32 = 20i32
+
+#Cval
+#Inline
+let FileIdInfo i32 = 18i32
+
+#Cval
+#Inline
+let FileIoPriorityHintInfo i32 = 12i32
+
+#Cval
+#Inline
+let FileNameInfo i32 = 2
+
+#Cval
+#Inline
+let FileNormalizedNameInfo i32 = 24i32
+
+#Cval
+#Inline
+let FileRemoteProtocolInfo i32 = 13i32
+
+#Cval
+#Inline
+let FileRenameInfo i32 = 3
+
+#Cval
+#Inline
+let FileRenameInfoEx i32 = 22i32
+
+#Cval
+#Inline
+let FileStandardInfo i32 = 1
+
+#Cval
+#Inline
+let FileStorageInfo i32 = 16i32
+
+#Cval
+#Inline
+let FileStreamInfo i32 = 7
+
+#Cval
+#Inline
+let FindExInfoBasic i32 = 1
+
+#Cval
+#Inline
+let FindExInfoMaxInfoLevel i32 = 2
+
+#Cval
+#Inline
+let FindExInfoStandard i32 = 0
+
+#Cval
+#Inline
+let FindExSearchLimitToDevices i32 = 2
+
+#Cval
+#Inline
+let FindExSearchLimitToDirectories i32 = 1
+
+#Cval
+#Inline
+let FindExSearchMaxSearchOp i32 = 3
+
+#Cval
+#Inline
+let FindExSearchNameMatch i32 = 0
+
+#Cval
+#Inline
+let FindStreamInfoMaxInfoLevel i32 = 1
+
+#Cval
+#Inline
+let FindStreamInfoStandard i32 = 0
+
+#Cval
+#Inline
 let GetFileExInfoStandard i32 = 0
+
+#Cval
+#Inline
+let GetFileExMaxInfoLevel i32 = 1
+
+#Cval
+#Inline
+let HeapCompatibilityInformation i32 = 0
+
+#Cval
+#Inline
+let HeapEnableTerminationOnCorruption i32 = 1
+
+#Cval
+#Inline
+let HeapOptimizeResources i32 = 3
+
+#Cval
+#Inline
+let HeapTag i32 = 7
+
+#Cval
+#Inline
+let HighMemoryResourceNotification i32 = 1
+
+#Cval
+#Inline
+let LowMemoryResourceNotification i32 = 0
+
+#Cval
+#Inline
+let MaxProcessMitigationPolicy i32 = 19i32
+
+#Cval
+#Inline
+let MaximumFileInfoByHandleClass i32 = 25i32
+
+#Cval
+#Inline
+let ProcessASLRPolicy i32 = 1
+
+#Cval
+#Inline
+let ProcessAppMemoryInfo i32 = 2
+
+#Cval
+#Inline
+let ProcessChildProcessPolicy i32 = 13i32
+
+#Cval
+#Inline
+let ProcessControlFlowGuardPolicy i32 = 7
+
+#Cval
+#Inline
+let ProcessDEPPolicy i32 = 0
+
+#Cval
+#Inline
+let ProcessDynamicCodePolicy i32 = 2
+
+#Cval
+#Inline
+let ProcessExtensionPointDisablePolicy i32 = 6
+
+#Cval
+#Inline
+let ProcessFontDisablePolicy i32 = 9
+
+#Cval
+#Inline
+let ProcessImageLoadPolicy i32 = 10i32
+
+#Cval
+#Inline
+let ProcessInPrivateInfo i32 = 3
+
+#Cval
+#Inline
+let ProcessInformationClassMax i32 = 12i32
+
+#Cval
+#Inline
+let ProcessLeapSecondInfo i32 = 8
+
+#Cval
+#Inline
+let ProcessMachineTypeInfo i32 = 9
+
+#Cval
+#Inline
+let ProcessMaxOverridePrefetchParameter i32 = 11i32
+
+#Cval
+#Inline
+let ProcessMemoryExhaustionInfo i32 = 1
+
+#Cval
+#Inline
+let ProcessMemoryPriority i32 = 0
+
+#Cval
+#Inline
+let ProcessMitigationOptionsMask i32 = 5
+
+#Cval
+#Inline
+let ProcessOverrideSubsequentPrefetchParameter i32 = 10i32
+
+#Cval
+#Inline
+let ProcessPayloadRestrictionPolicy i32 = 12i32
+
+#Cval
+#Inline
+let ProcessPowerThrottling i32 = 4
+
+#Cval
+#Inline
+let ProcessProtectionLevelInfo i32 = 7
+
+#Cval
+#Inline
+let ProcessRedirectionTrustPolicy i32 = 16i32
+
+#Cval
+#Inline
+let ProcessReservedValue1 i32 = 5
+
+#Cval
+#Inline
+let ProcessSEHOPPolicy i32 = 18i32
+
+#Cval
+#Inline
+let ProcessSideChannelIsolationPolicy i32 = 14i32
+
+#Cval
+#Inline
+let ProcessSignaturePolicy i32 = 8
+
+#Cval
+#Inline
+let ProcessStrictHandleCheckPolicy i32 = 3
+
+#Cval
+#Inline
+let ProcessSystemCallDisablePolicy i32 = 4
+
+#Cval
+#Inline
+let ProcessSystemCallFilterPolicy i32 = 11i32
+
+#Cval
+#Inline
+let ProcessTelemetryCoverageInfo i32 = 6
+
+#Cval
+#Inline
+let ProcessUserPointerAuthPolicy i32 = 17i32
+
+#Cval
+#Inline
+let ProcessUserShadowStackPolicy i32 = 15i32
+
+#Cval
+#Inline
+let QUEUE_USER_APC_CALLBACK_DATA_CONTEXT i32 = 65536i32
+
+#Cval
+#Inline
+let QUEUE_USER_APC_FLAGS_NONE i32 = 0
+
+#Cval
+#Inline
+let QUEUE_USER_APC_FLAGS_SPECIAL_USER_APC i32 = 1
+
+#Cval
+#Inline
+let RelationAll i32 = 65535i32
+
+#Cval
+#Inline
+let RelationCache i32 = 2
+
+#Cval
+#Inline
+let RelationGroup i32 = 4
+
+#Cval
+#Inline
+let RelationNumaNode i32 = 1
+
+#Cval
+#Inline
+let RelationNumaNodeEx i32 = 6
+
+#Cval
+#Inline
+let RelationProcessorCore i32 = 0
+
+#Cval
+#Inline
+let RelationProcessorDie i32 = 5
+
+#Cval
+#Inline
+let RelationProcessorModule i32 = 7
+
+#Cval
+#Inline
+let RelationProcessorPackage i32 = 3
+
+#Cval
+#Inline
+let ThreadAbsoluteCpuPriority i32 = 1
+
+#Cval
+#Inline
+let ThreadDynamicCodePolicy i32 = 2
+
+#Cval
+#Inline
+let ThreadInformationClassMax i32 = 4
+
+#Cval
+#Inline
+let ThreadMemoryPriority i32 = 0
+
+#Cval
+#Inline
+let ThreadPowerThrottling i32 = 3
+
+#Cval
+#Inline
+let VmOfferPriorityBelowNormal i32 = 3
+
+#Cval
+#Inline
+let VmOfferPriorityLow i32 = 2
+
+#Cval
+#Inline
+let VmOfferPriorityNormal i32 = 4
+
+#Cval
+#Inline
+let VmOfferPriorityVeryLow i32 = 1
 
 fn winver() u32 = WINVER
