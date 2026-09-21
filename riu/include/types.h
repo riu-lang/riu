@@ -554,6 +554,13 @@ struct TypeInfo {
         return nullptr;
     }
 
+    // 裸 Ptr ≡ Ptr<()>（#21）；带具体 payload 的 Ptr<T> 为 false
+    [[nodiscard]] bool isErasedPtr() const {
+        if (!isPtr()) return false;
+        auto elem = ptrElementType();
+        return !elem || elem->isUnit();
+    }
+
     [[nodiscard]] bool isArrayGeneric() const { return kind == TypeKind::ArrayGeneric && genericArgs.size() == 1; }
 
     [[nodiscard]] sp<TypeInfo> arrayGenericElementType() const {
@@ -866,6 +873,26 @@ struct TypeInfo {
 
     bool operator!=(const TypeInfo& other) const { return !(*this == other); }
 };
+
+// ptr_of:<T> 的所指类型（#21 切片 4）
+[[nodiscard]] inline TypeInfo ptrOfPointeeType(TypeInfo t) {
+    if (t.isRef()) {
+        if (auto e = t.refElementType()) t = *e;
+    }
+    if (t.isRc()) {
+        if (auto e = t.rcElementType()) return *e;
+    }
+    if (t.isHeap()) {
+        if (auto e = t.heapElementType()) return *e;
+    }
+    if (t.isArrayGeneric()) {
+        if (auto e = t.arrayGenericElementType()) return *e;
+    }
+    if (t.isString()) return TypeInfo("u32");
+    // U& 已剥壳：标量 / struct 等 payload 即 U 自身
+    if (!t.isRcHandle() && !t.isPtr() && !t.isFn() && !t.empty()) return t;
+    return {};
+}
 
 inline TypeInfo::TypeInfo(string n, vector<sp<TypeInfo>> args) {
     // Function<P..., Ret>：末位是返回类型，其余是形参

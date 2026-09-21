@@ -214,14 +214,19 @@ fn same_ref<T>(a T, b T) bool
 #Builtin
 fn rc_leak_count() i64
 
-; ptr_of:<T>(obj) Ptr：显式取裸指针（DRAFT §9.4）
-; T = U&         → 指向 U 的 Ptr（短生命周期，C 端不可保存超出本次调用）
-; T = Rc<U>    → 指向 U payload（跳过 RC 头；C 端只能读写 payload，不能 free）
-; T = Array<U>  → 指向元素首地址（同上）
-; T = String     → 指向 UTF-32 码点首地址（不带 NUL 终止）
+; ptr_of:<T>(obj) Ptr<U>：显式取裸指针（#21 / §9.7.2.4）
+; T = U&         → Ptr<U>
+; T = Rc<U>      → Ptr<U>（跳过 RC 头；C 端只能读写 payload，不能 free）
+; T = Heap<U>    → Ptr<U>（move-out FFI handoff）
+; T = Array<U>   → Ptr<U>
+; T = String     → Ptr<u32>（码点；不是 C 字符串）
 ; T = 标量       → 报错
 #Builtin
 fn ptr_of<T>(obj T) Ptr
+
+; ptr_cast:<T, U>(p Ptr<T>) Ptr<U>：跨所指类型擦写（#21）；无隐式 Ptr<T>→Ptr<U>
+#Builtin
+fn ptr_cast<T, U>(p Ptr<T>) Ptr<U>
 
 ; as_ref:<T>(box) T&：显式获取 Rc payload 的借用（spec §8.3.5.5）
 ; v1 唯一允许"以 T& 形态借用 Rc payload 整体"的途径；返回的 T& 根对象
@@ -247,15 +252,15 @@ fn copy_of<T>(x T&) T
 #Builtin
 fn move<T>(x T&) T
 
-; _ptr_as_ref:<T>(p Ptr) T&：裸指针 reinterpret 为 T& 引用（B-3）
+; _ptr_as_ref:<T>(p Ptr<T>) T&：裸指针 reinterpret 为 T& 引用（B-3）
 ; 编译器 intrinsic：p 直接作为 T* 返回（LLVM 中 Ptr=T&）
 #Builtin
-fn _ptr_as_ref<T>(p Ptr) T&
+fn _ptr_as_ref<T>(p Ptr<T>) T&
 
-; _ptr_write:<T>(p Ptr, v T)：将 v 写入 p 指向的内存（B-3）
+; _ptr_write:<T>(p Ptr<T>, v T)：将 v 写入 p 指向的内存（B-3）
 ; 编译器 intrinsic：CreateStore(v, p)
 #Builtin
-fn _ptr_write<T>(p Ptr, v T)
+fn _ptr_write<T>(p Ptr<T>, v T)
 
 ; weak:<T>(box) Weak<T>：从 Rc 构造 Weak（spec §4.8.3.1 / §9）
 ; 接受 Rc<T> 或 Rc<T>?；null 输入返回空 Weak（永远 upgrade 失败）
@@ -633,7 +638,7 @@ fn from_c_chars(p Ptr) String {
     ret String::empty()
   }
   #Mut let bytes Array<u8> = []
-  #Mut let cur Ptr = p
+  #Mut let cur Ptr<u8> = ptr_cast:<(), u8>(p)
   loop {
     let b u8& = _ptr_as_ref:<u8>(cur)
     if b == 0u8 {
@@ -709,7 +714,7 @@ fn _from_wide_chars(p Ptr) String {
     ret String::empty()
   }
   #Mut let cps Array<u32> = []
-  #Mut let cur Ptr = p
+  #Mut let cur Ptr<u16> = ptr_cast:<(), u16>(p)
   loop {
     let w0 u16& = _ptr_as_ref:<u16>(cur)
     let x u16 = copy_of(w0)
@@ -752,7 +757,7 @@ fn args() Array<String> {
     if i.to_i32() >= n {
       break;
     }
-    let slot Ptr = _ptr_offset(argv, i.to_i64() * 8i64)
+    let slot Ptr<u64> = ptr_cast:<(), u64>(_ptr_offset(argv, i.to_i64() * 8i64))
     let addr u64& = _ptr_as_ref:<u64>(slot)
     let wstr Ptr = ptr_from_addr(copy_of(addr))
     out.push(_from_wide_chars(wstr))

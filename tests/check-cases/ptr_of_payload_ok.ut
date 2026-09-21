@@ -1,0 +1,9 @@
+; require-sdk
+; #21 切片 4：ptr_of 返回 Ptr<payload>
+fn main() {
+  #Mut let x Rc<i32> = 42
+  #Mut let p Ptr<i32> = ptr_of(x)
+  let q Ptr<i32> = ptr_of(x)
+  assert_true(p == q)
+  ret;
+}

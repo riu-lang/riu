@@ -672,7 +672,7 @@ fn test_heap_3f_copy_of_no_double_free() {
 #Test
 fn test_heap_8_ffi_ptr_roundtrip_scalar() {
   let h1 Heap<i32> = heap:<i32>(123)
-  let p Ptr = ptr_of(h1)
+  let p Ptr<i32> = ptr_of(h1)
   let h2 Heap<i32> = _heap_take:<i32>(p)
   let r i32& = as_ref(h2)
   assert_eq(r, 123)
@@ -682,7 +682,7 @@ fn test_heap_8_ffi_ptr_roundtrip_scalar() {
 #Test
 fn test_heap_8_ffi_ptr_roundtrip_struct() {
   let h1 Heap<CopyHeapBox> = heap:<CopyHeapBox>(CopyHeapBox::make(42))
-  let p Ptr = ptr_of(h1)
+  let p Ptr<CopyHeapBox> = ptr_of(h1)
   let h2 Heap<CopyHeapBox> = _heap_take:<CopyHeapBox>(p)
   let r CopyHeapBox& = as_ref(h2)
   assert_eq(r.k, 42)
@@ -692,11 +692,11 @@ fn test_heap_8_ffi_ptr_roundtrip_struct() {
 #Test
 fn test_heap_8_ffi_ptr_no_double_free() {
   let a Heap<i32> = heap:<i32>(1)
-  let pa Ptr = ptr_of(a)
+  let pa Ptr<i32> = ptr_of(a)
   let a2 Heap<i32> = _heap_take:<i32>(pa)
 
   let b Heap<i32> = heap:<i32>(2)
-  let pb Ptr = ptr_of(b)
+  let pb Ptr<i32> = ptr_of(b)
   let b2 Heap<i32> = _heap_take:<i32>(pb)
 
   let ra i32& = as_ref(a2)

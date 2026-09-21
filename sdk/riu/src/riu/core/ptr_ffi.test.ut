@@ -9,7 +9,7 @@
 #Test
 fn test_ptr_write_and_from_rc() {
   #Mut let x Rc<i32> = 42
-  #Mut let p Ptr = ptr_of(x)
+  #Mut let p Ptr<i32> = ptr_of(x)
   ; _ptr_as_ref 将 Ptr 重新解释为 i32&
   let r i32& = _ptr_as_ref:<i32>(p)
   assert_eq(r, 42)
@@ -21,31 +21,33 @@ fn test_ptr_write_and_from_rc() {
 #Test
 fn test_ptr_write_to_rc_payload() {
   #Mut let a Rc<i32> = 10
-  #Mut let p Ptr = ptr_of(a)
+  #Mut let p Ptr<i32> = ptr_of(a)
   _ptr_write:<i32>(p, 77)
   ; _ptr_as_ref 读回
   let r i32& = _ptr_as_ref:<i32>(p)
   assert_eq(r, 77)
 }
 
-; ptr_of(String) → _ptr_as_ref 验证：String 经 ptr_of 可正确 round-trip 为 String&
+; ptr_of(String) → Ptr<u32>（码点首地址，#21）
 #Test
 fn test_ptr_of_string() {
   let s String = "hello"
-  #Mut let p Ptr = ptr_of(s)
-  let r String& = _ptr_as_ref:<String>(p)
-  assert_eq(r, "hello")
+  #Mut let p Ptr<u32> = ptr_of(s)
+  #Mut let p2 Ptr<u32> = ptr_of(s)
+  assert_true(p.to_int() == p2.to_int())
+  let cp u32& = _ptr_as_ref:<u32>(p)
+  assert_eq(cp, 104u32)
 }
 
-; ptr_of(Array<T>) → _ptr_as_ref 验证：Array 经 ptr_of 可正确 round-trip 为 Array<T>&
+; ptr_of(Array<T>) → Ptr<T>（元素缓冲区，#21）
 #Test
 fn test_ptr_of_array() {
   #Mut let arr Array<i32> = [10, 20, 30]
-  #Mut let p Ptr = ptr_of(arr)
-  let r Array<i32>& = _ptr_as_ref:<Array<i32>>(p)
-  assert_eq(r.len(), 3usize)
-  assert_eq(r.get(0usize), 10)
-  assert_eq(r.get(1usize), 20)
+  #Mut let p Ptr<i32> = ptr_of(arr)
+  let r i32& = _ptr_as_ref:<i32>(p)
+  assert_eq(r, 10)
+  _ptr_write:<i32>(p, 99)
+  assert_eq(arr.get(0usize), 99)
 }
 
 ; ---- _ptr_write i32 via Rc（多次写入）----
@@ -54,7 +56,7 @@ fn test_ptr_of_array() {
 fn test_ptr_write_multi() {
   ; 验证：_ptr_write 多次写入同一位置
   #Mut let a Rc<i32> = 0
-  #Mut let p Ptr = ptr_of(a)
+  #Mut let p Ptr<i32> = ptr_of(a)
   _ptr_write:<i32>(p, 42)
   let r1 i32& = _ptr_as_ref:<i32>(p)
   assert_eq(r1, 42)
@@ -70,7 +72,7 @@ fn test_ptr_of_ref() {
   ; 验证：ptr_of 作用于 Rc<T>& 借用
   #Mut let x Rc<i32> = 42
   let r Rc<i32>& = &x
-  #Mut let p Ptr = ptr_of(r)
+  #Mut let p Ptr<i32> = ptr_of(r)
   let r2 i32& = _ptr_as_ref:<i32>(p)
   assert_eq(r2, 42)
 }
@@ -82,7 +84,7 @@ fn test_ptr_of_plain_ref() {
   ; 验证：ptr_of 作用于普通 i32& 引用（非堆句柄包装）
   #Mut let x i32 = 77
   let r i32& = &x
-  #Mut let p Ptr = ptr_of(r)
+  #Mut let p Ptr<i32> = ptr_of(r)
   let r2 i32& = _ptr_as_ref:<i32>(p)
   assert_eq(r2, 77)
 }
@@ -91,7 +93,7 @@ fn test_ptr_of_plain_ref() {
 fn test_ptr_of_by_addr() {
   ; 验证：ptr_of 直接作用于 &x 取地址表达式
   #Mut let x i32 = 99
-  #Mut let p Ptr = ptr_of(&x)
+  #Mut let p Ptr<i32> = ptr_of(&x)
   let r i32& = _ptr_as_ref:<i32>(p)
   assert_eq(r, 99)
 }
@@ -113,9 +115,9 @@ fn test_same_ref_plain() {
 fn test_ptr_to_int_roundtrip() {
   ; 验证：ptr_of → to_int → ptr_from_addr → _ptr_as_ref
   #Mut let x Rc<i32> = 99
-  #Mut let p Ptr = ptr_of(x)
+  #Mut let p Ptr<i32> = ptr_of(x)
   let addr u64 = p.to_int()
-  let p2 Ptr = ptr_from_addr(addr)
+  let p2 Ptr<i32> = ptr_cast:<(), i32>(ptr_from_addr(addr))
   let r i32& = _ptr_as_ref:<i32>(p2)
   assert_eq(r, 99)
 }
@@ -126,7 +128,7 @@ fn test_ptr_to_int_roundtrip() {
 fn test_ptr_offset_basic() {
   ; 验证：_ptr_offset 用于相邻字段/元素
   #Mut let a Rc<i32> = 100
-  #Mut let p Ptr = ptr_of(a)
+  #Mut let p Ptr<i32> = ptr_of(a)
   ; 无偏移读回原值
   let r i32& = _ptr_as_ref:<i32>(p)
   assert_eq(r, 100)
@@ -138,7 +140,7 @@ fn test_ptr_offset_basic() {
 fn test_ptr_of_f64() {
   ; 验证：ptr_of 作用于 f64
   #Mut let x Rc<f64> = 3.14f64
-  #Mut let p Ptr = ptr_of(x)
+  #Mut let p Ptr<f64> = ptr_of(x)
   let r f64& = _ptr_as_ref:<f64>(p)
   assert_eq(r, 3.14f64)
 }
@@ -147,7 +149,7 @@ fn test_ptr_of_f64() {
 fn test_ptr_of_bool() {
   ; 验证：ptr_of 作用于 bool
   #Mut let x Rc<bool> = true
-  #Mut let p Ptr = ptr_of(x)
+  #Mut let p Ptr<bool> = ptr_of(x)
   let r bool& = _ptr_as_ref:<bool>(p)
   assert_eq(r, true)
 }

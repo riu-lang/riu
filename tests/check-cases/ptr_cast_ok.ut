@@ -1,0 +1,9 @@
+; require-sdk
+; #21 切片 4：ptr_cast 跨所指类型
+fn main() {
+  #Mut let x Rc<i32> = 7
+  #Mut let p Ptr<i32> = ptr_of(x)
+  #Mut let q Ptr<u32> = ptr_cast:<i32, u32>(p)
+  assert_true(p.to_int() == q.to_int())
+  ret;
+}

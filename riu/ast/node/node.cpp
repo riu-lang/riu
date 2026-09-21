@@ -66,13 +66,14 @@ bool ScopeNode::matchFnParams(const FnSymbolInfo& fnInfo, const vector<TypeInfo>
     for (size_t i = 0; i < paramTypes.size(); ++i) {
         const TypeInfo& p = fnInfo.paramType(i);
         if (p == paramTypes[i]) continue;
+        if (p.isErasedPtr() && paramTypes[i].isPtr()) continue;
         if (p.isRef()) {
             auto refElemType = p.refElementType();
             if (refElemType && *refElemType == paramTypes[i]) continue;
         }
         if (p.isPtr() && paramTypes[i].isRef()) continue;
-        // Phase 7c (DRAFT §9.3): extern 边界 Ptr 形参接受堆句柄类型自动转换
-        if (fnInfo.isExternal && p.isPtr() && paramTypes[i].isRcHandle()) {
+        // §6.6.3：extern 堆句柄隐式转 Ptr 仅进裸 Ptr / Ptr<()>
+        if (fnInfo.isExternal && p.isPtr() && p.isErasedPtr() && paramTypes[i].isRcHandle()) {
             continue;
         }
         // Nullable<T> 形参接受 T 值实参（自动包装 T → {_has=true, _value=T}）

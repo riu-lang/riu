@@ -1,0 +1,7 @@
+; require-sdk
+; #21 切片 4：ptr_of 结果不能赋给裸 Ptr（≡ Ptr<()>）
+fn main() {
+  #Mut let x Rc<i32> = 1
+  #Mut let p Ptr = ptr_of(x)  ; check: E3014
+  ret;
+}

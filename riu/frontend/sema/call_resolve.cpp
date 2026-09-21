@@ -36,9 +36,12 @@ namespace sema {
 // 支持精确匹配和引用类型匹配
 static bool paramAccepts(const TypeInfo& param, const TypeInfo& argType) {
     if (param == argType) return true; // 精确匹配
+    // Ptr<T> 可宽化进裸 Ptr / Ptr<()>（擦除所指；无 Ptr<T>→Ptr<U> 跨型）
+    if (param.isErasedPtr() && argType.isPtr()) return true;
     // 不再隐式取 ref：T 与 T& 是不同的类型，各有各的重载
     // 需要引用时在调用处用显式 &arg（而非 &expr）
-    if (param.isPtr() && argType.isRef()) return true; // 指针参数接受引用
+    // §6.6.3：T& 隐式转 Ptr 仅进裸 Ptr / Ptr<()>
+    if (param.isPtr() && argType.isRef() && param.isErasedPtr()) return true;
     // null 字面量（类型 Ptr）可以匹配任何 Nullable<T> 形参
     if (param.isNullable() && argType.isPtr()) return true;
     // T 值可以匹配 Nullable<T> 形参（自动包装 T → {_has=true, _value=T}）
@@ -1158,6 +1161,11 @@ void validateBuiltinIntrinsicShape(const string& fnName, size_t typeArgsCount, s
         }
         return;
     }
+    if (fnName == "ptr_cast") {
+        if (typeArgsCount != 2) throw RiuError(line, col, ErrorCode::E6026, fnName, static_cast<size_t>(2));
+        if (argsCount != 1) throw RiuError(line, col, ErrorCode::E6027, fnName, static_cast<size_t>(1));
+        return;
+    }
     if (fnName == "as_ref" || fnName == "copy_of" || fnName == "weak") {
         if (typeArgsCount != 1) throw RiuError(line, col, ErrorCode::E6026, fnName, static_cast<size_t>(1));
         if (argsCount != 1) throw RiuError(line, col, ErrorCode::E6027, fnName, static_cast<size_t>(1));
@@ -1204,13 +1212,13 @@ void validateBuiltinIntrinsicShape(const string& fnName, size_t typeArgsCount, s
         if (argsCount != 1) throw RiuError(line, col, ErrorCode::E6027, fnName, static_cast<size_t>(1));
         return;
     }
-    // B-3: _ptr_as_ref:<T>(p Ptr) T& — 裸指针→引用（1 typeArg + 1 arg）
+    // B-3: _ptr_as_ref:<T>(p Ptr<T>) T& — 裸指针→引用（1 typeArg + 1 arg）
     if (fnName == "_ptr_as_ref") {
         if (typeArgsCount != 1) throw RiuError(line, col, ErrorCode::E6026, fnName, static_cast<size_t>(1));
         if (argsCount != 1) throw RiuError(line, col, ErrorCode::E6027, fnName, static_cast<size_t>(1));
         return;
     }
-    // B-3: _ptr_write:<T>(p Ptr, v T) — 裸指针写入（1 typeArg + 2 args）
+    // B-3: _ptr_write:<T>(p Ptr<T>, v T) — 裸指针写入（1 typeArg + 2 args）
     if (fnName == "_ptr_write") {
         if (typeArgsCount != 1) throw RiuError(line, col, ErrorCode::E6026, fnName, static_cast<size_t>(1));
         if (argsCount != 2) throw RiuError(line, col, ErrorCode::E6027, fnName, static_cast<size_t>(2));
@@ -1713,6 +1721,38 @@ void validateBuiltinIntrinsicTypeShape(const string& fnName, const vector<TypeIn
         const auto& T = typeArgs[0];
         if (T.kind != TypeKind::Normal || T.name.empty() || !NameResolver(file, sdkFile).lookupStruct(T)) {
             throw RiuError(line, col, ErrorCode::E6019, T.getFullName());
+        }
+        return;
+    }
+    if (fnName == "ptr_cast") {
+        if (typeArgs.size() < 2 || argTypes.empty()) return;
+        const auto& fromT = typeArgs[0];
+        const auto& toT = typeArgs[1];
+        const auto& pType = argTypes[0];
+        if (!pType.isPtr()) {
+            throw RiuError(line, col, ErrorCode::E3014, "Ptr<" + fromT.getFullName() + ">", pType.getFullName());
+        }
+        if (pType.isErasedPtr()) {
+            if (!fromT.isUnit()) {
+                throw RiuError(line, col, ErrorCode::E3014, "Ptr<" + fromT.getFullName() + ">", "Ptr")
+                    .withHint("裸 Ptr 作 `ptr_cast` 源时 turbofish 首实参须为 `()`");
+            }
+        } else if (auto elem = pType.ptrElementType(); !elem || *elem != fromT) {
+            throw RiuError(line, col, ErrorCode::E3014, "Ptr<" + fromT.getFullName() + ">", pType.getFullName());
+        }
+        (void)toT;
+        return;
+    }
+    if (fnName == "_ptr_as_ref" || fnName == "_ptr_write") {
+        if (typeArgs.empty() || argTypes.empty()) return;
+        const auto& T = typeArgs[0];
+        const auto& pType = argTypes[0];
+        if (!pType.isPtr() || pType.isErasedPtr()) {
+            throw RiuError(line, col, ErrorCode::E3014, "Ptr<" + T.getFullName() + ">", pType.getFullName())
+                .withHint("裸 Ptr 须先 `ptr_cast:<T, U>(p)` 到与实参一致的 `Ptr<U>`");
+        }
+        if (auto elem = pType.ptrElementType(); !elem || *elem != T) {
+            throw RiuError(line, col, ErrorCode::E3014, "Ptr<" + T.getFullName() + ">", pType.getFullName());
         }
         return;
     }

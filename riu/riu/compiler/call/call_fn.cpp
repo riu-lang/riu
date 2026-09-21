@@ -397,17 +397,18 @@ llvm::Value* Compiler::compileGenericFunctionCall(ExprCallNode* callNode, const 
                         }
                         return handle;
                     }
-                    // ptr_of:<Array<T>>: 返回指向 Array struct 本身的指针（非 _data 元素缓冲区），
-                    // 使 _ptr_as_ref:<Array<T>>(p) 可正确 round-trip。
-                    // fall through 到下方泛型路径，取 alloca 地址。
+                    // #21：ptr_of:<Array<T>> → Ptr<T>（元素缓冲区 _data）
+                    return handle;
                 }
                 if (T.isString()) {
                     // B-4: String layout = { _buf: Rc<Array<u32>> } = { { ptr handle } }
                     auto handle = _builder.CreateExtractValue(args[i], {0, 0}, "string.handle");
                     if (!forPtrOf) return handle;
-                    // ptr_of: 返回指向 String struct 本身的指针（非字符数据），
-                    // 使 _ptr_as_ref:<String>(p) 可正确 round-trip。
-                    // fall through 到下方泛型路径，取 alloca 地址。
+                    // #21：ptr_of:<String> → Ptr<u32>（码点缓冲）
+                    auto dataAddr = _builder.CreateInBoundsGEP(_builder.getInt8Ty(), handle,
+                                                               {llvm::ConstantInt::get(_builder.getInt64Ty(), 8)},
+                                                               "string.data.addr");
+                    return _builder.CreateLoad(ptrTy, dataAddr, "string.data");
                 }
                 if (T.isRef()) {
                     // T& 路径：args[i] 是 compileExpr 自动 deref 后的 U 值，需要回溯 AST 拿原始指针
@@ -474,6 +475,10 @@ llvm::Value* Compiler::compileGenericFunctionCall(ExprCallNode* callNode, const 
                 }
             }
             return raw;
+        }
+        if (fnName == "ptr_cast") {
+            // #21：跨 T 擦写；ABI 仍一指针字
+            return args[0];
         }
         if (fnName == "as_ref") {
             // spec §8.3.5.5：as_ref:<T>(box Rc<T>) T&
@@ -1042,10 +1047,8 @@ llvm::Value* Compiler::compileKnownFunctionCall(ExprCallNode* callNode, const st
                 callArgs.push_back(ptrVal);
                 continue;
             }
-            // Phase 7c (DRAFT §9.3): extern 边界自动转 Ptr
-            // T& / Rc<T> / Weak<T> / Array<T> / String 作实参传给 Ptr 形参时自动转换
-            // 转换规则与 ptr_of 一致：Rc → payload (跳 RC 头)；Array/String → data 区
-            if (fnSymbol->isExternal) {
+            // §6.6.3：extern 堆句柄 / T& 隐式转 Ptr 仅进裸 Ptr / Ptr<()>
+            if (fnSymbol->isExternal && fnSymbol->paramType(i).isErasedPtr()) {
                 auto& aType = argTypes[i];
                 auto ptrTy = llvm::PointerType::get(_context, 0);
                 if (aType.isRef()) {

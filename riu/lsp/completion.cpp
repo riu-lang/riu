@@ -101,7 +101,8 @@ const std::vector<CompletionItem>& buildItems() {
         fn("println", "内置函数：打印输出并换行");
         fn("copy_of", "深拷贝 copy_of:<T>(x T&) T —— 含 Rc/Array/String/Weak/Heap 字段按字段深拷");
         fn("as_ref", "取 payload 借用 as_ref:<T>(x Rc<T> | Heap<T>) T&");
-        fn("ptr_of", "取裸指针 ptr_of:<T>(x) Ptr —— T 为堆句柄或 T&；Heap 形态移交所有权 (FFI)");
+        fn("ptr_of", "取裸指针 ptr_of:<T>(x) Ptr<U> —— U 为所指；T 为堆句柄或 T&；Heap 移交所有权");
+        fn("ptr_cast", "擦写所指 ptr_cast:<T,U>(p Ptr<T>) Ptr<U>");
         fn("same_ref", "地址相等 same_ref:<T>(a, b) bool");
         fn("weak", "构造弱引用 weak:<T>(rc Rc<T>) Weak<T>");
         fn("upgrade", "弱升强 upgrade:<T>(w Weak<T>) Rc<T>?");

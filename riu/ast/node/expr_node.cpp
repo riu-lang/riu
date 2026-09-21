@@ -129,6 +129,29 @@ static void unwrapRecvType(TypeInfo& t) {
     }
 }
 
+// #21 切片 4：内建调用返回 Ptr<payload> / ptr_cast 目标类型
+static TypeInfo builtinCallReturnOverride(const string& fnName, const vector<TypeNode*>& typeArgs,
+                                          const vector<ExprNode*>& args, TypeInfo retType) {
+    if (fnName == "ptr_of") {
+        TypeInfo T;
+        if (!typeArgs.empty()) {
+            T = typeArgs[0]->getType();
+        } else if (!args.empty()) {
+            try {
+                T = args[0]->getType();
+            } catch (...) { // NOLINT(bugprone-empty-catch)
+            }
+        }
+        if (auto pt = ptrOfPointeeType(std::move(T)); !pt.empty()) {
+            return TypeInfo("Ptr", {std::make_shared<TypeInfo>(std::move(pt))});
+        }
+    }
+    if (fnName == "ptr_cast" && typeArgs.size() >= 2) {
+        return TypeInfo("Ptr", {std::make_shared<TypeInfo>(typeArgs[1]->getType())});
+    }
+    return retType;
+}
+
 // 泛型函数调用：把 ret 按 typeParams → 显式实参 / 从实参 unify 推断 替换。
 static TypeInfo substGenericFnRet(const Node* from, const vector<TypeNode*>& typeArgs, const vector<ExprNode*>& args,
                                   const string& fnName, TypeInfo retType) {
@@ -152,7 +175,9 @@ static TypeInfo substGenericFnRet(const Node* from, const vector<TypeNode*>& typ
             }
         }
     }
-    if (!fnNode || !fnNode->header() || !fnNode->header()->isGeneric()) return retType;
+    if (!fnNode || !fnNode->header() || !fnNode->header()->isGeneric()) {
+        return builtinCallReturnOverride(fnName, typeArgs, args, retType);
+    }
 
     auto typeParams = fnNode->header()->typeParams();
     std::map<std::string, TypeInfo> subst;
@@ -209,7 +234,12 @@ static TypeInfo substGenericFnRet(const Node* from, const vector<TypeNode*>& typ
         }
     }
     if (!subst.empty()) retType = retType.substitute(subst);
-    return retType;
+    if (fnName == "ptr_cast" && typeArgs.size() < 2 && typeParams.size() >= 2) {
+        if (auto it = subst.find(typeParams[1]); it != subst.end()) {
+            return TypeInfo("Ptr", {std::make_shared<TypeInfo>(it->second)});
+        }
+    }
+    return builtinCallReturnOverride(fnName, typeArgs, args, retType);
 }
 
 // 已解析到目标模块的泛型函数时，直接按该声明替换返回类型。
@@ -622,6 +652,16 @@ const std::vector<ExprNode*>& ExprCallNode::getArgs() const {
 }
 
 TypeInfo ExprCallNode::structuralType() const {
+    if (auto lit = dynamic_cast<ExprLiteralNode*>(_calleeExpr)) {
+        if (auto obj = dynamic_cast<LiteralObjNode*>(lit->literal())) {
+            if (obj->getValue().getText() == "_ptr_offset" && !_args.empty()) {
+                try {
+                    return _args[0]->getType();
+                } catch (...) { // NOLINT(bugprone-empty-catch)
+                }
+            }
+        }
+    }
     auto type = _calleeExpr->getType();
 
     // Array.map<U> 的返回类型依赖方法自己的 U；方法点只编码占位返回，
@@ -719,7 +759,7 @@ TypeInfo ExprCallNode::structuralType() const {
                     }
                     auto fn = scope->lookupFnSymbolWithParams(fnName, argTypes);
                     if (fn) {
-                        return fn->retTypeRef();
+                        return substGenericFnRet(this, _typeArgs, _args, fnName, fn->retTypeRef());
                     }
                 }
             }
@@ -826,7 +866,7 @@ TypeInfo ExprCallNode::structuralType() const {
 
         auto fn = scope->lookupFnSymbolWithParams(type.name, argTypes);
         if (fn) {
-            return fn->retTypeRef();
+            return substGenericFnRet(this, _typeArgs, _args, type.name, fn->retTypeRef());
         }
     }
 

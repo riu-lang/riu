@@ -1,0 +1,7 @@
+; require-sdk
+; #21 切片 4：裸 Ptr 不能直接 _ptr_as_ref，须先 ptr_cast
+fn main() {
+  #Mut let p Ptr = ptr_from_addr(0)
+  let r i32& = _ptr_as_ref:<i32>(p)  ; check: E3014
+  ret;
+}
