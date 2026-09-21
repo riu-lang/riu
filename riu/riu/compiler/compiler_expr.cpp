@@ -344,7 +344,7 @@ llvm::Value* Compiler::compileStructLitExpr(ExprStructLitNode* node) {
     if (!llvmStructType) {
         throwSemaGap(line, col);
     }
-    auto alloca = _builder.CreateAlloca(llvmStructType, nullptr, structName + ".lit");
+    auto alloca = createTypedAlloca(llvmStructType, litTy, structName + ".lit");
     // 零初始化, 与 ctor 入口保持一致, 避免遗漏字段 (实际上 sema 已强制全列)
     auto& dl = _module->getDataLayout();
     auto sizeBytes = dl.getTypeAllocSize(llvmStructType).getFixedValue();
@@ -366,7 +366,7 @@ llvm::Value* Compiler::compileStructLitExpr(ExprStructLitNode* node) {
         string gepName = structName;
         gepName += '.';
         gepName += fname;
-        auto fieldPtr = _builder.CreateStructGEP(llvmStructType, alloca, static_cast<unsigned>(idx), gepName);
+        auto fieldPtr = structFieldPtr(llvmStructType, alloca, static_cast<unsigned>(idx), gepName);
         const auto* fdecl = decl->field(fname);
         // Phase 6E.4-C: 泛型实例 Self {...} — 字段类型 (含 T) 透过当前
         // SubstFrame 替换为具体类型, 让 isArrayGeneric / typeNeedsDestructor
@@ -632,7 +632,7 @@ llvm::Value* Compiler::compileLvalueAddr(ExprNode* node) {
         if (idx < 0) {
             throwSemaGap(line, col);
         }
-        return _builder.CreateStructGEP(structType, baseAddr, static_cast<unsigned>(idx), "move.lhs.gep");
+        return structFieldPtr(structType, baseAddr, static_cast<unsigned>(idx), "move.lhs.gep");
     }
 
     // E4036 由 SemaPass isMoveAssignLvalue 先抛；此处防 IR 走进不支持的 LHS 形态。

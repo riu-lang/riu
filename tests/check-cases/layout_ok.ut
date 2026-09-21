@@ -1,0 +1,46 @@
+; require-sdk
+; #19：#Packed / #Align / overlay / size_of / align_of 形态通过
+
+#Packed
+struct FileHdr {
+  magic u32
+  flags u16
+  _ u16
+  size u32
+}
+
+#Packed
+#Align(8)
+struct Li {
+  QuadPart i64
+}
+
+#Packed
+#Align(8)
+struct LiParts {
+  LowPart u32
+  HighPart i32
+}
+
+#Align(16)
+struct Over {
+  x i32
+}
+
+struct FieldAlign {
+  a u8
+  #Align(4)
+  b u32
+}
+
+fn main() {
+  let s u64 = size_of:<FileHdr>()
+  let a u64 = align_of:<FileHdr>()
+  let o u64 = size_of:<Over>()
+  let fa u64 = size_of:<FieldAlign>()
+  #Mut let li Li = Li {
+    .QuadPart = 1
+  }
+  let p LiParts& = overlay:<LiParts>(&li)
+  ret
+}

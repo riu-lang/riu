@@ -1,0 +1,80 @@
+; #19 FFI 布局：size_of / align_of / overlay / #Packed / #Align
+
+#Packed
+struct FileHdr {
+  magic u32
+  flags u16
+  _ u16
+  size u32
+}
+
+#Packed
+struct Packed5 {
+  a u8
+  b u32
+}
+
+#Packed
+#Align(8)
+struct Li {
+  QuadPart i64
+}
+
+#Packed
+#Align(8)
+struct LiParts {
+  LowPart u32
+  HighPart i32
+}
+
+#Align(16)
+struct Over16 {
+  x i32
+}
+
+struct FieldAlign {
+  a u8
+  #Align(4)
+  b u32
+}
+
+struct Natural {
+  a i32
+  b i64
+}
+
+#Test
+fn test_size_align_packed() {
+  assert_eq(size_of:<FileHdr>(), 12u64)
+  assert_eq(align_of:<FileHdr>(), 1u64)
+  assert_eq(size_of:<Packed5>(), 5u64)
+  assert_eq(align_of:<Packed5>(), 1u64)
+}
+
+#Test
+fn test_size_align_raised() {
+  assert_eq(size_of:<Li>(), 8u64)
+  assert_eq(align_of:<Li>(), 8u64)
+  assert_eq(size_of:<Over16>(), 16u64)
+  assert_eq(align_of:<Over16>(), 16u64)
+}
+
+#Test
+fn test_field_align_and_natural() {
+  assert_eq(size_of:<FieldAlign>(), 8u64)
+  assert_eq(align_of:<FieldAlign>(), 4u64)
+  assert_eq(size_of:<Natural>(), 16u64)
+  assert_eq(align_of:<Natural>(), 8u64)
+}
+
+#Test
+fn test_overlay_union_view() {
+  #Mut let li Li = Li {
+    .QuadPart = 4294967298i64
+  }
+  let p LiParts& = overlay:<LiParts>(&li)
+  assert_eq(p.LowPart, 2u32)
+  assert_eq(p.HighPart, 1)
+  p.LowPart = 9
+  assert_eq(li.QuadPart, 4294967305i64)
+}

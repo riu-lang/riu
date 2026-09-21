@@ -288,11 +288,7 @@ llvm::Value* Compiler::compileDotExpr(ExprDotNode* node) {
             }
 
             auto structType = getLLVMType(actualType);
-            auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
-            auto idx = llvm::ConstantInt::get(_builder.getInt32Ty(), fieldIndex);
-            std::array<llvm::Value*, 2> indices{zero, idx};
-
-            auto fieldPtr = _builder.CreateGEP(structType, dataPtr, indices, "struct.field");
+            auto fieldPtr = structFieldPtr(structType, dataPtr, static_cast<unsigned>(fieldIndex), "struct.field");
             auto fieldType = field->getType();
 
             if (actualType.hasGenericArgs() && structDecl->isGeneric() &&
@@ -406,7 +402,6 @@ llvm::Value* Compiler::compileSafeDotExpr(ExprDotNode* node) {
     // then: 取出 inner 的字段，包装到 result
     _builder.SetInsertPoint(thenBB);
     llvm::Value* fieldPtr = nullptr;
-    auto fieldIdxConst = llvm::ConstantInt::get(_builder.getInt32Ty(), fieldIdx);
     if (innerIsRc) {
         // Rc<U>: 提取 handle，payload = handle + 8，GEP 到字段
         auto rawInnerLLVMTy = getLLVMType(*rawInnerType); // Rc struct { ptr handle }
@@ -415,11 +410,11 @@ llvm::Value* Compiler::compileSafeDotExpr(ExprDotNode* node) {
         auto handleField = _builder.CreateGEP(rawInnerLLVMTy, rcAlloca, {zero32, zero32}, "sd.rc.handle_field");
         auto handle = _builder.CreateLoad(llvm::PointerType::get(_context, 0), handleField, "sd.rc.handle");
         auto payload = _builder.CreateGEP(_builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "sd.rc.payload");
-        fieldPtr = _builder.CreateGEP(innerLLVMType, payload, {zero32, fieldIdxConst}, "sd.field");
+        fieldPtr = structFieldPtr(innerLLVMType, payload, static_cast<unsigned>(fieldIdx), "sd.field");
     } else {
-        auto innerAlloca = _builder.CreateAlloca(innerLLVMType, nullptr, "sd.inner.tmp");
+        auto innerAlloca = createTypedAlloca(innerLLVMType, *innerType, "sd.inner.tmp");
         _builder.CreateStore(innerVal, innerAlloca);
-        fieldPtr = _builder.CreateGEP(innerLLVMType, innerAlloca, {zero32, fieldIdxConst}, "sd.field");
+        fieldPtr = structFieldPtr(innerLLVMType, innerAlloca, static_cast<unsigned>(fieldIdx), "sd.field");
     }
     auto fieldVal = _builder.CreateLoad(fieldLLVMType, fieldPtr, "sd.field.load");
     _builder.CreateStore(_builder.getInt1(true), resHasField);

@@ -3,6 +3,7 @@
 
 #include "rd_builder.h"
 
+#include "ast/layout.h"
 #include "ast/syntax_diag.h"
 #include "ast_builder_helpers.h"
 #include "node/alias_node.h"
@@ -80,6 +81,9 @@ FnHeaderNode* RdBuilder::buildFnHeader(rd::NodeId id, FileNode* file, const vect
         if (!knownAnnos().contains(name)) throw RiuError(line, col, ErrorCode::E2005, name);
         if (name == "DraftLike" || name == "Spec" || name == "Impl" || name == "Reflect") {
             throw RiuError(line, col, ErrorCode::E1110);
+        }
+        if (name == "Packed" || name == "Align") {
+            throw RiuError(line, col, ErrorCode::E2011, name);
         }
         const bool hasArg = at(a).op == rd::Kind::ParStart;
         if (argAnnos().contains(name) != hasArg) throw RiuError(line, col, ErrorCode::E2005, name);
@@ -390,6 +394,8 @@ void RdBuilder::addStruct(rd::NodeId id) {
     bool isSpec = false;
     vector<SpecRef> implRefs;
     RdAnnoList annos;
+    bool seenPacked = false;
+    bool seenAlign = false;
     rd::Pos locPos = n.pos;
     if (n.children_count > 0 && at(child(id, 0)).kind == rd::NodeKind::Anno) locPos = at(child(id, 0)).pos;
     rd::i32 i = 0;
@@ -404,6 +410,16 @@ void RdBuilder::addStruct(rd::NodeId id) {
         if (argAnnos().contains(name) != hasArg) throw RiuError(line, col, ErrorCode::E2005, name);
         if (name != "DraftLike" && !nonFnAllowedAnnos().contains(name))
             throw RiuError(line, col, ErrorCode::E2011, name);
+        if (name == "Packed") {
+            if (seenPacked) throw RiuError(line, col, ErrorCode::E2011, name);
+            seenPacked = true;
+        } else if (name == "Align") {
+            if (seenAlign) throw RiuError(line, col, ErrorCode::E2011, name);
+            seenAlign = true;
+            if (layout::parseAlignArg(arg) == 0) {
+                throw RiuError(line, col, ErrorCode::E2038, arg.empty() ? string("?") : arg);
+            }
+        }
         if (name == "Spec")
             isSpec = true;
         else if (name == "Impl")
@@ -417,6 +433,14 @@ void RdBuilder::addStruct(rd::NodeId id) {
             if (annos.names[ai] == "DraftLike") {
                 throw RiuError(at(child(id, static_cast<rd::i32>(ai))).pos.line,
                                at(child(id, static_cast<rd::i32>(ai))).pos.column + 1, ErrorCode::E1110);
+            }
+        }
+    } else if (seenPacked || seenAlign) {
+        for (size_t ai = 0; ai < annos.names.size(); ++ai) {
+            if (annos.names[ai] == "Packed" || annos.names[ai] == "Align") {
+                throw RiuError(at(child(id, static_cast<rd::i32>(ai))).pos.line,
+                               at(child(id, static_cast<rd::i32>(ai))).pos.column + 1, ErrorCode::E2011,
+                               annos.names[ai]);
             }
         }
     }
@@ -477,7 +501,11 @@ void RdBuilder::addStruct(rd::NodeId id) {
             rd::i32 fi = skipAnnos(_ast, f, 0);
             bool isStatic = false;
             for (rd::i32 ai = 0; ai < fi; ++ai) {
-                if (at(child(f, ai)).value == "Static" || at(child(f, ai)).value == "Cval") isStatic = true;
+                string an = string(at(child(f, ai)).value);
+                if (an == "Static" || an == "Cval") isStatic = true;
+                if (an == "Packed" || an == "Align") {
+                    throw RiuError(at(child(f, ai)).pos.line, at(child(f, ai)).pos.column + 1, ErrorCode::E2011, an);
+                }
             }
             TypeNode* ty = fi < fn.children_count ? buildType(child(f, fi)) : nullptr;
             auto* field = create<StructFieldNode>(f, draft, makeTok(f), ty);
@@ -568,10 +596,13 @@ void RdBuilder::addStruct(rd::NodeId id) {
         rd::i32 fi = 0;
         bool isStatic = false, isMut = false, isCval = false, isInline = false;
         bool isVal = false, isFrozen = false;
+        uint32_t fieldAlign = 0;
         while (fi < fn.children_count && at(child(f, fi)).kind == rd::NodeKind::Anno) {
-            string an = string(at(child(f, fi)).value);
-            int line = at(child(f, fi)).pos.line;
-            int col = at(child(f, fi)).pos.column + 1;
+            auto a = child(f, fi);
+            string an = string(at(a).value);
+            int line = at(a).pos.line;
+            int col = at(a).pos.column + 1;
+            const bool hasArg = at(a).op == rd::Kind::ParStart;
             if (an == "Static")
                 isStatic = true;
             else if (an == "Mut")
@@ -585,8 +616,15 @@ void RdBuilder::addStruct(rd::NodeId id) {
                 isVal = true;
             else if (an == "Frozen")
                 isFrozen = true;
-            else
+            else if (an == "Align") {
+                if (isStatic || fieldAlign != 0 || !hasArg) throw RiuError(line, col, ErrorCode::E3108, an);
+                string arg = annoArgText(a);
+                uint64_t n = layout::parseAlignArg(arg);
+                if (n == 0) throw RiuError(line, col, ErrorCode::E2038, arg.empty() ? string("?") : arg);
+                fieldAlign = static_cast<uint32_t>(n);
+            } else
                 throw RiuError(line, col, ErrorCode::E3108, an);
+            if (an != "Align" && hasArg) throw RiuError(line, col, ErrorCode::E3108, an);
             ++fi;
         }
         TypeNode* ty =
@@ -594,6 +632,7 @@ void RdBuilder::addStruct(rd::NodeId id) {
         ExprNode* init = fi < fn.children_count ? buildExpr(child(f, fi)) : nullptr;
 
         if (isStatic) {
+            if (fieldAlign != 0) throw RiuError(fn.pos.line, fn.pos.column + 1, ErrorCode::E3108, string("Align"));
             if (isInline && !isCval) throw RiuError(fn.pos.line, fn.pos.column + 1, ErrorCode::E3117);
             if (!typeParams.empty()) throw RiuError(fn.pos.line, fn.pos.column + 1, ErrorCode::E3157, structName);
             checkDiscardDeclName(fn.value, "static field", fn.pos.line, fn.pos.column + 1);
@@ -619,6 +658,7 @@ void RdBuilder::addStruct(rd::NodeId id) {
         field->setStatic(isStatic);
         field->setCval(isCval);
         field->setInline(isInline);
+        field->setAlignN(fieldAlign);
         structDecl->addField(field);
         (void)init;
     }

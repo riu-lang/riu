@@ -1,0 +1,19 @@
+; require-sdk
+; overlay 要求 ABI size 相等
+
+struct A {
+  a i32
+}
+
+struct B {
+  a i32
+  b i32
+}
+
+fn main() {
+  #Mut let a A = A {
+    .a = 1
+  }
+  let b B& = overlay:<B>(&a)  ; check: E2040
+  ret
+}

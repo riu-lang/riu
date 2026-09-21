@@ -27,6 +27,7 @@
     struct ExternAbiSlot {
         llvm::Type* abiTy = nullptr;   // LLVM 函数签名里的类型
         llvm::Type* valueTy = nullptr; // riu 值类型
+        TypeInfo riuTy;                // 用于 ABI size / alloca 对齐
         bool boolExt = false;          // i1 ↔ i8
         bool integerAgg = false;       // 1/2/4/8 字节聚合按整数
         bool indirect = false;         // 大聚合：实参 byval / 返回 sret

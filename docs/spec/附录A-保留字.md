@@ -74,6 +74,8 @@
 | `#Reflect` | 强制保留反射 rodata | §11.12 / §13.6 |
 | `#NoCopy` | 结构体不可隐式复制 | §11.13 / §7.6a |
 | `#Inline` | 全局 `#Cval` 常量内联（无 GlobalVariable） | §11.14 |
+| `#Packed` | 关掉 struct 字段间自然 pad | §7.5.3 / §11.5 |
+| `#Align(N)` | struct / 字段对齐至少为 2 的幂 `N` | §7.5.3 / §11.5 |
 
 §A.3.1 v1 正式注解即上表。`#Fallible(E)` / `#NoReturn` 由 DRAFT-错误.md 引入。早期 `#DraftLike` 已废弃（§11.4.3）。用户自定义注解不支持（§11.15）。
 

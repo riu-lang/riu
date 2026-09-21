@@ -48,6 +48,15 @@
     [[nodiscard]] TypeInfo fallibleErrAsType(const string& err) const;
     llvm::StructType* getOrCreateStructType(StructDeclNode* structDecl,
                                             FileNode* sourceFile = nullptr); // 获取或创建结构体类型
+    // #Packed / #Align：按 ABI 布局建 LLVM 类型（显式 pad）；返回 riu 字段对应的 LLVM 下标
+    llvm::StructType* emitUserStructType(const string& mangledName, StructDeclNode* sd, const TypeInfo& ti);
+    [[nodiscard]] unsigned llvmFieldIndex(llvm::Type* structTy, unsigned riuIndex) const;
+    llvm::Value* structFieldPtr(llvm::Type* structTy, llvm::Value* ptr, unsigned riuIndex, const llvm::Twine& name);
+    llvm::AllocaInst* createTypedAlloca(llvm::Type* ty, const TypeInfo& t, const llvm::Twine& name);
+    void applyAbiAllocaAlign(llvm::AllocaInst* ai, const TypeInfo& t);
+    void applyAbiGlobalAlign(llvm::GlobalVariable* gv, const TypeInfo& t);
+    [[nodiscard]] uint64_t abiSizeOf(const TypeInfo& t);
+    [[nodiscard]] uint64_t abiAlignOf(const TypeInfo& t);
 
     // Phase 3c.1/3c.2: 结构体形参 ABI 判定
     // 返回 true 表示该结构体形参按指针传递（保守路径），false 则按 LLVM by-value

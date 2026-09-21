@@ -1,0 +1,10 @@
+; #Align(0) 非法
+
+#Align(0)  ; check: E2038
+struct Bad {
+  a i32
+}
+
+fn main() {
+  ret
+}

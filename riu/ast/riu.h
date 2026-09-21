@@ -70,6 +70,9 @@ class Riu {
     vector<string> _projectLinkLibs;
     // [link].lib_dirs：额外库搜索路径（相对项目根或绝对）
     vector<string> _projectLinkLibDirs;
+    // parseSdkDir 写 SDK .ud 时需要 item 原文（skeleton）；无 riu.toml 的
+    // riu-check 默认不拷。缺骨架的 .ud 会丢 #Spec 默认体（Eq 等）。
+    bool _keepItemSourceText = false;
 
 public:
     // 构造/析构都在 analyzer/riu_spec.cpp：unique_ptr<SpecRegistry /
@@ -92,6 +95,9 @@ public:
     void registerModulePath(const string& absPath, const string& moduleName);
     void keepRdBuilder(std::unique_ptr<RdBuilder> builder);
     void adoptDeclOwner(std::unique_ptr<mod_decl::NodeOwner> owner);
+    // parseSdkDir 即将写出 .ud 时打开：RdBuilder 保留 spec/泛型/全局原文。
+    void setKeepItemSourceText(bool v) { _keepItemSourceText = v; }
+    [[nodiscard]] bool keepItemSourceText() const { return _keepItemSourceText || !_projectName.empty(); }
 
     [[nodiscard]] FileNode* sdkFile() const { return _sdkFile; }
     // 设置外部 SDK 文件（不转移所有权）。用于批量测试中多文件共享一次 SDK 加载。

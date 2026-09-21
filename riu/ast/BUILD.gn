@@ -15,6 +15,7 @@ static_library("riu_ast") {
 
   sources = [
     "diagnostic.cpp",
+    "layout.cpp",
     "mangler.cpp",
     "mod_decl.cpp",
     "name_lookup.cpp",

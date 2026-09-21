@@ -93,7 +93,7 @@ void Compiler::compileGlobalVars() {
         auto name = gvNode->name().getText();
         bool isPriv = !name.empty() && name[0] == '_';
         auto mangledName = Mangler::global(_file->moduleName(), name, isPriv);
-        auto type = gvNode->getType();
+        const auto& type = gvNode->getType();
         auto llvmType = getLLVMType(type);
 
         llvm::Constant* init = nullptr;
@@ -110,6 +110,7 @@ void Compiler::compileGlobalVars() {
         bool isConst = isConstEval && !gvNode->isMutable();
         auto* gv = new llvm::GlobalVariable(*_module, llvmType, isConst, llvm::GlobalValue::InternalLinkage, init,
                                             mangledName);
+        applyAbiGlobalAlign(gv, type);
         DEBUG_LOG_VAL("  GlobalVar",
                       name << " : " << type.name << " -> " << mangledName << (isConstEval ? " [const]" : " [runtime]"));
 
@@ -158,6 +159,7 @@ void Compiler::compileGlobalVars() {
         bool isPriv = !fieldName.empty() && fieldName[0] == '_';
         auto linkage = isPriv ? llvm::GlobalValue::InternalLinkage : llvm::GlobalValue::ExternalLinkage;
         auto* gv = new llvm::GlobalVariable(*_module, llvmType, isConst, linkage, init, mangledName);
+        applyAbiGlobalAlign(gv, type);
         DEBUG_LOG_VAL("  StaticField", sfs.structName << "::" << fieldName << " : " << type.name << " -> "
                                                       << mangledName << (isConstEval ? " [const]" : " [runtime]"));
 

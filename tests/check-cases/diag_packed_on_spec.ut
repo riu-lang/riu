@@ -1,0 +1,11 @@
+; #Packed 不能标在 #Spec 上
+
+#Packed  ; check: E2011
+#Spec
+struct D {
+  fn f()
+}
+
+fn main() {
+  ret
+}

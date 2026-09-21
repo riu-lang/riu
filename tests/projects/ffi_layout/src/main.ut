@@ -1,0 +1,81 @@
+use riu.core.*
+
+#Packed
+struct FileHdr {
+  magic u32
+  flags u16
+  _ u16
+  size u32
+}
+
+#Packed
+struct Packed5 {
+  a u8
+  b u32
+}
+
+#Packed
+#Align(8)
+struct LARGE_INTEGER {
+  QuadPart i64
+}
+
+#Packed
+#Align(8)
+struct LARGE_INTEGER_Parts {
+  LowPart u32
+  HighPart i32
+}
+
+#Align(16)
+struct Align16 {
+  x i32
+}
+
+extern {
+  fn ffi_hdr_magic(h FileHdr) u32
+  fn ffi_packed5_b(p Packed5) i32
+  fn ffi_li_quad(li LARGE_INTEGER) i64
+  fn ffi_align16_x(a Align16) i32
+}
+
+fn main() {
+  println(size_of:<FileHdr>())
+  println(align_of:<FileHdr>())
+  println(size_of:<Packed5>())
+  println(align_of:<Packed5>())
+  println(size_of:<LARGE_INTEGER>())
+  println(align_of:<LARGE_INTEGER>())
+  println(size_of:<Align16>())
+  println(align_of:<Align16>())
+
+  let hdr FileHdr = FileHdr {
+    .magic = 0x464F4F42
+    .flags = 1
+    .size = 99
+  }
+  println(ffi_hdr_magic(hdr))
+
+  let p5 Packed5 = Packed5 {
+    .a = 7
+    .b = 42
+  }
+  println(ffi_packed5_b(p5))
+
+  let li LARGE_INTEGER = LARGE_INTEGER {
+    .QuadPart = 4294967298i64
+  }
+  println(ffi_li_quad(li))
+
+  #Mut let li2 LARGE_INTEGER = LARGE_INTEGER {
+    .QuadPart = 4294967298i64
+  }
+  let parts LARGE_INTEGER_Parts& = overlay:<LARGE_INTEGER_Parts>(&li2)
+  println(parts.LowPart)
+  println(parts.HighPart)
+
+  let a16 Align16 = Align16 {
+    .x = 16
+  }
+  println(ffi_align16_x(a16))
+}

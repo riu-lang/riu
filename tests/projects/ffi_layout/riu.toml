@@ -1,0 +1,7 @@
+name = "ffi_layout"
+version = "1.0.0"
+entry = "main.ut"
+
+[link]
+libs = ["layout_demo"]
+lib_dirs = ["lib"]

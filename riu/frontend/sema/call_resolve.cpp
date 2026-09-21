@@ -12,6 +12,7 @@
 #include "sema/call_resolve.h"
 #include "analyzer/spec_impl_checker.h"
 #include "analyzer/spec_registry.h"
+#include "ast/layout.h"
 #include "ast/node/enum_node.h"
 #include "ast/node/expr_node.h"
 #include "ast/node/struct_node.h"
@@ -1175,8 +1176,13 @@ void validateBuiltinIntrinsicShape(const string& fnName, size_t typeArgsCount, s
         if (argsCount != 2) throw RiuError(line, col, ErrorCode::E6027, fnName, static_cast<size_t>(2));
         return;
     }
-    if (fnName == "size_of") {
-        if (typeArgsCount == 0) throw RiuError(line, col, ErrorCode::E6018);
+    if (fnName == "size_of" || fnName == "align_of") {
+        if (typeArgsCount == 0) throw RiuError(line, col, ErrorCode::E6018, fnName);
+        return;
+    }
+    if (fnName == "overlay") {
+        if (typeArgsCount != 1) throw RiuError(line, col, ErrorCode::E6026, fnName, static_cast<size_t>(1));
+        if (argsCount != 1) throw RiuError(line, col, ErrorCode::E6027, fnName, static_cast<size_t>(1));
         return;
     }
     if (fnName == "upgrade") {
@@ -1680,11 +1686,65 @@ void validateBuiltinIntrinsicTypeShape(const string& fnName, const vector<TypeIn
         }
         return;
     }
-    if (fnName == "size_of") {
+    if (fnName == "size_of" || fnName == "align_of") {
         // 镜像 compileGenericFunctionCall：getLLVMType 失败 → E6019
         static const std::set<string> kNoTypeParams;
         if (!typeHasLlvmLayout(typeArgs[0], file, sdkFile, kNoTypeParams)) {
             throw RiuError(line, col, ErrorCode::E6019, typeArgs[0].getFullName());
+        }
+        return;
+    }
+    if (fnName == "overlay") {
+        TypeInfo U = typeArgs[0];
+        if (U.isRef() && U.refElementType()) U = *U.refElementType();
+        TypeInfo T;
+        bool argIsRef = false;
+        if (!argTypes.empty() && argTypes[0].isRef()) {
+            argIsRef = true;
+            if (auto inner = argTypes[0].refElementType()) T = *inner;
+        }
+        if (!argIsRef && !argNodes.empty()) {
+            if (dynamic_cast<ExprGetRefNode*>(argNodes[0])) {
+                argIsRef = true;
+                try {
+                    TypeInfo at = argNodes[0]->getType();
+                    if (at.isRef() && at.refElementType())
+                        T = *at.refElementType();
+                    else
+                        T = std::move(at);
+                } catch (...) { // NOLINT(bugprone-empty-catch)
+                }
+            } else if (auto* lit = dynamic_cast<ExprLiteralNode*>(argNodes[0])) {
+                if (auto* obj = dynamic_cast<LiteralObjNode*>(lit->literal())) {
+                    if (auto* scope = obj->findNearestScope()) {
+                        auto* sym = scope->lookupSymbol(obj->getValue().getText());
+                        if (sym && sym->type && sym->type->isRef()) {
+                            argIsRef = true;
+                            if (auto inner = sym->type->refElementType()) T = *inner;
+                        }
+                    }
+                }
+            }
+        }
+        if (!argIsRef) {
+            string got = argTypes.empty() ? string("?") : argTypes[0].getFullName();
+            throw RiuError(line, col, ErrorCode::E2039, got)
+                .withHint("`overlay:<U>(x T&)` 需要借用（`&x` 或 `T&` 变量）");
+        }
+        if (T.empty()) T = argTypes.empty() ? TypeInfo() : argTypes[0].peelRef();
+        if (!layout::isCLayoutType(T, file, sdkFile)) {
+            throw RiuError(line, col, ErrorCode::E2039, T.getFullName());
+        }
+        if (!layout::isCLayoutType(U, file, sdkFile)) {
+            throw RiuError(line, col, ErrorCode::E2039, U.getFullName());
+        }
+        auto tLay = layout::tryAbiLayout(T, file, sdkFile);
+        auto uLay = layout::tryAbiLayout(U, file, sdkFile);
+        if (!tLay) throw RiuError(line, col, ErrorCode::E6019, T.getFullName());
+        if (!uLay) throw RiuError(line, col, ErrorCode::E6019, U.getFullName());
+        if (tLay->size != uLay->size || uLay->align > tLay->align) {
+            throw RiuError(line, col, ErrorCode::E2040, T.getFullName(), tLay->size, tLay->align, U.getFullName(),
+                           uLay->size, uLay->align);
         }
         return;
     }

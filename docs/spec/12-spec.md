@@ -281,6 +281,18 @@ fn caller(box Rc<MyType>) {
 }
 ```
 
+### §12.7.3a `size_of` / `align_of` / `overlay`
+
+§12.7.3a.1 编译器 baked `#Builtin`（`base.ut`）：
+
+| builtin | 签名 | 说明 |
+|---|---|---|
+| `size_of` | `size_of<T>() u64` | ABI 字节数（含 `#Packed` / `#Align` 尾 pad） |
+| `align_of` | `align_of<T>() u64` | ABI 对齐 |
+| `overlay` | `overlay:<U>(x T&) U&` | 同一块 C-layout 内存的另一种视图 |
+
+细则 §7.5.3.4 / §7.5.3.5。缺类型实参 → [E6018]；无布局 → [E6019]；非 C-layout → [E2039]；size / align 不符 → [E2040]。`overlay` 不是类型转换、不 copy；借用根与 `x` 相同。
+
 ### §12.7.4 `Eq` / `Ord` / `ToJson`
 
 §12.7.4.1 SDK 另有三个内置 spec，声明在 `base.ut`，方法与默认体见 §12.10.6：

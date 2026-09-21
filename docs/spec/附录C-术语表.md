@@ -35,7 +35,8 @@
 | 生命传染 | Heap-life propagation | §9.5a.1.4 | 含 Heap 子项的复合按 Heap 生命计；`Array<Heap<T>>` 不走 retain |
 | 借用 | borrow | §3.2.3 / §8.6 | `T&`，非空指针，不参与 RC |
 | FFI 指针 | FFI pointer | §3.3 / §9.7 | `Ptr`，等价 C `void*`；C 返回的是不透明 handle |
-| C-layout | C layout | §7.5.3.4 / §6.6.2 | 可进 `extern` 的 struct：声明序 + 标量（无 bool 字段）/`Ptr`/嵌套 C-layout/`[T*N]` |
+| C-layout | C layout | §7.5.3.8 / §6.6.2 | 可进 `extern` 的 struct：声明序 + 标量（无 bool 字段）/`Ptr`/嵌套 C-layout/`[T*N]`；`#Packed` / `#Align` 不改资格 |
+| overlay | overlay | §7.5.3.5 / §12.7.3a | 等 size 的 C-layout 结构体之间换视图（C union 展开） |
 | 名义类型 | nominal type | §3.4.1 | 用户 struct 按声明源判等 |
 | 可赋值性 | assignability | §3.4.2 | 何种赋值合法（无隐式标量转换） |
 | 隐式包装 | implicit wrapping | §3.6.4 | `T` → `T?` 自动构造 `Nullable<T>` |

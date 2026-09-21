@@ -113,6 +113,9 @@ N | <源码行原文>
 | E2035 | `struct \`{}\` cannot appear in extern signature: field \`{}\` has type \`{}\` (not C-layout; spec §7.5.3)` |
 | E2036 | `extern C symbol \`{}\` has incompatible signatures (spec §6.6.1)` |
 | E2037 | `enum \`{}\` type parameter \`{}\` cannot have spec bound (\`: D\`)` |
+| E2038 | `` `#Align` argument `{}` must be a positive power of two (spec §7.5.3 / #19) `` |
+| E2039 | `` `overlay` requires C-layout types; `{}` is not C-layout (spec §7.5.3.8) `` |
+| E2040 | `` `overlay` size/align mismatch: size_of({})={} align_of={} vs size_of({})={} align_of={} (spec #19) `` |
 
 ### D.3.3 E3xxx — 类型
 
@@ -218,7 +221,7 @@ const-mut（E3104..E3111；引入自 [draft/DRAFT-const-mut.md](draft/DRAFT-cons
 | E3105 | `Unknown parameter annotation '#{}' (only '#Frozen' is supported on parameters; DRAFT-const-mut §5.1)` |
 | E3106 | `Cannot write field '{}' of \`#Frozen\` parameter '{}' (DRAFT-const-mut §5.3)` |
 | E3107 | `Cannot pass \`#Frozen\` value '{}' to mutable parameter '{}'; use copy_of to obtain an owned copy (DRAFT-const-mut §5.4)` |
-| E3108 | `Unknown or duplicate field annotation '#{}' (only '#Val' and '#Frozen' are supported on fields, mutually exclusive; DRAFT-const-mut §6.1)` |
+| E3108 | `Unknown or duplicate field annotation '#{}' (only '#Val', '#Frozen', and '#Align(N)' are supported on instance fields; DRAFT-const-mut §6.1 / #19)` |
 | E3109 | `Cannot write field '{}' marked '#{}' outside the constructor of struct '{}' (DRAFT-const-mut §6.2)` |
 | E3110 | `\`#Const fn\` '{}' cannot {}: {} (DRAFT-const-mut §4.2)` |
 | E3111 | `\`#Const fn\` '{}' cannot call non-\`#Const\` function '{}' (DRAFT-const-mut §4.2.4)` |
@@ -372,7 +375,7 @@ for-in（E3160；§5.5.4）：
 | E6015 | `Unsupported call expression` |
 | E6016 | `Unknown method '{}' for builtin type '{}'` |
 | E6017 | `Unknown #Builtin function '{}'` |
-| E6018 | `Cannot determine type argument for size_of` |
+| E6018 | `Cannot determine type argument for {}` |
 | E6019 | `Cannot determine LLVM type for '{}'` |
 
 `E6011` 亦用于泛型 enum 类型位与构造 `E:<T>::V` 的实参个数（§3.10.1.4 / §3.10.7.1）；消息模板仍写 `struct`。

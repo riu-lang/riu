@@ -1081,7 +1081,7 @@ void Compiler::compileFn(FnNode* node, llvm::Function* func) {
         } else {
             // 基本类型 / 平凡结构体: 创建 alloca 并存储 by-value 参数
             auto llvmType = getLLVMType(paramType);
-            auto alloca = _builder.CreateAlloca(llvmType, nullptr, paramName);
+            auto alloca = createTypedAlloca(llvmType, paramType, paramName);
             _builder.CreateStore(&arg, alloca);
             registerLocalVar(paramName, alloca, paramType);
             DEBUG_LOG_VAL("  Param", paramName << " : " << paramType.name);
@@ -1201,7 +1201,7 @@ void Compiler::compileMethodImpl(FnNode* node, llvm::Function* func, const strin
             DEBUG_LOG_VAL("  Param (struct ptr)", paramName << " : " << paramType.name << "*");
         } else {
             // 基本类型 / 平凡结构体: 创建 alloca 并存储 by-value 参数
-            auto alloca = _builder.CreateAlloca(llvmType, nullptr, paramName);
+            auto alloca = createTypedAlloca(llvmType, paramType, paramName);
             _builder.CreateStore(argIt, alloca);
             registerLocalVar(paramName, alloca, paramType);
             DEBUG_LOG_VAL("  Param", paramName << " : " << paramType.name);

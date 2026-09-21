@@ -55,11 +55,14 @@ class Compiler : public AstVisitor {
     // ==================== 类型映射表 ====================
     map<string, llvm::Type*> _typeMap;           // 基本类型 -> LLVM 类型映射
     map<string, llvm::StructType*> _structTypes; // 结构体名 -> LLVM 结构体类型
-    map<string, llvm::Value*> _localVarPtrs;     // 局部变量名 -> 栈上地址 (alloca)
-    map<string, CastInfo> _castFunctions;        // 延迟类型转换缓存
-    int _castCounter = 0;                        // 类型转换计数器，用于生成唯一名称
-    int _forInSerial = 0;                        // for-in 临时集合名
-    int _discardSerial = 0;                      // `_` 丢弃槽 alloca 名
+    // riu 字段下标 → LLVM 字段下标（#Packed / 字段 #Align 插入 pad 时）
+    map<llvm::StructType*, vector<unsigned>> _llvmFieldOfRiu;
+    map<llvm::StructType*, uint64_t> _llvmAbiAlign; // packed LLVM 类型的 C ABI 对齐
+    map<string, llvm::Value*> _localVarPtrs;        // 局部变量名 -> 栈上地址 (alloca)
+    map<string, CastInfo> _castFunctions;           // 延迟类型转换缓存
+    int _castCounter = 0;                           // 类型转换计数器，用于生成唯一名称
+    int _forInSerial = 0;                           // for-in 临时集合名
+    int _discardSerial = 0;                         // `_` 丢弃槽 alloca 名
 
     // ==================== 泛型单态化 ====================
     // 实例表在 generic::Registry；Compiler 问已具体实例再发 LLVM 类型 / IR。

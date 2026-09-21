@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| 状态 | 提议 |
+| 状态 | 已落地 |
 | 开 | 2026-09-20 |
 | 旧档 | 无。现行：§7.5.3 声明序 + DataLayout pad、不 packed、不重排；C-layout §7.5.3.4 / §6.6.2；Win64 按值 ABI §8.7.4.2；`size_of<T>()`。相关：[#10 多目标](10-multi-target.md)（非 Win64 C ABI）；[#20 `_` 丢弃名](20-discard.md)（pad 槽，本条不依赖） |
 
@@ -142,9 +142,9 @@ struct LARGE_INTEGER_Parts {
 
 ## 决定
 
-- 日期：
-- 结论：实施 / 关闭
-- 理由：
+- 日期：2026-09-21
+- 结论：实施
+- 理由：默认布局不动；packed + `#Align` + 多 struct + `overlay` 覆盖 C pack / `_Alignas` / union 视图，不改 bnf、不引入语言 union。
 
 ## 规范要点
 
@@ -160,4 +160,4 @@ struct LARGE_INTEGER_Parts {
 
 ## 落地
 
-（未实施。动手时：LLVM packed StructType；`#Align` 落到 alloca / byval / 全局的 align；`size_of` / `align_of` 对照 C；按值 FFI 项目回归。）
+2026-09-21：完整切片。LLVM packed StructType + 显式 pad；`#Align` 落到 alloca / byval / 全局；`size_of` / `align_of` / `overlay`；Win64 分类用布局后 size/align。回归：`layout_ok` / `diag_*`、`layout.test.ut`、`tests/projects/ffi_layout`。

@@ -409,9 +409,8 @@ bool Compiler::tryHeapNullableLvalueSlot(ExprNode* expr, llvm::Value*& outSlot, 
         auto fieldTy = applySubst(fd->getType());
         if (!isHeapNullable(fieldTy)) return false;
         auto structLLVM = getLLVMType(baseType);
-        auto z = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
-        auto i = llvm::ConstantInt::get(_builder.getInt32Ty(), idx);
-        outSlot = _builder.CreateGEP(structLLVM, bit->second, {z, i}, baseName + "." + member + ".slot");
+        outSlot =
+            structFieldPtr(structLLVM, bit->second, static_cast<unsigned>(idx), baseName + "." + member + ".slot");
         outTy = getLLVMType(fieldTy);
         return true;
     }
@@ -439,7 +438,7 @@ void Compiler::callFieldDestructor(llvm::Value* structPtr, const string& structN
         if (!typeNeedsDestructor(fieldType)) continue;
 
         // 获取字段指针
-        auto idx = llvm::ConstantInt::get(_builder.getInt32Ty(), i);
+        auto idx = llvm::ConstantInt::get(_builder.getInt32Ty(), llvmFieldIndex(structType, static_cast<unsigned>(i)));
         std::array<llvm::Value*, 2> indices{zero, idx};
         auto fieldPtr = _builder.CreateGEP(structType, structPtr, indices, "field.ptr");
 
@@ -711,7 +710,8 @@ void Compiler::retainStructFieldsAtCallSite(llvm::Value* argVal, const string& s
 
         if (ft.isRc() || ft.isArrayGeneric() || ft.isWeak()) {
             // 取字段值（{ ptr handle } struct），再取 handle
-            auto fieldVal = _builder.CreateExtractValue(argVal, {static_cast<unsigned>(i)}, "field.val");
+            auto fieldVal = _builder.CreateExtractValue(
+                argVal, {llvmFieldIndex(argVal->getType(), static_cast<unsigned>(i))}, "field.val");
             auto handle = _builder.CreateExtractValue(fieldVal, {0}, "field.handle");
             llvm::Function* retainFn = nullptr;
             if (ft.isRc())
@@ -723,18 +723,21 @@ void Compiler::retainStructFieldsAtCallSite(llvm::Value* argVal, const string& s
             _builder.CreateCall(retainFn, {handle});
         } else if (ft.isFn()) {
             // 与顶层 Fn retain 同款：null / 栈嵌入 LSB 跳过
-            auto fieldVal = _builder.CreateExtractValue(argVal, {static_cast<unsigned>(i)}, "field.fn");
+            auto fieldVal = _builder.CreateExtractValue(
+                argVal, {llvmFieldIndex(argVal->getType(), static_cast<unsigned>(i))}, "field.fn");
             retainHandleAtCallSite(fieldVal, ft);
         } else if (ft.isDynOwned()) {
             // Dyn<D> owned 字段：{ vtable, data } fat ptr，data 指向 RC block，需 retain
-            auto fieldVal = _builder.CreateExtractValue(argVal, {static_cast<unsigned>(i)}, "field.dyn");
+            auto fieldVal = _builder.CreateExtractValue(
+                argVal, {llvmFieldIndex(argVal->getType(), static_cast<unsigned>(i))}, "field.dyn");
             auto data = _builder.CreateExtractValue(fieldVal, {1}, "field.dyn.data");
             _builder.CreateCall(runtime::getRcRetainFn(_module, _builder), {data});
         } else if (ft.isDynBorrow() || ft.isHeap()) {
             // Dyn<D&> 借用 / Heap<T> 字段：不动 RC（借用不持有，Heap 所有权转移不深拷）
         } else if (!isBuiltinType(ft.name)) {
             // 嵌套 struct 字段：递归
-            auto fieldVal = _builder.CreateExtractValue(argVal, {static_cast<unsigned>(i)}, "field.struct");
+            auto fieldVal = _builder.CreateExtractValue(
+                argVal, {llvmFieldIndex(argVal->getType(), static_cast<unsigned>(i))}, "field.struct");
             retainStructFieldsAtCallSite(fieldVal, ft.isGeneric() ? ft.getMangleName() : ft.name);
         }
     }
@@ -756,8 +759,9 @@ llvm::Value* Compiler::copyOfStructFields(llvm::Value* structVal, const string& 
             if (!elemSp) continue;
             const auto& innerType = *elemSp;
             auto innerLLVMType = getLLVMType(innerType);
-            auto oldPayload = _builder.CreateExtractValue(structVal, {static_cast<unsigned>(i)}, "cof.heap.old");
-            auto sizeVal = _builder.getInt64(_module->getDataLayout().getTypeAllocSize(innerLLVMType).getFixedValue());
+            auto oldPayload = _builder.CreateExtractValue(
+                structVal, {llvmFieldIndex(structVal->getType(), static_cast<unsigned>(i))}, "cof.heap.old");
+            auto sizeVal = _builder.getInt64(abiSizeOf(innerType));
             auto allocFn = runtime::getHeapHandleAllocFn(_module, _builder);
             auto newPayload = _builder.CreateCall(allocFn, {sizeVal}, "cof.heap.new");
             auto oldInner = _builder.CreateLoad(innerLLVMType, oldPayload, "cof.heap.oldval");
@@ -765,19 +769,24 @@ llvm::Value* Compiler::copyOfStructFields(llvm::Value* structVal, const string& 
             // 递归 retain inner 的 RC/Dyn 字段
             retainHandleAtCallSite(oldInner, innerType);
             // 替换 struct 中的 Heap 指针
-            structVal =
-                _builder.CreateInsertValue(structVal, newPayload, {static_cast<unsigned>(i)}, "cof.heap.inserted");
+            auto li = llvmFieldIndex(structVal->getType(), static_cast<unsigned>(i));
+            structVal = _builder.CreateInsertValue(structVal, newPayload, {li}, "cof.heap.inserted");
         } else if (ft.isArrayGeneric()) {
             // Array 字段无 RC：bitwise 拷贝会共享 _data → 双释放。深拷一份独立缓冲。
-            auto fieldVal = _builder.CreateExtractValue(structVal, {static_cast<unsigned>(i)}, "cof.array");
+            auto fieldVal = _builder.CreateExtractValue(
+                structVal, {llvmFieldIndex(structVal->getType(), static_cast<unsigned>(i))}, "cof.array");
             auto cloned = cloneArrayValue(fieldVal, ft);
-            structVal = _builder.CreateInsertValue(structVal, cloned, {static_cast<unsigned>(i)}, "cof.array.inserted");
+            structVal = _builder.CreateInsertValue(structVal, cloned,
+                                                   {llvmFieldIndex(structVal->getType(), static_cast<unsigned>(i))},
+                                                   "cof.array.inserted");
         } else if (!isBuiltinType(ft.name) && structNeedsDestructor(ft)) {
             // 嵌套 struct：递归处理其中的 Heap / Array 字段
-            auto fieldVal = _builder.CreateExtractValue(structVal, {static_cast<unsigned>(i)}, "cof.struct");
+            auto fieldVal = _builder.CreateExtractValue(
+                structVal, {llvmFieldIndex(structVal->getType(), static_cast<unsigned>(i))}, "cof.struct");
             auto newFieldVal = copyOfStructFields(fieldVal, ft.isGeneric() ? ft.getMangleName() : ft.name);
             if (newFieldVal != fieldVal) {
-                structVal = _builder.CreateInsertValue(structVal, newFieldVal, {static_cast<unsigned>(i)},
+                structVal = _builder.CreateInsertValue(structVal, newFieldVal,
+                                                       {llvmFieldIndex(structVal->getType(), static_cast<unsigned>(i))},
                                                        "cof.struct.inserted");
             }
         }

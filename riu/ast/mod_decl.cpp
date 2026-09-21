@@ -541,8 +541,10 @@ void write(FileNode* file, const std::string& srcAbs, const std::string& declPat
     std::set<SpecDeclNode*> skelSpecs;
     vector<SkelItem> skelItems;
 
+    bool incompleteSkel = false;
     for (auto fn : file->getFunctions()) {
         if (fn->header() && fn->header()->isGeneric() && fnHasRealBody(fn)) {
+            if (fn->sourceText().empty()) incompleteSkel = true;
             skelFns.insert(fn);
             skelItems.push_back({.line = fn->getLineNumber(), .text = fn->sourceText()});
         }
@@ -550,22 +552,28 @@ void write(FileNode* file, const std::string& srcAbs, const std::string& declPat
     for (auto d : file->getStructDecls()) {
         auto* impl = file->getStructImpl(d->name().getText());
         if (structNeedsSkeleton(d, impl)) {
+            if (d->sourceText().empty()) incompleteSkel = true;
             skelStructs.insert(d);
             skelItems.push_back({.line = d->getLineNumber(), .text = d->sourceText()});
         }
     }
     for (auto s : file->getSpecDecls()) {
         if (specNeedsSkeleton(s)) {
+            if (s->sourceText().empty()) incompleteSkel = true;
             skelSpecs.insert(s);
             skelItems.push_back({.line = s->getLineNumber(), .text = s->sourceText()});
         }
     }
     for (auto g : file->getGlobalConsts()) {
+        if (g->sourceText().empty()) incompleteSkel = true;
         skelItems.push_back({.line = g->getLineNumber(), .text = g->sourceText()});
     }
     for (auto g : file->getGlobalVars()) {
+        if (g->sourceText().empty()) incompleteSkel = true;
         skelItems.push_back({.line = g->getLineNumber(), .text = g->sourceText()});
     }
+    // 缺原文就不要写：否则下次 tryLoad 得到没有 Eq 默认体的残缺模块。
+    if (incompleteSkel) return;
 
     Writer w;
     w.buf.insert(w.buf.end(), kMagic.begin(), kMagic.end());
@@ -631,6 +639,7 @@ void write(FileNode* file, const std::string& srcAbs, const std::string& declPat
             writeType(w, f->getType());
             w.u8(f->isVal() ? 1 : 0);
             w.u8(f->isFrozen() ? 1 : 0);
+            w.u32(f->alignN());
         }
         auto* impl = file->getStructImpl(d->name().getText());
         w.u8(impl ? 1 : 0);
@@ -809,11 +818,13 @@ FileNode* tryLoad(Riu& riu, const std::string& declPath, const std::string& srcA
                 TypeInfo ty = readType(r);
                 bool isVal = r.u8() != 0;
                 bool isFrozen = r.u8() != 0;
+                uint32_t alignN = r.u32();
                 auto* field = owner->make<StructFieldNode>(decl, Token(fnm, static_cast<size_t>(fl > 0 ? fl : 1)),
                                                            typeNodeFromInfo(*owner, decl, ty, fl));
                 field->setLocation(fl, fc);
                 field->setVal(isVal);
                 field->setFrozen(isFrozen);
+                field->setAlignN(alignN);
                 decl->addField(field);
             }
             file->addStructDecl(decl);

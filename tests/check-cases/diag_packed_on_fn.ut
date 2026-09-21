@@ -1,0 +1,10 @@
+; #Packed 不能标在 fn 上
+
+#Packed  ; check: E2011
+fn f() {
+  ret
+}
+
+fn main() {
+  ret
+}

@@ -43,6 +43,14 @@ fn _stderr_write(buf Ptr, off i64, len i64) {
 #Builtin
 fn size_of<T>() u64
 
+#Builtin
+fn align_of<T>() u64
+
+; overlay:<U>(x T&) U&：同一块 C-layout 内存的另一种视图（#19）
+; T、U 都须 C-layout、等 size、align_of(U) ≤ align_of(T)；不是拷贝
+#Builtin
+fn overlay<U>(x U&) U&
+
 ; DRAFT-spec-reflect Phase 3a (捷径 A): 反射 Type 节点拿取 intrinsic.
 ; 调用站 `__riu_reflect_type:<Counter>()` 由编译器特例化 lower 到
 ; `load %Type, ptr __riu_reflect_<mod>_<typename>__type` (linkonce_odr rodata).

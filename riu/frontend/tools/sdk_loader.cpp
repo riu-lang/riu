@@ -155,6 +155,8 @@ void parseSdkDir(const std::string& sdkDir, Riu& riu, bool allowDecl,
     }
     std::string declRoot = sdkRoot.empty() ? std::string() : sdkRoot.string();
     std::string declBuild = sdkRoot.empty() ? std::string() : (sdkRoot / "build").string();
+    // riu-check 无项目名，但这里仍写 sdk/riu/build/*.ud；必须保留 skeleton 原文。
+    if (allowDecl && !declRoot.empty()) riu.setKeepItemSourceText(true);
 
     auto loadOne = [&](const std::string& riuFile, const std::string& moduleName, bool flattenToCore) {
         std::string abs = fs::absolute(riuFile).lexically_normal().generic_string();

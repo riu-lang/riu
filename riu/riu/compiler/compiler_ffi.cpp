@@ -13,9 +13,11 @@
 #include <llvm/IR/CallingConv.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Instructions.h>
+#include <llvm/Support/Alignment.h>
 
 Compiler::ExternAbiSlot Compiler::externAbiSlot(const TypeInfo& t) {
     ExternAbiSlot s;
+    s.riuTy = t;
     if (t.empty()) {
         s.abiTy = _builder.getVoidTy();
         return s;
@@ -40,7 +42,7 @@ Compiler::ExternAbiSlot Compiler::externAbiSlot(const TypeInfo& t) {
         s.abiTy = s.valueTy;
         return s;
     }
-    const uint64_t sz = _module->getDataLayout().getTypeStoreSize(s.valueTy).getFixedValue();
+    const uint64_t sz = abiSizeOf(t);
     if (sz == 1 || sz == 2 || sz == 4 || sz == 8) {
         s.abiTy = llvm::Type::getIntNTy(_context, static_cast<unsigned>(sz * 8));
         s.integerAgg = true;
@@ -60,12 +62,12 @@ llvm::Value* Compiler::coerceToExternArg(llvm::Value* v, const ExternAbiSlot& sl
         return v;
     }
     if (slot.integerAgg && slot.valueTy && slot.abiTy) {
-        auto* tmp = _builder.CreateAlloca(slot.valueTy, nullptr, "ffi.agg.arg");
+        auto* tmp = createTypedAlloca(slot.valueTy, slot.riuTy, "ffi.agg.arg");
         _builder.CreateStore(v, tmp);
         return _builder.CreateLoad(slot.abiTy, tmp, "ffi.agg.i");
     }
     if (slot.indirect && slot.valueTy) {
-        auto* tmp = _builder.CreateAlloca(slot.valueTy, nullptr, "ffi.byval.arg");
+        auto* tmp = createTypedAlloca(slot.valueTy, slot.riuTy, "ffi.byval.arg");
         _builder.CreateStore(v, tmp);
         return tmp;
     }
@@ -80,7 +82,7 @@ llvm::Value* Compiler::coerceFromExternRet(llvm::Value* v, const ExternAbiSlot& 
         return _builder.CreateICmpNE(v, llvm::ConstantInt::get(v->getType(), 0), "ffi.bool.trunc");
     }
     if (slot.integerAgg && v && slot.valueTy && slot.abiTy) {
-        auto* tmp = _builder.CreateAlloca(slot.valueTy, nullptr, "ffi.agg.ret");
+        auto* tmp = createTypedAlloca(slot.valueTy, slot.riuTy, "ffi.agg.ret");
         _builder.CreateStore(v, tmp);
         return _builder.CreateLoad(slot.valueTy, tmp, "ffi.agg.s");
     }
@@ -125,21 +127,22 @@ llvm::Function* Compiler::getOrCreateExternFunction(const string& cName, const F
     }
 
     unsigned idx = 0;
-    auto addAlign = [&](unsigned i, llvm::Type* ty) {
-        if (!ty) return;
-        auto align = _module->getDataLayout().getABITypeAlign(ty);
-        fn->addParamAttr(i, llvm::Attribute::getWithAlignment(_context, align));
+    auto addAlign = [&](unsigned i, const TypeInfo& ty) {
+        uint64_t a = abiAlignOf(ty);
+        if (a > 1) {
+            fn->addParamAttr(i, llvm::Attribute::getWithAlignment(_context, llvm::Align(a)));
+        }
     };
     if (retSret && retSlot.valueTy) {
         fn->addParamAttr(0, llvm::Attribute::getWithStructRetType(_context, retSlot.valueTy));
-        addAlign(0, retSlot.valueTy);
+        addAlign(0, retSlot.riuTy);
         idx = 1;
     }
     for (size_t i = 0; i < argSlots.size(); ++i) {
         if (argSlots[i].indirect && argSlots[i].valueTy) {
             fn->addParamAttr(idx + static_cast<unsigned>(i),
                              llvm::Attribute::getWithByValType(_context, argSlots[i].valueTy));
-            addAlign(idx + static_cast<unsigned>(i), argSlots[i].valueTy);
+            addAlign(idx + static_cast<unsigned>(i), argSlots[i].riuTy);
         }
     }
     return fn;
@@ -150,14 +153,15 @@ void Compiler::applyExternCallAttrs(llvm::CallInst* ci, const FnSymbolInfo& fnSy
     ci->setCallingConv(llvm::CallingConv::C);
     ExternAbiSlot retSlot = externAbiSlot(fnSymbol.retTypeRef());
     unsigned idx = 0;
-    auto addAlign = [&](unsigned i, llvm::Type* ty) {
-        if (!ty) return;
-        auto align = _module->getDataLayout().getABITypeAlign(ty);
-        ci->addParamAttr(i, llvm::Attribute::getWithAlignment(_context, align));
+    auto addAlign = [&](unsigned i, const TypeInfo& ty) {
+        uint64_t a = abiAlignOf(ty);
+        if (a > 1) {
+            ci->addParamAttr(i, llvm::Attribute::getWithAlignment(_context, llvm::Align(a)));
+        }
     };
     if (retSlot.indirect && retSlot.valueTy) {
         ci->addParamAttr(0, llvm::Attribute::getWithStructRetType(_context, retSlot.valueTy));
-        addAlign(0, retSlot.valueTy);
+        addAlign(0, retSlot.riuTy);
         idx = 1;
     }
     for (size_t i = 0; i < fnSymbol.params.size(); ++i) {
@@ -165,7 +169,7 @@ void Compiler::applyExternCallAttrs(llvm::CallInst* ci, const FnSymbolInfo& fnSy
         if (slot.indirect && slot.valueTy) {
             const unsigned p = idx + static_cast<unsigned>(i);
             ci->addParamAttr(p, llvm::Attribute::getWithByValType(_context, slot.valueTy));
-            addAlign(p, slot.valueTy);
+            addAlign(p, slot.riuTy);
         }
     }
 }

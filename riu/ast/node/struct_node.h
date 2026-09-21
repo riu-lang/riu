@@ -24,6 +24,8 @@ class StructFieldNode : public Node {
     // #Cval 隐含 #Static 语义（编译期常量不可能是实例字段）。
     bool _isCval = false;
     bool _isInline = false;
+    // #Align(N)：0 = 无。字段偏移向上对齐到 N（#Packed 下仍生效）。
+    uint32_t _alignN = 0;
 
 public:
     StructFieldNode(Node* parent, const Token& name, TypeNode* type) : Node(parent), _name(name), _type(type) {
@@ -40,11 +42,13 @@ public:
     void setStatic(bool v) { _isStatic = v; }
     void setCval(bool v) { _isCval = v; }
     void setInline(bool v) { _isInline = v; }
+    void setAlignN(uint32_t n) { _alignN = n; }
     [[nodiscard]] bool isVal() const { return _isVal; }
     [[nodiscard]] bool isFrozen() const { return _isFrozen; }
     [[nodiscard]] bool isStatic() const { return _isStatic; }
     [[nodiscard]] bool isCval() const { return _isCval; }
     [[nodiscard]] bool isInline() const { return _isInline; }
+    [[nodiscard]] uint32_t alignN() const { return _alignN; }
     [[nodiscard]] bool isDiscard() const { return isDiscardName(_name.getText()); }
 };
 

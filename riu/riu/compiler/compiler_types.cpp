@@ -10,6 +10,7 @@
 // - 泛型结构体实例化
 // - 类型替换 (泛型参数替换)
 
+#include "ast/layout.h"
 #include "ast/mangler.h"
 #include "ast/node/alias_node.h"
 #include "ast/node/enum_node.h"
@@ -21,7 +22,11 @@
 #include "sema/call_resolve.h"
 #include "sema/name_resolver.h"
 #include <array>
+#include <llvm/ADT/Twine.h>
 #include <llvm/IR/DerivedTypes.h>
+#include <llvm/IR/GlobalVariable.h>
+#include <llvm/IR/Instructions.h>
+#include <llvm/Support/Alignment.h>
 #include <set>
 
 // ==================== 错误报告辅助 ====================
@@ -198,22 +203,11 @@ void Compiler::emitGenericStructLlvm(const generic::StructInstance& inst) {
                                                       .sourceFile = inst.sourceFile,
                                                       .sourceLine = inst.sourceLine});
 
-    vector<llvm::Type*> fieldTypes;
     try {
-        for (auto field : inst.baseDecl->fields()) {
-            auto fieldType = field->getType();
-            auto llvmTy = getLLVMType(fieldType);
-            if (!llvmTy) {
-                throwSemaGap(static_cast<size_t>(field->name().getLine()));
-            }
-            fieldTypes.push_back(llvmTy);
-        }
+        emitUserStructType(inst.mangledName, inst.baseDecl, inst.typeInfo());
     } catch (const RiuError& e) {
         rethrowWithInstantiationContext(e);
     }
-
-    auto structType = llvm::StructType::create(_context, fieldTypes, inst.mangledName);
-    _structTypes[inst.mangledName] = structType;
     DEBUG_LOG_VAL("Created generic struct instance", inst.mangledName);
 }
 
@@ -755,6 +749,139 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
 
 // ==================== 结构体类型管理 ====================
 
+llvm::StructType* Compiler::emitUserStructType(const string& mangledName, StructDeclNode* sd, const TypeInfo& ti) {
+    if (!sd) return nullptr;
+    if (auto it = _structTypes.find(mangledName); it != _structTypes.end()) {
+        return it->second;
+    }
+
+    FileNode* sdk = _riu ? _riu->sdkFile() : nullptr;
+    TypeInfo resolved = applySubst(ti);
+    auto lay = layout::tryAbiLayout(resolved, _file, sdk);
+    const bool custom = layout::hasCustomLayout(sd);
+    const auto& fields = sd->fields();
+
+    vector<llvm::Type*> elems;
+    vector<unsigned> fieldMap;
+    fieldMap.reserve(fields.size());
+    elems.reserve(fields.size() * 2);
+
+    auto fieldLlvm = [&](StructFieldNode* f) -> llvm::Type* {
+        auto* lty = getLLVMType(f->getType());
+        if (!lty) {
+            int line = static_cast<int>(f->name().getLine());
+            throwSemaGap(line > 0 ? static_cast<size_t>(line) : 1);
+        }
+        return lty;
+    };
+
+    bool packedLlvm = false;
+    if (custom && lay && lay->fieldOffsets.size() == fields.size()) {
+        packedLlvm = true;
+        uint64_t offset = 0;
+        auto* i8 = llvm::Type::getInt8Ty(_context);
+        for (size_t i = 0; i < fields.size(); ++i) {
+            uint64_t want = lay->fieldOffsets[i];
+            if (want > offset) {
+                elems.push_back(llvm::ArrayType::get(i8, want - offset));
+                offset = want;
+            }
+            fieldMap.push_back(static_cast<unsigned>(elems.size()));
+            elems.push_back(fieldLlvm(fields[i]));
+            TypeInfo ft = applySubst(fields[i]->getType());
+            auto fl = layout::tryAbiLayout(ft, _file, sdk);
+            uint64_t fsz = fl ? fl->size : 0;
+            if (!fl && _module) {
+                fsz = _module->getDataLayout().getTypeAllocSize(elems.back()).getFixedValue();
+            }
+            offset += fsz;
+        }
+        if (lay->size > offset) {
+            elems.push_back(llvm::ArrayType::get(i8, lay->size - offset));
+        }
+    } else {
+        for (auto* f : fields) {
+            fieldMap.push_back(static_cast<unsigned>(elems.size()));
+            elems.push_back(fieldLlvm(f));
+        }
+    }
+
+    auto* st = llvm::StructType::create(_context, elems, mangledName, packedLlvm);
+    _structTypes[mangledName] = st;
+    _llvmFieldOfRiu[st] = std::move(fieldMap);
+    if (lay && lay->align > 0) {
+        _llvmAbiAlign[st] = lay->align;
+    }
+    return st;
+}
+
+unsigned Compiler::llvmFieldIndex(llvm::Type* structTy, unsigned riuIndex) const {
+    auto* st = llvm::dyn_cast_or_null<llvm::StructType>(structTy);
+    if (!st) return riuIndex;
+    auto it = _llvmFieldOfRiu.find(st);
+    if (it == _llvmFieldOfRiu.end()) return riuIndex;
+    if (riuIndex >= it->second.size()) return riuIndex;
+    return it->second[riuIndex];
+}
+
+llvm::Value* Compiler::structFieldPtr(llvm::Type* structTy, llvm::Value* ptr, unsigned riuIndex,
+                                      const llvm::Twine& name) {
+    return _builder.CreateStructGEP(structTy, ptr, llvmFieldIndex(structTy, riuIndex), name);
+}
+
+llvm::AllocaInst* Compiler::createTypedAlloca(llvm::Type* ty, const TypeInfo& t, const llvm::Twine& name) {
+    auto* ai = _builder.CreateAlloca(ty, nullptr, name);
+    applyAbiAllocaAlign(ai, t);
+    return ai;
+}
+
+void Compiler::applyAbiAllocaAlign(llvm::AllocaInst* ai, const TypeInfo& t) {
+    if (!ai) return;
+    uint64_t a = abiAlignOf(t);
+    if (a <= 1) {
+        if (auto* st = llvm::dyn_cast<llvm::StructType>(ai->getAllocatedType())) {
+            auto it = _llvmAbiAlign.find(st);
+            if (it != _llvmAbiAlign.end()) a = it->second;
+        }
+    }
+    if (a > 1) ai->setAlignment(llvm::Align(a));
+}
+
+void Compiler::applyAbiGlobalAlign(llvm::GlobalVariable* gv, const TypeInfo& t) {
+    if (!gv) return;
+    uint64_t a = abiAlignOf(t);
+    if (a <= 1) {
+        if (auto* st = llvm::dyn_cast<llvm::StructType>(gv->getValueType())) {
+            auto it = _llvmAbiAlign.find(st);
+            if (it != _llvmAbiAlign.end()) a = it->second;
+        }
+    }
+    if (a > 1) gv->setAlignment(llvm::Align(a));
+}
+
+uint64_t Compiler::abiSizeOf(const TypeInfo& t) {
+    TypeInfo resolved = applySubst(t);
+    FileNode* sdk = _riu ? _riu->sdkFile() : nullptr;
+    if (auto lay = layout::tryAbiLayout(resolved, _file, sdk)) {
+        return lay->size;
+    }
+    auto* lty = getLLVMType(resolved);
+    if (!lty || !_module) return 0;
+    return _module->getDataLayout().getTypeAllocSize(lty).getFixedValue();
+}
+
+uint64_t Compiler::abiAlignOf(const TypeInfo& t) {
+    TypeInfo resolved = applySubst(t);
+    FileNode* sdk = _riu ? _riu->sdkFile() : nullptr;
+    if (auto lay = layout::tryAbiLayout(resolved, _file, sdk)) {
+        return lay->align == 0 ? 1 : lay->align;
+    }
+    auto* lty = getLLVMType(resolved);
+    if (!lty || !_module) return 1;
+    uint64_t a = _module->getDataLayout().getABITypeAlign(lty).value();
+    return a == 0 ? 1 : a;
+}
+
 // 获取或创建结构体类型
 llvm::StructType* Compiler::getOrCreateStructType(StructDeclNode* structDecl, FileNode* sourceFile) {
     string name = structDecl->name().getText();
@@ -787,14 +914,9 @@ llvm::StructType* Compiler::getOrCreateStructType(StructDeclNode* structDecl, Fi
     }
 
     // 计算字段类型
-    vector<llvm::Type*> fieldTypes;
-    for (auto field : structDecl->fields()) {
-        fieldTypes.push_back(getLLVMType(field->getType()));
-    }
-
-    // 创建结构体类型
-    auto structType = llvm::StructType::create(_context, fieldTypes, mangledName);
-    _structTypes[mangledName] = structType;
+    auto ti = TypeInfo(name);
+    if (file && !file->moduleName().empty()) ti.ownerModule = file->moduleName();
+    auto structType = emitUserStructType(mangledName, structDecl, ti);
     if (!_structTypes.contains(name)) {
         _structTypes[name] = structType;
     }

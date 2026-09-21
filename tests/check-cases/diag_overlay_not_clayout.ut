@@ -1,0 +1,18 @@
+; require-sdk
+; overlay 的 T / U 须 C-layout
+
+struct HasRc {
+  x Rc<i32>
+}
+
+struct Pod {
+  a i32
+}
+
+fn main() {
+  #Mut let h HasRc = HasRc {
+    .x = 1
+  }
+  let p Pod& = overlay:<Pod>(&h)  ; check: E2039
+  ret
+}

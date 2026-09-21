@@ -130,7 +130,8 @@ RdBuilder::RdBuilder(Riu& riu, string src, string moduleName, bool isTestFile, s
     : _riu(riu), _isTestFile(isTestFile), _moduleName(std::move(moduleName)), _sourcePath(std::move(sourcePath)),
       _src(std::move(src)) {
     // 无 riu.toml 的单文件 check 不写 .ud，不必再拷一份 item 原文。
-    _keepSourceText = !_riu.projectName().empty();
+    // parseSdkDir 写 SDK 缓存前会 setKeepItemSourceText，否则 v5 .ud 缺 Eq 骨架。
+    _keepSourceText = _riu.keepItemSourceText();
 }
 
 RdBuilder::~RdBuilder() {

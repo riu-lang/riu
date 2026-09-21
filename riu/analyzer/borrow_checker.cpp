@@ -208,6 +208,9 @@ std::string BorrowChecker::rootFromRefInit(ExprNode* expr, int line) {
                 }
             }
         }
+        if (calleeName == "overlay" && callExpr->getArgs().size() == 1) {
+            return rootFromRefInit(callExpr->getArgs()[0], line);
+        }
         // 用户函数返回 T&：
         //   方法调用 recv.foo(...) → 根 = recv 的根（方法源恒为 $）
         //   自由函数调用 f(args)   → 根 = `$rodata`
@@ -227,8 +230,8 @@ std::string BorrowChecker::rootFromRefInit(ExprNode* expr, int line) {
         }
     }
     throw RiuError(line, ErrorCode::E4001)
-        .withHint(
-            "T& 借用初始化形如 `val r T& = &x`、`val r2 T& = r1`（拷绑已有 T& 变量），或 `val r T& = as_ref(box)`");
+        .withHint("T& 借用初始化形如 `val r T& = &x`、`val r2 T& = r1`（拷绑已有 T& 变量），或 `val r T& = "
+                  "as_ref(box)` / `overlay:<U>(&x)`");
 }
 
 void BorrowChecker::afterDeclareAssign(StatementDeclareAssignNode* da, int line) {

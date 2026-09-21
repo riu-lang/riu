@@ -424,7 +424,7 @@ void Compiler::compileDeclareStatement(StatementDeclareNode* node) {
     DEBUG_LOG_VAL("  Statement: Declare (uninitialized)", varName << " : " << varType.name);
 
     auto llvmType = getLLVMType(varType);
-    auto alloca = _builder.CreateAlloca(llvmType, nullptr, varName);
+    auto alloca = createTypedAlloca(llvmType, varType, varName);
     // Phase 3a: 需要析构的类型未初始化时零填充，让析构期指针字段为 null（release 函数 null 安全早返）
     // 否则栈上指针字段为垃圾，析构读到非 null 指针即段错（如 BUG2：Rc<fn> 2+ 同作用域）。
     // 需要 resolveAlias：类型别名（如 Callback = fn(s String)bool）底层的 LLVM 类型含指针，
@@ -468,7 +468,7 @@ void Compiler::compileDeclareAssignStatement(StatementDeclareAssignNode* node) {
         DEBUG_LOG_VAL("  Statement: Declare (ArrayFill)", varName << " : " << varType.name);
 
         auto llvmType = getLLVMType(varType);
-        auto alloca = _builder.CreateAlloca(llvmType, nullptr, varName);
+        auto alloca = createTypedAlloca(llvmType, varType, varName);
         registerLocalVar(varName, alloca, varType);
 
         compileArrayInitExpr(arrayInitNode, varType, alloca);
@@ -569,7 +569,7 @@ void Compiler::compileDeclareAssignStatement(StatementDeclareAssignNode* node) {
         }
 
         auto llvmType = getLLVMType(varType);
-        auto alloca = _builder.CreateAlloca(llvmType, nullptr, varName);
+        auto alloca = createTypedAlloca(llvmType, varType, varName);
         // RHS 求值前零填充：错误通道（try-catch / `!` 透传）会跳过后续 store，
         // 作用域尾仍析构此槽。未初始化的 Array._data 等是栈垃圾，free 即崩溃
         // （BUGS：try 里 `let arr Array<T> = fallible()` 失败路径）。
@@ -1410,11 +1410,8 @@ void Compiler::compileAssignStatement(StatementAssignNode* node) {
 
             if (i == subs.size() - 1) {
                 // 最后一个成员: 执行赋值
-                auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
-                auto idx = llvm::ConstantInt::get(_builder.getInt32Ty(), fieldIndex);
-                std::array<llvm::Value*, 2> indices{zero, idx};
-
-                auto fieldPtr = _builder.CreateGEP(structType, structPtr, indices, "struct.field");
+                auto fieldPtr =
+                    structFieldPtr(structType, structPtr, static_cast<unsigned>(fieldIndex), "struct.field");
                 auto fieldType = applySubst(field->getType());
 
                 // 处理 Array<T> 字段赋值（Phase 1b：分配 Block 并把 handle 写入字段）
@@ -1510,10 +1507,7 @@ void Compiler::compileAssignStatement(StatementAssignNode* node) {
                 if (!interStructDecl) {
                     throwSemaGap(node->getLineNumber(), node->getColumn());
                 }
-                auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
-                auto idx = llvm::ConstantInt::get(_builder.getInt32Ty(), fieldIndex);
-                std::array<llvm::Value*, 2> indices{zero, idx};
-                structPtr = _builder.CreateGEP(structType, structPtr, indices, "struct.field");
+                structPtr = structFieldPtr(structType, structPtr, static_cast<unsigned>(fieldIndex), "struct.field");
                 actualType = interType;
                 structDecl = interStructDecl;
                 structType = getLLVMType(actualType);

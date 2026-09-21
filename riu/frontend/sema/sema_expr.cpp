@@ -777,7 +777,8 @@ void SemaPass::visitCall(ExprCallNode& node) {
                             bool skipTypeShape = false;
                             if (isCurrentTypeParam(typeArgs[0]) &&
                                 (fnName == "assert_eq" || fnName == "same_ref" || fnName == "ptr_of" ||
-                                 fnName == "copy_of" || fnName == "size_of" || fnName == "__riu_reflect_type")) {
+                                 fnName == "copy_of" || fnName == "size_of" || fnName == "align_of" ||
+                                 fnName == "overlay" || fnName == "__riu_reflect_type")) {
                                 skipTypeShape = true;
                             }
                             if (!argTypes.empty() && isCurrentTypeParam(argTypes[0]) &&

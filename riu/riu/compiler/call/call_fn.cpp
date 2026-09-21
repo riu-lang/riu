@@ -312,12 +312,15 @@ llvm::Value* Compiler::compileGenericFunctionCall(ExprCallNode* callNode, const 
             return compileTestAssertEq(callNode, args, argTypes, typeArgs[0]);
         }
         if (fnName == "size_of") {
-            auto llvmType = getLLVMType(typeArgs[0]);
-            if (!llvmType) {
-                throwSemaGap(callNode->getLineNumber(), callNode->getColumn());
-            }
-            auto size = _module->getDataLayout().getTypeAllocSize(llvmType);
-            return _builder.getInt64(size);
+            return _builder.getInt64(abiSizeOf(typeArgs[0]));
+        }
+        if (fnName == "align_of") {
+            uint64_t a = abiAlignOf(typeArgs[0]);
+            return _builder.getInt64(a == 0 ? 1 : a);
+        }
+        if (fnName == "overlay") {
+            // 同一块 C-layout 内存的另一种视图：返回实参指针（已是 T&）
+            return args[0];
         }
         // DRAFT-spec-reflect Phase 3a (捷径 A): __riu_reflect_type:<T>() 拿 Type 反射节点.
         // lazy emit linkonce_odr rodata 全局 + load by value.
@@ -1149,7 +1152,7 @@ llvm::Value* Compiler::compileKnownFunctionCall(ExprCallNode* callNode, const st
         vector<llvm::Value*> abiArgs;
         llvm::Value* sretAlloca = nullptr;
         if (retSlot.indirect && retSlot.valueTy) {
-            sretAlloca = _builder.CreateAlloca(retSlot.valueTy, nullptr, "ffi.sret");
+            sretAlloca = createTypedAlloca(retSlot.valueTy, retSlot.riuTy, "ffi.sret");
             abiArgs.push_back(sretAlloca);
         }
         for (size_t i = 0; i < callArgs.size() && i < fnSymbol->params.size(); ++i) {

@@ -165,6 +165,9 @@ DEF_ERR(2034, "extern fn `{}` cannot use type `{}` in {} (not C ABI; spec §6.6.
 DEF_ERR(2035, "struct `{}` cannot appear in extern signature: field `{}` has type `{}` (not C-layout; spec §7.5.3)")
 DEF_ERR(2036, "extern C symbol `{}` has incompatible signatures (spec §6.6.1)")
 DEF_ERR(2037, "enum `{}` type parameter `{}` cannot have spec bound (`: D`)")
+DEF_ERR(2038, "`#Align` argument `{}` must be a positive power of two (spec §7.5.3 / #19)")
+DEF_ERR(2039, "`overlay` requires C-layout types; `{}` is not C-layout (spec §7.5.3.8)")
+DEF_ERR(2040, "`overlay` size/align mismatch: size_of({})={} align_of={} vs size_of({})={} align_of={} (spec #19)")
 
 // ── E3xxx 类型 — 类型不匹配 ───────────────────────────────────────────
 // E3001: 统一二元运算类型不匹配（原 E3001-E3004, E3075-E3077 合并）
@@ -252,8 +255,8 @@ DEF_ERR(3105, "Unknown parameter annotation '#{}' (only '#Frozen' is supported o
 DEF_ERR(3106, "Cannot write field '{}' of `#Frozen` parameter '{}' (DRAFT-const-mut §5.3)")
 DEF_ERR(3107, "Cannot pass `#Frozen` value '{}' to mutable parameter '{}'; use copy_of to obtain an owned copy "
               "(DRAFT-const-mut §5.4)")
-DEF_ERR(3108, "Unknown or duplicate field annotation '#{}' (only '#Val' and '#Frozen' are supported on fields, "
-              "mutually exclusive; DRAFT-const-mut §6.1)")
+DEF_ERR(3108, "Unknown or duplicate field annotation '#{}' (only '#Val', '#Frozen', and '#Align(N)' are supported "
+              "on instance fields; DRAFT-const-mut §6.1 / #19)")
 DEF_ERR(3109, "Cannot write field '{}' marked '#{}' outside the constructor of struct '{}' (DRAFT-const-mut §6.2)")
 DEF_ERR(3110, "`#Const fn` '{}' cannot {}: {} (DRAFT-const-mut §4.2)")
 DEF_ERR(3111, "`#Const fn` '{}' cannot call non-`#Const` function '{}' (DRAFT-const-mut §4.2.4)")
@@ -422,7 +425,7 @@ DEF_ERR(6014, "Ambiguous call to '{}({})': {} overloads match; add type suffix t
 DEF_ERR(6015, "Unsupported call expression")
 DEF_ERR(6016, "Unknown method '{}' for builtin type '{}'")
 DEF_ERR(6017, "Unknown #Builtin function '{}'")
-DEF_ERR(6018, "Cannot determine type argument for size_of")
+DEF_ERR(6018, "Cannot determine type argument for {}")
 DEF_ERR(6019, "Cannot determine LLVM type for '{}'")
 
 // builtin 调用：参数 / 类型实参数量

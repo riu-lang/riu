@@ -229,7 +229,7 @@ std::pair<FnNode*, FileNode*> resolveBestGenericOverload(const std::vector<std::
 //
 // 覆盖 compileGenericFunctionCall 的 #Builtin 分支的纯计数校验:
 //   - E6017: 未知 intrinsic (兜底, 不在清单内的 fnName)
-//   - E6018: size_of typeArgs 为空
+//   - E6018: size_of / align_of typeArgs 为空
 //   - E6026: upgrade typeArgs != 1
 //   - E6027: upgrade args != 1
 //   - E6026: assert_eq / same_ref / ptr_of / as_ref / copy_of / weak typeArgs != 1

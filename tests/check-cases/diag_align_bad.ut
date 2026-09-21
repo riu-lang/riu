@@ -1,0 +1,10 @@
+; #Align 参数须为 2 的幂
+
+#Align(3)  ; check: E2038
+struct Bad {
+  a i32
+}
+
+fn main() {
+  ret
+}
