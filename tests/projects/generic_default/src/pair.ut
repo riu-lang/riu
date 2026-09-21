@@ -1,0 +1,19 @@
+use riu.core.*
+
+; 跨文件 .ud 须带上默认类型，use 后才能补齐 Pair<u8>
+struct Pair<T, U=i32> {
+  a T
+  b U
+
+  #Static
+  fn of(x T, y U) Self {
+    Self {
+      .a = x
+      .b = y
+    }
+  }
+}
+
+fn make_u8(x u8) Pair<u8> = Pair:<u8>::of(x, 9)
+
+fn get_b(p Pair<u8>) i32 = p.b

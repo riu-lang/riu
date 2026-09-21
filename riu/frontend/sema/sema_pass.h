@@ -194,8 +194,11 @@ public:
     [[nodiscard]] bool typeStillTemplate(const TypeInfo& t) const;
     // Phase C：把当前实例化替换应用到类型；无替换时原样返回。
     [[nodiscard]] TypeInfo applyInstSubst(const TypeInfo& t) const;
-    // 类型注解：容器禁令 + 泛型 struct/enum 实参个数（E6011）。
-    void checkTypeAnn(const TypeInfo& t, TypeNode* tn, int fallbackLine, int fallbackCol, bool allowDynBorrow);
+    // 类型注解：容器禁令 + 泛型 struct/enum 实参个数（E6011）；尾部默认补齐后写回 TypeNode。
+    const TypeInfo& checkTypeAnn(const TypeInfo& t, TypeNode* tn, int fallbackLine, int fallbackCol,
+                                 bool allowDynBorrow);
+    // 形参 / 返回补齐默认实参，并回写局部符号。visit 体之前先跑一遍再 syncFnSymbolsFromAst。
+    void checkFnHeaderTypes(FnNode* fn);
     // #21：默认类型实参尾部连续（E2041）与不得引用更右 / 成环（E2042）。
     void validateTypeParamDefaults(const vector<string>& names, const vector<TypeNode*>& defaults, int line, int col);
     // 源码写出的具体 `S<Concrete>`：复查该泛型 struct 方法体（形参 / 返回 / 字段 / let）。

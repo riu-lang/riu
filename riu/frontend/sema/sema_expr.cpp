@@ -492,9 +492,19 @@ void SemaPass::visitCall(ExprCallNode& node) {
                 string fnName = obj->getValue().getText();
                 if (auto* genFn = uniqueNonBuiltinGenericFn(_file, fnName)) {
                     map<string, TypeInfo> subst;
-                    if (fillSubstFromTypeNodes(genFn->header()->typeParams(), n->getTypeArgs(), subst) &&
-                        substHeaderParams(genFn->header(), subst, callArgExpected)) {
-                        callArgExpPtr = &callArgExpected;
+                    vector<TypeInfo> written;
+                    written.reserve(n->getTypeArgs().size());
+                    for (auto* tn : n->getTypeArgs()) {
+                        if (tn) written.push_back(applyInstSubst(tn->getType()));
+                    }
+                    vector<TypeInfo> filled;
+                    if (sema::tryFillTypeArgsWithDefaults(genFn->header()->typeParams(),
+                                                          genFn->header()->typeParamDefaults(), written, filled)) {
+                        for (size_t i = 0; i < genFn->header()->typeParams().size() && i < filled.size(); ++i)
+                            subst[genFn->header()->typeParams()[i]] = filled[i];
+                        if (substHeaderParams(genFn->header(), subst, callArgExpected)) {
+                            callArgExpPtr = &callArgExpected;
+                        }
                     }
                 }
             }
@@ -831,8 +841,17 @@ void SemaPass::visitCall(ExprCallNode& node) {
                 // getFunctionWithOwner 已搜索 wildcardImports
                 auto [genFn2, _] = _file->getFunctionWithOwner(fnName);
                 if (genFn2 && genFn2->header()->isGeneric()) {
-                    sema::validateGenericTypeArgsArity(fnName, genFn2->header()->typeParams().size(),
-                                                       n->getTypeArgs().size(), line, col);
+                    vector<TypeInfo> written;
+                    written.reserve(n->getTypeArgs().size());
+                    for (auto& tn : n->getTypeArgs()) {
+                        if (tn) written.push_back(applyInstSubst(tn->getType()));
+                    }
+                    vector<TypeInfo> filled;
+                    if (!sema::tryFillTypeArgsWithDefaults(genFn2->header()->typeParams(),
+                                                           genFn2->header()->typeParamDefaults(), written, filled)) {
+                        sema::validateGenericTypeArgsArity(fnName, genFn2->header()->typeParams().size(),
+                                                           n->getTypeArgs().size(), line, col);
+                    }
                 }
             }
 
@@ -925,6 +944,14 @@ void SemaPass::visitCall(ExprCallNode& node) {
                         try {
                             for (auto& tn : n->getTypeArgs()) {
                                 typeArgs.push_back(applyInstSubst(tn->getType()));
+                            }
+                            vector<TypeInfo> filled;
+                            if (sema::tryFillTypeArgsWithDefaults(genericFn->header()->typeParams(),
+                                                                  genericFn->header()->typeParamDefaults(), typeArgs,
+                                                                  filled)) {
+                                typeArgs = std::move(filled);
+                            } else {
+                                typeArgsOk = false;
                             }
                         } catch (...) {
                             typeArgsOk = false;
@@ -1929,9 +1956,15 @@ void SemaPass::visitPathCall(ExprPathCallNode& node) {
         auto* sd = _names.lookupStruct(lhsTy);
         if (sd && sd->isGeneric()) {
             map<string, TypeInfo> subst;
-            if (fillSubstFromTypeNodes(sd->typeParams(), n->lhsTypeArgs(), subst)) {
-                for (auto& [_, t] : subst)
-                    t = applyInstSubst(t);
+            vector<TypeInfo> written;
+            written.reserve(n->lhsTypeArgs().size());
+            for (auto* tn : n->lhsTypeArgs()) {
+                if (tn) written.push_back(applyInstSubst(tn->getType()));
+            }
+            vector<TypeInfo> filled;
+            if (sema::tryFillTypeArgsWithDefaults(sd->typeParams(), sd->typeParamDefaults(), written, filled)) {
+                for (size_t i = 0; i < sd->typeParams().size() && i < filled.size(); ++i)
+                    subst[sd->typeParams()[i]] = applyInstSubst(filled[i]);
                 auto* impl = lookupStructImpl(_file, _sdkFile, lhsTy);
                 if (auto* hdr = uniqueMethodHeader(impl, n->variantName().getText(), n->args().size(),
                                                    /*wantStatic=*/true)) {
@@ -1943,9 +1976,15 @@ void SemaPass::visitPathCall(ExprPathCallNode& node) {
         } else if (auto* ed = _names.lookupEnum(lhsTy); ed && ed->isGeneric()) {
             // 泛型 enum 构造：payload 按该次实参 subst 后当下靶（灵活整数 / 嵌套字面量）。
             map<string, TypeInfo> subst;
-            if (fillSubstFromTypeNodes(ed->typeParams(), n->lhsTypeArgs(), subst)) {
-                for (auto& [_, t] : subst)
-                    t = applyInstSubst(t);
+            vector<TypeInfo> written;
+            written.reserve(n->lhsTypeArgs().size());
+            for (auto* tn : n->lhsTypeArgs()) {
+                if (tn) written.push_back(applyInstSubst(tn->getType()));
+            }
+            vector<TypeInfo> filled;
+            if (sema::tryFillTypeArgsWithDefaults(ed->typeParams(), ed->typeParamDefaults(), written, filled)) {
+                for (size_t i = 0; i < ed->typeParams().size() && i < filled.size(); ++i)
+                    subst[ed->typeParams()[i]] = applyInstSubst(filled[i]);
                 auto* variant = ed->variant(n->variantName().getText());
                 if (variant && variant->payloadArity() == n->args().size()) {
                     pathArgExpected.clear();
@@ -2092,22 +2131,28 @@ void SemaPass::visitPathCall(ExprPathCallNode& node) {
             if (structDecl && structDecl->isGeneric()) {
                 const auto& lhsTArgs = n->lhsTypeArgs();
                 size_t want = structDecl->typeParams().size();
-                // 写出了 turbofish 但个数不对：模板期也报（E6011 是形态码）。
-                // 无 turbofish 仍 skip（推断 / 实例化后再查）。
-                if (!lhsTArgs.empty() && lhsTArgs.size() != want) {
+                vector<TypeInfo> written;
+                written.reserve(lhsTArgs.size());
+                for (auto* tn : lhsTArgs) {
+                    if (tn) written.push_back(applyInstSubst(tn->getType()));
+                }
+                vector<TypeInfo> filledArgs;
+                const bool filledOk = !lhsTArgs.empty() && sema::tryFillTypeArgsWithDefaults(
+                                                               structDecl->typeParams(),
+                                                               structDecl->typeParamDefaults(), written, filledArgs);
+                if (!lhsTArgs.empty() && !filledOk) {
                     throw RiuError(line, col, ErrorCode::E6011, lhsName, want, lhsTArgs.size())
                         .withHint(std::format("实例化时的类型实参个数需与声明匹配；改写为 `{}<{}>` 形式补齐 {} 个类型",
                                               lhsName, std::string(want == 1 ? "T" : "T1, T2, ..."), want));
                 }
                 if (!lhsTArgs.empty()) {
-                    vector<TypeInfo> owned;
-                    owned.reserve(lhsTArgs.size());
-                    for (auto* tn : lhsTArgs) {
-                        if (tn) owned.push_back(applyInstSubst(tn->getType()));
-                    }
-                    validateOwnedTypeArgs(lhsName, owned, line, col);
+                    validateOwnedTypeArgs(lhsName, filledArgs, line, col);
                 }
-                if (!fillSubstFromTypeNodes(structDecl->typeParams(), lhsTArgs, staticSubst)) {
+                if (!lhsTArgs.empty() && filledOk) {
+                    staticSubst.clear();
+                    for (size_t i = 0; i < structDecl->typeParams().size() && i < filledArgs.size(); ++i)
+                        staticSubst[structDecl->typeParams()[i]] = applyInstSubst(filledArgs[i]);
+                } else if (!fillSubstFromTypeNodes(structDecl->typeParams(), lhsTArgs, staticSubst)) {
                     // `Self::name` 无 turbofish：实例化复查绑当前单态（§7.10.2.3 / §7.10.3.1）。
                     bool boundSelf = false;
                     if (selfForm && lhsTArgs.empty() && !_substStack.empty()) {
@@ -2235,6 +2280,34 @@ void SemaPass::visitPathCall(ExprPathCallNode& node) {
             if (!staticSubst.empty()) {
                 checkGenericImplInst(structImpl, staticSubst);
             }
+            // 有 turbofish 时把工厂返回类型写成补齐后的单态（`Pair:<u8>::of` → `Pair<u8, i32>`）。
+            // `Self::name` 无 turbofish：实例化复查的 subst 只用于实参，返回类型仍是模板 Self
+            // （裸名），否则 `fn wrap(...) Self = Self::make(...)` 会 E3014 expected Slot, got Slot<i32>。
+            if (!staticSubst.empty() && structDecl && !n->lhsTypeArgs().empty()) {
+                vector<sp<TypeInfo>> filledInst;
+                filledInst.reserve(structDecl->typeParams().size());
+                bool complete = true;
+                for (auto& tp : structDecl->typeParams()) {
+                    auto it = staticSubst.find(tp);
+                    if (it == staticSubst.end()) {
+                        complete = false;
+                        break;
+                    }
+                    filledInst.push_back(internTypeSp(it->second));
+                }
+                if (complete) {
+                    TypeInfo cur = n->hasResolvedType() ? n->resolvedType() : TypeInfo();
+                    const bool selfLike = cur.isSelf() || cur.empty() ||
+                                          (cur.name == lhsName && cur.genericArgs.size() != filledInst.size());
+                    if (selfLike) {
+                        TypeInfo inst{lhsName, std::move(filledInst)};
+                        inst.ownerModule = lhsTy.ownerModule;
+                        n->setResolvedType(std::move(inst));
+                    } else {
+                        n->setResolvedType(cur.substitute(staticSubst));
+                    }
+                }
+            }
             vector<string>* seen = _tryStack.empty() ? nullptr : &_tryStack.back();
             string calleeErr;
             if (methodHeader->fallibleErrTypeNode()) {
@@ -2259,6 +2332,23 @@ void SemaPass::visitPathCall(ExprPathCallNode& node) {
     // 由 helper 主动抛出, SemaPass 实际接管.
     try {
         sema::validateEnumCtorShape(_file, _sdkFile, n);
+        if (auto* ed = _names.lookupEnum(lhsTy); ed && ed->isGeneric()) {
+            vector<TypeInfo> written;
+            written.reserve(n->lhsTypeArgs().size());
+            for (auto* tn : n->lhsTypeArgs()) {
+                if (tn) written.push_back(tn->getType());
+            }
+            vector<TypeInfo> filled;
+            if (sema::tryFillTypeArgsWithDefaults(ed->typeParams(), ed->typeParamDefaults(), written, filled)) {
+                vector<sp<TypeInfo>> args;
+                args.reserve(filled.size());
+                for (auto& a : filled)
+                    args.push_back(internTypeSp(a));
+                TypeInfo inst{lhsTy.name, std::move(args)};
+                inst.ownerModule = lhsTy.ownerModule;
+                n->setResolvedType(std::move(inst));
+            }
+        }
     } catch (const RiuError&) {
         throw;
     } catch (...) { // NOLINT(bugprone-empty-catch)

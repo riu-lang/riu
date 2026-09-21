@@ -1,0 +1,10 @@
+; #21：T 无默认时裸名 / 少写仍 E6011；写多了也 E6011
+struct Pair<T, U=i32> {
+  a T
+  b U
+}
+
+fn main() {
+  #Mut let p Pair  ; check: E6011
+  ret;
+}

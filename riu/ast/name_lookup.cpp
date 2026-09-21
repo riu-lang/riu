@@ -6,10 +6,16 @@
 #include "ast/node/alias_node.h"
 #include "ast/node/enum_node.h"
 #include "ast/node/file_node.h"
+#include "ast/node/fn_node.h"
+#include "ast/node/global_const_node.h"
+#include "ast/node/global_var_node.h"
+#include "ast/node/spec_node.h"
 #include "ast/node/struct_node.h"
+#include "ast/node/type_node.h"
 #include "ast/riu.h"
 #include "error_code.h"
 #include "types.h"
+#include <format>
 #include <map>
 #include <set>
 #include <vector>
@@ -402,6 +408,273 @@ map<string, TypeInfo> enumInstSubst(EnumDeclNode* enumDecl, const TypeInfo& enum
         subst[tps[i]] = *enumType.genericArgs[i];
     }
     return subst;
+}
+
+bool tryFillTypeArgsWithDefaults(const vector<string>& names, const vector<TypeNode*>& defaults,
+                                 const vector<TypeInfo>& written, vector<TypeInfo>& out) {
+    if (names.empty() || written.size() > names.size()) return false;
+    out.clear();
+    out.reserve(names.size());
+    map<string, TypeInfo> subst;
+    for (size_t i = 0; i < written.size(); ++i) {
+        out.push_back(written[i]);
+        if (i < names.size()) subst[names[i]] = written[i];
+    }
+    if (written.size() == names.size()) return true;
+    for (size_t i = written.size(); i < names.size(); ++i) {
+        if (i >= defaults.size() || !defaults[i]) return false;
+        TypeInfo d = defaults[i]->getType();
+        if (!subst.empty()) d = d.substitute(subst);
+        out.push_back(d);
+        subst[names[i]] = d;
+    }
+    return true;
+}
+
+namespace {
+
+void throwGenericNamedArity(const string& name, size_t want, size_t got, int line, int col) {
+    throw RiuError(line, col, ErrorCode::E6011, name, want, got)
+        .withHint(std::format("实例化时的类型实参个数需与声明匹配；改写为 `{}<{}>` 形式补齐 {} 个类型", name,
+                              std::string(want == 1 ? "T" : "T1, T2, ..."), want));
+}
+
+bool remainingHaveDefaults(const vector<TypeNode*>& defaults, size_t got, size_t want) {
+    if (got >= want) return false;
+    for (size_t i = got; i < want; ++i) {
+        if (i >= defaults.size() || !defaults[i]) return false;
+    }
+    return true;
+}
+
+TypeInfo rebuildNamedType(const TypeInfo& t0, vector<sp<TypeInfo>> args) {
+    if (t0.isTuple()) return TypeInfo(TupleTag{}, std::move(args));
+    TypeInfo r = t0;
+    r.genericArgs = std::move(args);
+    if (!r.genericArgs.empty() && r.kind == TypeKind::Normal) r.kind = TypeKind::Generic;
+    return r;
+}
+
+} // namespace
+
+TypeInfo fillGenericNamedTypeArity(const TypeInfo& raw, const NameResolver& nr, int line, int col,
+                                   const string& currentStructName, bool throwOnArityError) {
+    std::set<string> filling;
+    auto rec = [&](auto&& self, const TypeInfo& t) -> TypeInfo {
+        TypeInfo t0 = t;
+        try {
+            t0 = resolveAlias(t, nr.file, nr.sdkFile);
+        } catch (const RiuError&) {
+            throw;
+        } catch (...) { // NOLINT(bugprone-empty-catch)
+            return t;
+        }
+        if (t0.empty()) return t0;
+
+        if (t0.isFn()) {
+            vector<sp<TypeInfo>> params;
+            params.reserve(t0.fnParamTypes().size());
+            for (auto& p : t0.fnParamTypes()) {
+                params.push_back(p ? internTypeSp(self(self, *p)) : p);
+            }
+            sp<TypeInfo> ret = nullptr;
+            if (auto r = t0.fnReturnType()) ret = internTypeSp(self(self, *r));
+            TypeInfo fn(FnTag{}, std::move(params), std::move(ret), t0.fnNullable);
+            if (!t0.fallibleErr.empty()) fn.attachFallibleErr(t0.fallibleErr);
+            return fn;
+        }
+        if (t0.isArray() && t0.elementType) {
+            TypeInfo elem = self(self, *t0.elementType);
+            TypeInfo arr{internTypeSp(std::move(elem)), t0.arraySize};
+            if (!t0.fallibleErr.empty()) arr.attachFallibleErr(t0.fallibleErr);
+            return arr;
+        }
+
+        vector<sp<TypeInfo>> newArgs;
+        newArgs.reserve(t0.genericArgs.size());
+        bool changed = false;
+        for (auto& a : t0.genericArgs) {
+            if (!a) {
+                newArgs.push_back(a);
+                continue;
+            }
+            TypeInfo fa = self(self, *a);
+            if (fa.getFullName() != a->getFullName()) changed = true;
+            newArgs.push_back(internTypeSp(std::move(fa)));
+        }
+
+        // Ref / Fn / 元组的 genericArgs 不是用户类型实参。
+        // 泛型 impl 里 `Self` / 裸名即当前单态，不要求写出实参。
+        const bool currentInst =
+            t0.isSelf() || (!currentStructName.empty() && t0.name == currentStructName && t0.genericArgs.empty());
+        const string fillKey = t0.ownerModule + "::" + t0.name;
+        const bool skipNamed = currentInst || t0.isRef() || t0.isRc() || t0.isWeak() || t0.isHeap() || t0.isDyn() ||
+                               t0.isPtr() || t0.isArray() || t0.isArrayGeneric() || t0.isTuple() || t0.name.empty() ||
+                               isBuiltinType(t0.name) || filling.contains(fillKey);
+        if (!skipNamed) {
+            auto appendDefaults = [&](const vector<string>& names, const vector<TypeNode*>& defaults) {
+                const size_t want = names.size();
+                const size_t got = newArgs.size();
+                if (want == 0 || want == got) return;
+                if (got < want && remainingHaveDefaults(defaults, got, want)) {
+                    filling.insert(fillKey);
+                    map<string, TypeInfo> subst;
+                    for (size_t i = 0; i < got && i < names.size(); ++i) {
+                        if (newArgs[i]) subst[names[i]] = *newArgs[i];
+                    }
+                    for (size_t i = got; i < want; ++i) {
+                        TypeInfo d = defaults[i]->getType();
+                        if (!subst.empty()) d = d.substitute(subst);
+                        d = self(self, d);
+                        auto sp = internTypeSp(d);
+                        subst[names[i]] = d;
+                        newArgs.push_back(std::move(sp));
+                    }
+                    filling.erase(fillKey);
+                    changed = true;
+                    return;
+                }
+                if (throwOnArityError) throwGenericNamedArity(t0.name, want, got, line, col);
+            };
+            if (auto* sd = nr.lookupStruct(t0, true)) {
+                appendDefaults(sd->typeParams(), sd->typeParamDefaults());
+            } else if (auto* ed = nr.lookupEnum(t0)) {
+                appendDefaults(ed->typeParams(), ed->typeParamDefaults());
+            }
+        }
+
+        if (!changed) return t0;
+        return rebuildNamedType(t0, std::move(newArgs));
+    };
+    return rec(rec, raw);
+}
+
+void validateGenericNamedTypeArity(const TypeInfo& raw, const NameResolver& nr, int line, int col,
+                                   const string& currentStructName) {
+    (void)fillGenericNamedTypeArity(raw, nr, line, col, currentStructName);
+}
+
+void fillFileDeclTypes(FileNode* file) {
+    if (!file) return;
+    auto anyDefault = [](const vector<TypeNode*>& defs) {
+        for (auto* d : defs) {
+            if (d) return true;
+        }
+        return false;
+    };
+    bool hasDefaults = false;
+    for (auto* sd : file->getStructDecls()) {
+        if (sd && anyDefault(sd->typeParamDefaults())) {
+            hasDefaults = true;
+            break;
+        }
+    }
+    if (!hasDefaults) {
+        for (auto* ed : file->getEnumDecls()) {
+            if (ed && anyDefault(ed->typeParamDefaults())) {
+                hasDefaults = true;
+                break;
+            }
+        }
+    }
+    if (!hasDefaults) {
+        for (auto* spec : file->getSpecDecls()) {
+            if (spec && anyDefault(spec->typeParamDefaults())) {
+                hasDefaults = true;
+                break;
+            }
+        }
+    }
+    if (!hasDefaults) {
+        auto hdrHas = [&](FnHeaderNode* h) { return h && anyDefault(h->typeParamDefaults()); };
+        for (auto* fn : file->getFunctions()) {
+            if (fn && hdrHas(fn->header())) {
+                hasDefaults = true;
+                break;
+            }
+        }
+        if (!hasDefaults) {
+            for (auto* impl : file->getStructImpls()) {
+                if (!impl) continue;
+                for (auto* m : impl->methods()) {
+                    if (m && hdrHas(m->header())) {
+                        hasDefaults = true;
+                        break;
+                    }
+                }
+                if (hasDefaults) break;
+            }
+        }
+    }
+    if (hasDefaults) {
+        NameResolver nr(file, file->riu() ? file->riu()->sdkFile() : nullptr);
+        auto recache = [&](TypeNode* tn) {
+            if (!tn || dynamic_cast<TypeSelfNode*>(tn)) return;
+            try {
+                const int line = tn->getLineNumber() > 0 ? tn->getLineNumber() : 1;
+                const int col = tn->getColumn() > 0 ? tn->getColumn() : 1;
+                const TypeInfo& orig = tn->getType();
+                TypeInfo filled = fillGenericNamedTypeArity(orig, nr, line, col, {}, false);
+                if (filled.getFullName() != orig.getFullName()) tn->recacheType(std::move(filled));
+            } catch (const RiuError&) { // NOLINT(bugprone-empty-catch)
+                // 非法 arity（如 Rc 少写）留给 Sema / 使用点报 E6011
+            }
+        };
+        auto fillHeader = [&](FnHeaderNode* h) {
+            if (!h) return;
+            for (auto* p : h->params()) {
+                if (p) recache(p->type());
+            }
+            recache(h->retType());
+            recache(h->fallibleErrTypeNode());
+            for (auto* d : h->typeParamDefaults())
+                recache(d);
+        };
+        for (auto* fn : file->getFunctions()) {
+            if (fn) fillHeader(fn->header());
+        }
+        for (auto* sd : file->getStructDecls()) {
+            if (!sd) continue;
+            for (auto* f : sd->fields()) {
+                if (f) recache(f->type());
+            }
+            for (auto* d : sd->typeParamDefaults())
+                recache(d);
+        }
+        for (auto* impl : file->getStructImpls()) {
+            if (!impl) continue;
+            for (auto* m : impl->methods()) {
+                if (m) fillHeader(m->header());
+            }
+        }
+        for (auto* ed : file->getEnumDecls()) {
+            if (!ed) continue;
+            for (auto* v : ed->variants()) {
+                if (!v) continue;
+                for (auto* pt : v->payloadTypes())
+                    recache(pt);
+            }
+            for (auto* d : ed->typeParamDefaults())
+                recache(d);
+        }
+        for (auto* spec : file->getSpecDecls()) {
+            if (!spec) continue;
+            for (auto* s : spec->signatures())
+                fillHeader(s);
+            for (auto* d : spec->typeParamDefaults())
+                recache(d);
+        }
+        for (auto* al : file->getAliasDecls()) {
+            if (al) recache(al->target());
+        }
+        for (auto* g : file->getGlobalConsts()) {
+            if (g) recache(g->typeNode());
+        }
+        for (auto* g : file->getGlobalVars()) {
+            if (g) recache(g->typeNode());
+        }
+    }
+    file->syncFnSymbolsFromAst();
 }
 
 } // namespace sema

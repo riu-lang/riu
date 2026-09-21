@@ -1,0 +1,68 @@
+; #21 切片 2：使用点少写实参按声明尾部默认补齐
+struct Pair<T, U=i32> {
+  a T
+  b U
+
+  #Static
+  fn of(x T, y U) Self {
+    Self {
+      .a = x
+      .b = y
+    }
+  }
+}
+
+struct Both<T=u8, U=i32> {
+  a T
+  b U
+
+  #Static
+  fn of(x T, y U) Self {
+    Self {
+      .a = x
+      .b = y
+    }
+  }
+
+  #Static
+  fn wrap(x T, y U) Self = Self::of(x, y)
+}
+
+struct Chain<T, U=T> {
+  a T
+  b U
+
+  #Static
+  fn of(x T, y U) Self {
+    Self {
+      .a = x
+      .b = y
+    }
+  }
+}
+
+enum Box<T=i32> {
+  V(T)
+}
+
+fn take_pair(p Pair<u8>) i32 = p.b
+
+fn wrap<T=i32>() T = 0
+
+fn pair_id<T, U=i32>(x T, y U) U = y
+
+fn main() {
+  let p Pair<u8> = Pair:<u8>::of(1u8, 2)
+  let n i32 = take_pair(p)
+  let q Pair<u8, bool> = Pair:<u8, bool>::of(1u8, true)
+  let t bool = q.b
+  let b Both = Both:<u8>::of(3u8, 4)
+  let bw Both = Both:<u8>::wrap(3u8, 4)
+  let m i32 = b.b
+  let c Chain<i32> = Chain:<i32>::of(5, 6)
+  let k i32 = c.b
+  let x Box = Box::V(7)
+  let a i32 = wrap()
+  let u i32 = pair_id:<u8>(1u8, 8)
+  ret;
+}

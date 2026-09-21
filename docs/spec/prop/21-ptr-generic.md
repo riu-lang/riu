@@ -198,10 +198,11 @@ Win32 生成（语言之后）：`void*` 仍 `Ptr`；`DWORD*` → `Ptr<u32>`；`
 ## 落地
 
 - 2026-09-21（`notes/0.23`）：切片 1：`typeParam` `= type`；AST 默认槽；`.ud` v6；E2041 / E2042（声明期）。使用点补齐仍是切片 2。
+- 2026-09-21（`notes/0.23`）：切片 2：`fillGenericNamedTypeArity` 尾部补齐；类型位 + turbofish；调用点先推断再填默认。
 
 ## 实施入口（下次从这里动手）
 
-切片 1 已落地。下次切片 2：`validateGenericNamedTypeArity` 尾部补齐；check-cases `generic_default_ok` / `diag_generic_default_*`（E6011）；`tests/projects/generic_default`。改 frontend → `./build.ps1 riu riu-check`。
+切片 2 已落地。下次切片 3：`Ptr<T=()>`（`kindForBuiltinWrapper` / `hasGenericArgs` / SDK `struct Ptr<T=()>`）。改 frontend + SDK → `./build.ps1 riu riu-check`。
 
 ### 切片 1：bnf / rd / AST / `.ud`
 
@@ -220,7 +221,7 @@ rd dump：`tests/rd-cases/` 加 `generic_default.ut` + `.rd.txt`（`struct Foo<T
 
 ### 切片 2：使用点补齐
 
-`validateGenericNamedTypeArity`（`riu/frontend/sema/call_resolve.cpp` ~535）：`got < want` 时不要立刻 E6011；查目标 `typeParams` 的默认，从 `got` 起全部有默认则 append 再 intern。`Rc` 无默认 → 仍 E6011。
+`fillGenericNamedTypeArity`（`riu/ast/name_lookup.cpp`）：`got < want` 时查目标 `typeParams` 的默认，从 `got` 起全部有默认则 append 再 intern。`Rc` 无默认 → 仍 E6011。`.ud` 按源码少写落盘，加载后再 recache + `syncFnSymbolsFromAst`，跨文件 mangling 与定义方一致。
 
 同一套填：类型出现位 + turbofish。调用点完全不写 turbofish 仍先推断，失败槽再填默认。
 

@@ -227,9 +227,13 @@ string Compiler::genericStruct(StructDeclNode* baseDecl, const vector<sp<TypeInf
     }
 
     if (owned.size() != baseDecl->typeParams().size()) {
-        int errLine = sourceLine > 0 ? sourceLine : static_cast<int>(baseDecl->name().getLine());
-        if (errLine <= 0) errLine = 1;
-        throwSemaGap(errLine);
+        vector<TypeInfo> filled;
+        if (!sema::tryFillTypeArgsWithDefaults(baseDecl->typeParams(), baseDecl->typeParamDefaults(), owned, filled)) {
+            int errLine = sourceLine > 0 ? sourceLine : static_cast<int>(baseDecl->name().getLine());
+            if (errLine <= 0) errLine = 1;
+            throwSemaGap(errLine);
+        }
+        owned = std::move(filled);
     }
 
     // 先建记录、后入表：字段 getLLVMType 可能递归 intern 其它实例；同名须等 LLVM 类型建完。
@@ -306,9 +310,13 @@ string Compiler::genericEnum(EnumDeclNode* baseDecl, const vector<sp<TypeInfo>>&
     }
 
     if (owned.size() != baseDecl->typeParams().size()) {
-        int errLine = sourceLine > 0 ? sourceLine : static_cast<int>(baseDecl->name().getLine());
-        if (errLine <= 0) errLine = 1;
-        throwSemaGap(errLine);
+        vector<TypeInfo> filled;
+        if (!sema::tryFillTypeArgsWithDefaults(baseDecl->typeParams(), baseDecl->typeParamDefaults(), owned, filled)) {
+            int errLine = sourceLine > 0 ? sourceLine : static_cast<int>(baseDecl->name().getLine());
+            if (errLine <= 0) errLine = 1;
+            throwSemaGap(errLine);
+        }
+        owned = std::move(filled);
     }
 
     auto inst = generic::makeEnumInstance(baseDecl, std::move(owned), ownerFile, _file, mangledName, sourceLine);
@@ -566,11 +574,6 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
                 if (enumOwner) enumDecl = enumOwner->localEnumDecl(type.name);
             }
             if (enumDecl && enumDecl->isGeneric()) {
-                if (type.genericArgs.size() != enumDecl->typeParams().size()) {
-                    int errLine = static_cast<int>(enumDecl->name().getLine());
-                    if (errLine <= 0) errLine = 1;
-                    throwSemaGap(errLine);
-                }
                 string mangled = genericEnum(enumDecl, type.genericArgs, enumOwner ? enumOwner : _file);
                 return _structTypes[mangled];
             }
@@ -697,11 +700,6 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
         if (!enumDecl) enumDecl = names().lookupEnum(type, &enumOwner);
         if (enumDecl) {
             if (enumDecl->isGeneric()) {
-                if (type.genericArgs.size() != enumDecl->typeParams().size()) {
-                    int errLine = static_cast<int>(enumDecl->name().getLine());
-                    if (errLine <= 0) errLine = 1;
-                    throwSemaGap(errLine);
-                }
                 string mangled = genericEnum(enumDecl, type.genericArgs, enumOwner ? enumOwner : _file);
                 return _structTypes[mangled];
             }

@@ -177,11 +177,50 @@ SemaPass::SemaPass(FileNode* file, Riu* riu)
     : _file(file), _riu(riu), _sdkFile(riu ? riu->sdkFile() : nullptr),
       _sourcePath((riu && file) ? riu->modulePath(file->moduleName()) : ""), _names(_file, _sdkFile) {}
 
-void SemaPass::checkTypeAnn(const TypeInfo& t, TypeNode* tn, int fallbackLine, int fallbackCol, bool allowDynBorrow) {
+const TypeInfo& SemaPass::checkTypeAnn(const TypeInfo& t, TypeNode* tn, int fallbackLine, int fallbackCol,
+                                       bool allowDynBorrow) {
     validateContainerBansAt(t, tn, fallbackLine, fallbackCol, allowDynBorrow);
     int line = (tn && tn->getLineNumber() > 0) ? tn->getLineNumber() : fallbackLine;
     int col = (tn && tn->getColumn() >= 0) ? tn->getColumn() : fallbackCol;
-    sema::validateGenericNamedTypeArity(t, _names, line, col, _currentStructName);
+    TypeInfo filled = sema::fillGenericNamedTypeArity(t, _names, line, col, _currentStructName);
+    if (tn) {
+        if (filled.getFullName() != t.getFullName()) tn->recacheType(std::move(filled));
+        return tn->getType();
+    }
+    return internType(std::move(filled));
+}
+
+void SemaPass::checkFnHeaderTypes(FnNode* fn) {
+    if (!fn || !fn->header()) return;
+    auto* hdr = fn->header();
+    auto savedTypeParams = _currentTypeParams;
+    for (const auto& tp : hdr->typeParams())
+        _currentTypeParams.insert(tp);
+    validateTypeParamDefaults(hdr->typeParams(), hdr->typeParamDefaults(), fn->getLineNumber(), fn->getColumn());
+    for (auto& param : hdr->params()) {
+        if (!param || !param->type()) continue;
+        try {
+            const TypeInfo& pt =
+                checkTypeAnn(param->type()->getType(), param->type(), static_cast<int>(param->name().getLine()),
+                             static_cast<int>(param->name().getCharPositionInLine()), true);
+            if (auto* sym = fn->lookupSymbol(param->name().getText())) sym->setType(pt);
+            noteConcreteGenericType(pt);
+        } catch (const RiuError&) {
+            throw;
+        } catch (...) { // NOLINT(bugprone-empty-catch)
+        }
+    }
+    if (auto rt = hdr->retType()) {
+        try {
+            const TypeInfo& rtt = checkTypeAnn(rt->getType(), rt, fn->getLineNumber(), fn->getColumn(), true);
+            validateReturnTypeBorrowPolicy(rtt, fn->getLineNumber(), fn->getColumn());
+            noteConcreteGenericType(rtt);
+        } catch (const RiuError&) {
+            throw;
+        } catch (...) { // NOLINT(bugprone-empty-catch)
+        }
+    }
+    _currentTypeParams = std::move(savedTypeParams);
 }
 
 void SemaPass::validateTypeParamDefaults(const vector<string>& names, const vector<TypeNode*>& defaults, int line,
@@ -236,8 +275,8 @@ void SemaPass::run() {
         for (auto& f : sd->fields()) {
             if (!f || !f->type()) continue;
             try {
-                auto ft = f->type()->getType();
-                checkTypeAnn(ft, f->type(), f->getLineNumber(), f->getColumn(), false);
+                const TypeInfo& ft =
+                    checkTypeAnn(f->type()->getType(), f->type(), f->getLineNumber(), f->getColumn(), false);
                 if (!typeStillTemplate(ft) && !sema::typeHasLlvmLayout(ft, _file, _sdkFile, _currentTypeParams)) {
                     auto* fieldSd = _names.lookupStruct(ft);
                     auto* fieldEd = _names.lookupEnum(ft);
@@ -258,8 +297,8 @@ void SemaPass::run() {
         for (auto& sf : sd->staticFields()) {
             if (!sf.type) continue;
             try {
-                auto sft = sf.type->getType();
-                checkTypeAnn(sft, sf.type, sf.type->getLineNumber(), sf.type->getColumn(), false);
+                const TypeInfo& sft =
+                    checkTypeAnn(sf.type->getType(), sf.type, sf.type->getLineNumber(), sf.type->getColumn(), false);
                 noteConcreteGenericType(sft);
                 if (sf.init) {
                     visitExpr(sf.init, &sft);
@@ -275,7 +314,7 @@ void SemaPass::run() {
             if (!a || !a->target()) continue;
             int aline = a->getLineNumber();
             int acol = a->getColumn();
-            auto at = a->target()->getType();
+            const TypeInfo& at = a->target()->getType();
             validateTypeArgRefPolicy(at, aline, acol, false);
             checkTypeAnn(at, a->target(), aline, acol, false);
         }
@@ -363,6 +402,22 @@ void SemaPass::run() {
         }
         _currentTypeParams = std::move(savedEnumParams);
     }
+    for (auto& fn : _file->getFunctions()) {
+        if (fn && fn->header() && !fn->header()->hasAnno("Builtin")) checkFnHeaderTypes(fn);
+    }
+    for (auto& impl : _file->getStructImpls()) {
+        auto savedTypeParams = _currentTypeParams;
+        for (const auto& tp : impl->typeParams())
+            _currentTypeParams.insert(tp);
+        auto savedStruct = _currentStructName;
+        _currentStructName = impl->structName();
+        for (auto& m : impl->methods()) {
+            if (m && m->header() && !m->header()->hasAnno("Builtin")) checkFnHeaderTypes(m);
+        }
+        _currentStructName = std::move(savedStruct);
+        _currentTypeParams = std::move(savedTypeParams);
+    }
+    _file->syncFnSymbolsFromAst();
     for (auto& fn : _file->getFunctions()) {
         // #Builtin 无真实体，仍跳过。Phase C：泛型模板体要走 SemaPass
         // （类型参数当不透明 TypeParam，做 #NoCopy / 未定义符号 / arity）。
@@ -490,38 +545,10 @@ void SemaPass::visitFn(FnNode* fn) {
     _movedVars.clear(); // Phase B-1: 进入 fn 时清空 move 追踪
 
     auto savedTypeParams = _currentTypeParams;
+    checkFnHeaderTypes(fn);
     if (auto hdr = fn->header()) {
         for (const auto& tp : hdr->typeParams()) {
             _currentTypeParams.insert(tp);
-        }
-        validateTypeParamDefaults(hdr->typeParams(), hdr->typeParamDefaults(), fn->getLineNumber(), fn->getColumn());
-    }
-
-    // E4025 / E1132：形参 / 返回类型上的容器禁令（getLLVMType 同款，补 riu-check）
-    // 形参 / 返回不报 E3096：同 arity 重载用未声明名（如 `str`）作标签，不建布局。
-    if (auto hdr = fn->header()) {
-        for (auto& param : hdr->params()) {
-            if (!param || !param->type()) continue;
-            try {
-                auto pt = param->type()->getType();
-                checkTypeAnn(pt, param->type(), static_cast<int>(param->name().getLine()),
-                             static_cast<int>(param->name().getCharPositionInLine()), true);
-                noteConcreteGenericType(pt);
-            } catch (const RiuError&) {
-                throw;
-            } catch (...) { // NOLINT(bugprone-empty-catch)
-            }
-        }
-        if (auto rt = hdr->retType()) {
-            try {
-                auto rtt = rt->getType();
-                checkTypeAnn(rtt, rt, fn->getLineNumber(), fn->getColumn(), true);
-                validateReturnTypeBorrowPolicy(rtt, fn->getLineNumber(), fn->getColumn());
-                noteConcreteGenericType(rtt);
-            } catch (const RiuError&) {
-                throw;
-            } catch (...) { // NOLINT(bugprone-empty-catch)
-            }
         }
     }
 

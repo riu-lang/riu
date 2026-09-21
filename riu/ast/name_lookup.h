@@ -15,6 +15,7 @@ class StructDeclNode;
 class StructImplNode;
 class Node;
 class Riu;
+class TypeNode;
 struct FnSymbolInfo;
 struct TypeInfo;
 struct TypePath;
@@ -79,6 +80,18 @@ TypePathResult resolveExprTypeLhs(const Node* from, FileNode* file, Riu* riu, co
 // 泛型 enum 单态：形参 → enumType.genericArgs。非泛型或实参个数不对返回空 map。
 // match 绑定 / 穷尽诊断用带实参的 enumType，不能只拿声明 payload 原文。
 std::map<std::string, TypeInfo> enumInstSubst(EnumDeclNode* enumDecl, const TypeInfo& enumType);
+
+// 已写实参从左对齐，右侧按声明默认补。成功则 out 与 names 等长。
+bool tryFillTypeArgsWithDefaults(const vector<string>& names, const vector<TypeNode*>& defaults,
+                                 const vector<TypeInfo>& written, vector<TypeInfo>& out);
+
+// 类型位置：少写的尾部默认实参补齐。补不齐且 throwOnArityError 时抛 E6011。
+TypeInfo fillGenericNamedTypeArity(const TypeInfo& t, const NameResolver& nr, int line, int col,
+                                   const string& currentStructName = {}, bool throwOnArityError = true);
+void validateGenericNamedTypeArity(const TypeInfo& t, const NameResolver& nr, int line, int col,
+                                   const string& currentStructName = {});
+// .ud 加载后把接口上的 TypeNode / FnSymbolInfo 补齐，跨文件 mangling 与定义方一致。
+void fillFileDeclTypes(FileNode* file);
 
 } // namespace sema
 

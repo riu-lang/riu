@@ -4,6 +4,7 @@
 #include "rd_builder.h"
 
 #include "ast/layout.h"
+#include "ast/name_lookup.h"
 #include "ast/syntax_diag.h"
 #include "ast_builder_helpers.h"
 #include "node/alias_node.h"
@@ -926,7 +927,7 @@ FileNode* RdBuilder::build() {
         for (rd::i32 i = 0; i < n.children_count; ++i)
             addItem(child(_ast.root(), i));
     }
-    file->syncFnSymbolsFromAst();
+    sema::fillFileDeclTypes(file);
     _scopeStack.pop_back();
     releaseParseTemps();
     return file;

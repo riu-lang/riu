@@ -6,6 +6,7 @@
 
 #include "mod_decl.h"
 
+#include "ast/name_lookup.h"
 #include "node/alias_node.h"
 #include "node/enum_node.h"
 #include "node/file_node.h"
@@ -1023,6 +1024,8 @@ FileNode* tryLoad(Riu& riu, const std::string& declPath, const std::string& srcA
         riu.addFile(file);
         riu.bindModule(file, srcAbs, file->moduleName());
         riu.adoptDeclOwner(std::move(owner));
+        // 二进制接口按源码少写的实参落盘；补齐后再 sync，消费方 mangling 与定义方 Sema 后一致。
+        sema::fillFileDeclTypes(file);
         DEBUG_LOG_VAL("  loaded .ud", srcAbs);
         return file;
     } catch (const std::exception& e) {

@@ -272,14 +272,21 @@ llvm::Value* Compiler::compileEnumCtorExpr(ExprPathCallNode* node) {
                     // E6011 由 SemaPass 非泛型 struct turbofish 先抛。
                     throwSemaGap(line, col);
                 }
-                if (lhsTArgs.size() != baseDecl->typeParams().size()) {
+                vector<TypeInfo> written;
+                written.reserve(lhsTArgs.size());
+                for (auto& ta : lhsTArgs) {
+                    written.push_back(applySubst(ta->getType()));
+                }
+                vector<TypeInfo> filled;
+                if (!sema::tryFillTypeArgsWithDefaults(baseDecl->typeParams(), baseDecl->typeParamDefaults(), written,
+                                                       filled)) {
                     // E6011 由 SemaPass #Static turbofish 先抛。
                     throwSemaGap(line, col);
                 }
                 vector<sp<TypeInfo>> instArgs;
-                instArgs.reserve(lhsTArgs.size());
-                for (auto& ta : lhsTArgs) {
-                    instArgs.push_back(std::make_shared<TypeInfo>(applySubst(ta->getType())));
+                instArgs.reserve(filled.size());
+                for (auto& a : filled) {
+                    instArgs.push_back(internTypeSp(a));
                 }
                 effLhs = genericStruct(baseDecl, instArgs, baseOwner, line);
                 map<string, TypeInfo> subst;

@@ -1,0 +1,6 @@
+use riu.core.*
+use pair.*
+
+fn main() {
+  println(get_b(make_u8(1u8)))
+}

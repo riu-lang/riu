@@ -9,6 +9,9 @@ struct Slot<T> {
     }
   }
 
+  #Static
+  fn wrap(v T) Self = Self::make(v)
+
   fn as_i32() i32 {
     $.val
   }
@@ -20,6 +23,7 @@ struct Slot<T> {
 
 fn main() {
   #Mut let s Slot<i32> = Slot:<i32>::make(1)
+  let w Slot<i32> = Slot:<i32>::wrap(3)
   let n i32 = s.as_i32()
   s.set_i32(2)
   ret;

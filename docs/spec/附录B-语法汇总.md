@@ -67,7 +67,7 @@ draftBound        ::= modulePath? ID genericDef?     # 例：ToString / pkg.Disp
 
 - `type` 尾部可选 `&`。持有位（字段 / 别名 / 全局 / enum payload）的裸 `T&` / `Array<T&>` / `[T& * N]` 报 **E4039**。`Function<i32&, ()>` 是 owned，可作字段。
 - `typeParam` 的 spec 边界仅出现在**声明位**（`fn` / `struct` / `#Spec struct` 头部的 `genericDef` 槽位）；调用点 turbofish 走 `genericDefWithRef`，不得写边界（§6.4.4.3）。声明头 `fn f<T&>` 本轮不支持。enum 头复用同一 `genericDef`，`<T : D>` 语法收下、语义拒 **E2037**（§3.10.1.4）。
-- `typeParam` 尾部可选 `= type`（#21）。有默认的形参必须在**尾部连续**，否则 **E2041**。默认类型只能引用更左形参，不得自身 / 更右 / 成环，否则 **E2042**。默认不得根裸 `&`（E4037 / E4039 同档）。使用点 `genericDefWithRef` 仍只写实参；少写实参按声明补齐是后切片。
+- `typeParam` 尾部可选 `= type`（#21）。有默认的形参必须在**尾部连续**，否则 **E2041**。默认类型只能引用更左形参，不得自身 / 更右 / 成环，否则 **E2042**。默认不得根裸 `&`（E4037 / E4039 同档）。使用点 `genericDefWithRef` 仍只写实参；少写的尾部按声明补齐，否则 **E6011** / **E6010**。
 - `Rc<T&>` / 用户 `Foo<T&>` / 用户 fn `f:<i32&>` 由语义层拒（E4037）。`Array<T&>` 仅临时位合法。`Dyn<D&>` 出现在 owned 位报 E4038。
 
 > 上述边界产生式 spec-unify v1 已落地 `riu/ast/riu.bnf`；`draftBound` 产生式名沿用历史 token 名，语义为"spec 边界"（§12）。

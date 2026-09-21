@@ -2456,6 +2456,25 @@ TypeInfo ExprPathCallNode::structuralType() const {
             // 返回裸名，调用点 recordTemp 会对含 Array 字段的实例走 getLLVMType(裸名) → E3091。
             const bool selfRet = rt.isSelf() || (rt.kind == TypeKind::Normal && rt.name == n && rt.genericArgs.empty());
             if (selfRet) {
+                auto* sd = nr.lookupStruct(lhs, /*includeBuiltin=*/true);
+                vector<TypeInfo> written;
+                written.reserve(_lhsTypeArgs.size());
+                for (auto& ta : _lhsTypeArgs) {
+                    if (ta) written.push_back(ta->getType());
+                }
+                vector<TypeInfo> filled;
+                // 无 turbofish 的 `Self::factory` 是当前模板 / 单态，不要按声明默认填成 Both<u8, i32>。
+                const bool selfBare = _enumName.getText() == "Self" && _lhsTypeArgs.empty();
+                if (sd && !selfBare &&
+                    sema::tryFillTypeArgsWithDefaults(sd->typeParams(), sd->typeParamDefaults(), written, filled)) {
+                    vector<sp<TypeInfo>> args;
+                    args.reserve(filled.size());
+                    for (auto& a : filled)
+                        args.push_back(internTypeSp(a));
+                    TypeInfo inst{n, std::move(args)};
+                    inst.ownerModule = lhs.ownerModule;
+                    return inst;
+                }
                 if (!_lhsTypeArgs.empty()) {
                     vector<sp<TypeInfo>> args;
                     args.reserve(_lhsTypeArgs.size());
@@ -2466,23 +2485,32 @@ TypeInfo ExprPathCallNode::structuralType() const {
                     inst.ownerModule = lhs.ownerModule;
                     return inst;
                 }
-                return lhs;
+                TypeInfo bare(n);
+                bare.ownerModule = lhs.ownerModule;
+                return bare;
             }
             return rt;
         }
     }
 
-    // 泛型 enum 构造 `E:<T>::V`：槽必须带 genericArgs，否则 `Box<i32>` 对不上裸名 Box。
+    // 泛型 enum 构造 `E:<T>::V`：槽必须带齐 genericArgs（含默认补齐）。
     if (auto* ed = nr.lookupEnum(lhs)) {
-        if (ed->isGeneric() && !_lhsTypeArgs.empty() && _lhsTypeArgs.size() == ed->typeParams().size()) {
-            vector<sp<TypeInfo>> args;
-            args.reserve(_lhsTypeArgs.size());
+        if (ed->isGeneric()) {
+            vector<TypeInfo> written;
+            written.reserve(_lhsTypeArgs.size());
             for (auto& ta : _lhsTypeArgs) {
-                args.push_back(make_shared<TypeInfo>(ta ? ta->getType() : TypeInfo()));
+                written.push_back(ta ? ta->getType() : TypeInfo());
             }
-            TypeInfo inst{n, std::move(args)};
-            inst.ownerModule = lhs.ownerModule;
-            return inst;
+            vector<TypeInfo> filled;
+            if (sema::tryFillTypeArgsWithDefaults(ed->typeParams(), ed->typeParamDefaults(), written, filled)) {
+                vector<sp<TypeInfo>> args;
+                args.reserve(filled.size());
+                for (auto& a : filled)
+                    args.push_back(internTypeSp(a));
+                TypeInfo inst{n, std::move(args)};
+                inst.ownerModule = lhs.ownerModule;
+                return inst;
+            }
         }
     }
 

@@ -23,6 +23,9 @@ public:
 
     [[nodiscard]] virtual const TypeInfo& getType() const = 0;
     [[nodiscard]] virtual bool isArray() const { return false; }
+
+    // Sema 补齐尾部默认实参后写回 intern 槽；后续 getType() 带齐实参。
+    void recacheType(TypeInfo t) const { cacheType(std::move(t)); }
 };
 
 // Self 类型字面量 (构造模型重构 Phase 2b)
@@ -40,7 +43,7 @@ class TypeSelfNode : public TypeNode {
 
 public:
     TypeSelfNode(Node* parent, Token selfTok, string structName)
-        : TypeNode(parent), _selfTok(std::move(selfTok)), _structName(std::move(structName)) {}
+        : TypeNode(parent), _selfTok(selfTok), _structName(std::move(structName)) {}
 
     [[nodiscard]] const TypeInfo& getType() const override;
 
@@ -65,7 +68,7 @@ class TypeNormalNode : public TypeNode {
     TypePath _path;
 
 public:
-    TypeNormalNode(Node* parent, Token typeName) : TypeNormalNode(parent, TypePath(std::move(typeName))) {}
+    TypeNormalNode(Node* parent, Token typeName) : TypeNormalNode(parent, TypePath(typeName)) {}
     TypeNormalNode(Node* parent, TypePath path) : TypeNode(parent), _path(std::move(path)) {}
 
     [[nodiscard]] const TypeInfo& getType() const override;
@@ -80,7 +83,7 @@ class TypeArrayNode : public TypeNode {
 
 public:
     TypeArrayNode(Node* parent, TypeNode* elementType, Token count)
-        : TypeNode(parent), _elementType(elementType), _count(std::move(count)) {}
+        : TypeNode(parent), _elementType(elementType), _count(count) {}
 
     [[nodiscard]] const TypeInfo& getType() const override {
         if (_cachedType) return *_cachedType;
@@ -101,7 +104,7 @@ class TypeGenericNode : public TypeNode {
 
 public:
     TypeGenericNode(Node* parent, Token baseName, vector<TypeNode*> typeArgs)
-        : TypeGenericNode(parent, TypePath(std::move(baseName)), std::move(typeArgs)) {}
+        : TypeGenericNode(parent, TypePath(baseName), std::move(typeArgs)) {}
     TypeGenericNode(Node* parent, TypePath path, vector<TypeNode*> typeArgs)
         : TypeNode(parent), _path(std::move(path)), _typeArgs(std::move(typeArgs)) {}
 

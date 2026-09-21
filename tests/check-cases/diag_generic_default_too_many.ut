@@ -1,0 +1,10 @@
+; #21：写出的实参多于形参仍 E6011
+struct Pair<T, U=i32> {
+  a T
+  b U
+}
+
+fn main() {
+  #Mut let p Pair<u8, i32, bool>  ; check: E6011
+  ret;
+}

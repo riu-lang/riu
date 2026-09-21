@@ -353,15 +353,15 @@ void SemaPass::visitDeclare(StatementDeclareNode& node) {
     if (d->varType()) {
         try {
             auto vt = d->varType()->getType();
-            sema::validateGenericNamedTypeArity(vt, _names, d->getLineNumber(), d->getColumn(), _currentStructName);
-            if (!typeStillTemplate(vt) && !sema::typeHasLlvmLayout(vt, _file, _sdkFile, _currentTypeParams)) {
-                auto* sd = _names.lookupStruct(vt);
-                auto* ed = _names.lookupEnum(vt);
+            const TypeInfo& filled = checkTypeAnn(vt, d->varType(), d->getLineNumber(), d->getColumn(), true);
+            if (!typeStillTemplate(filled) && !sema::typeHasLlvmLayout(filled, _file, _sdkFile, _currentTypeParams)) {
+                auto* sd = _names.lookupStruct(filled);
+                auto* ed = _names.lookupEnum(filled);
                 if (!(sd && sd->isGeneric()) && !(ed && ed->isGeneric())) {
-                    throw RiuError(d->getLineNumber(), d->getColumn(), ErrorCode::E3096, vt.getFullName());
+                    throw RiuError(d->getLineNumber(), d->getColumn(), ErrorCode::E3096, filled.getFullName());
                 }
             }
-            noteConcreteGenericType(vt);
+            noteConcreteGenericType(filled);
         } catch (const RiuError&) {
             throw;
         } catch (...) { // NOLINT(bugprone-empty-catch)
