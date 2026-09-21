@@ -1,9 +1,10 @@
 ; riu SDK - 自举运行时
 ; 使用 Windows API 进行 I/O
 
-use riu.core.helper.*
+use riu.platform.windows.kernel32.*
+use riu.platform.windows.consts.*
 
-; 外部函数声明（内存管理走 riurt；Win32 声明在定向开放的 helper.ut）
+; 外部函数声明（内存管理走 riurt；Win32 在 riu.platform.windows）
 extern {
   ; riurt 内存管理（替代 Win32 HeapAlloc/HeapFree）
   fn riurt_alloc(size u64) Ptr
@@ -18,15 +19,9 @@ extern {
   fn riurt_memmove(dst Ptr, src Ptr, size u64) Ptr
 }
 
-; 全局常量
-#Cval
-let _STD_OUTPUT_HANDLE i32 = -11
-#Cval
-let _STD_ERROR_HANDLE i32 = -12
-
 ; 内部：向 stdout 写入
 fn _stdout_write(buf Ptr, off i64, len i64) {
-  #Mut let hStdout Ptr = GetStdHandle(_STD_OUTPUT_HANDLE)
+  #Mut let hStdout Ptr = GetStdHandle(STD_OUTPUT_HANDLE)
   #Mut let bufWithOff Ptr = _ptr_offset(buf, off)
   #Mut let written u32 = 0
   WriteFile(hStdout, bufWithOff, len.to_u32(), &written, null);
@@ -34,7 +29,7 @@ fn _stdout_write(buf Ptr, off i64, len i64) {
 
 ; 内部：向 stderr 写入（panic / eprint* 模板用，DRAFT-错误.md §8.6）
 fn _stderr_write(buf Ptr, off i64, len i64) {
-  #Mut let hStderr Ptr = GetStdHandle(_STD_ERROR_HANDLE)
+  #Mut let hStderr Ptr = GetStdHandle(STD_ERROR_HANDLE)
   #Mut let bufWithOff Ptr = _ptr_offset(buf, off)
   #Mut let written u32 = 0
   WriteFile(hStderr, bufWithOff, len.to_u32(), &written, null);

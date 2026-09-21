@@ -1,4 +1,143 @@
-; riu.platform.windows 常量。占位；scripts/win32 生成后覆盖。
-; `winver` 仅作加载探测，A 切片换成真实宏。
+; 生成，勿手改。
+; 目标 x86_64-pc-windows-msvc；WINVER/_WIN32_WINNT=0x0A00
+#Cval
+#Inline
+let WINVER u32 = 0xA00u32
 
-fn winver() u32 = 0x0A00u32
+#Cval
+#Inline
+let GENERIC_READ u32 = 0x80000000u32
+
+#Cval
+#Inline
+let GENERIC_WRITE u32 = 0x40000000u32
+
+#Cval
+#Inline
+let FILE_SHARE_READ u32 = 1u32
+
+#Cval
+#Inline
+let FILE_SHARE_WRITE u32 = 2u32
+
+#Cval
+#Inline
+let CREATE_ALWAYS u32 = 2u32
+
+#Cval
+#Inline
+let OPEN_EXISTING u32 = 3u32
+
+#Cval
+#Inline
+let OPEN_ALWAYS u32 = 4u32
+
+#Cval
+#Inline
+let FILE_ATTRIBUTE_NORMAL u32 = 0x80u32
+
+#Cval
+#Inline
+let FILE_ATTRIBUTE_READONLY u32 = 1u32
+
+#Cval
+#Inline
+let FILE_ATTRIBUTE_DIRECTORY u32 = 0x10u32
+
+#Cval
+#Inline
+let FILE_ATTRIBUTE_REPARSE_POINT u32 = 0x400u32
+
+#Cval
+#Inline
+let FILE_ATTRIBUTE_DEVICE u32 = 0x40u32
+
+#Cval
+#Inline
+let FILE_FLAG_OPEN_REPARSE_POINT u32 = 0x200000u32
+
+#Cval
+#Inline
+let FILE_FLAG_BACKUP_SEMANTICS u32 = 0x2000000u32
+
+#Cval
+#Inline
+let FILE_END u32 = 2u32
+
+#Cval
+#Inline
+let STD_INPUT_HANDLE u32 = 0xFFFFFFF6u32
+
+#Cval
+#Inline
+let STD_OUTPUT_HANDLE u32 = 0xFFFFFFF5u32
+
+#Cval
+#Inline
+let STD_ERROR_HANDLE u32 = 0xFFFFFFF4u32
+
+#Cval
+#Inline
+let INVALID_HANDLE_VALUE u64 = 0xFFFFFFFFFFFFFFFFu64
+
+#Cval
+#Inline
+let INVALID_SET_FILE_POINTER u32 = 0xFFFFFFFFu32
+
+#Cval
+#Inline
+let INVALID_FILE_ATTRIBUTES u32 = 0xFFFFFFFFu32
+
+#Cval
+#Inline
+let ERROR_FILE_NOT_FOUND u32 = 2u32
+
+#Cval
+#Inline
+let ERROR_PATH_NOT_FOUND u32 = 3u32
+
+#Cval
+#Inline
+let ERROR_ACCESS_DENIED u32 = 5u32
+
+#Cval
+#Inline
+let ERROR_HANDLE_EOF u32 = 0x26u32
+
+#Cval
+#Inline
+let ERROR_NO_MORE_FILES u32 = 0x12u32
+
+#Cval
+#Inline
+let ERROR_PRIVILEGE_NOT_HELD u32 = 0x522u32
+
+#Cval
+#Inline
+let SYMBOLIC_LINK_FLAG_DIRECTORY u32 = 1u32
+
+#Cval
+#Inline
+let SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE u32 = 2u32
+
+#Cval
+#Inline
+let IO_REPARSE_TAG_MOUNT_POINT u32 = 0xA0000003u32
+
+#Cval
+#Inline
+let FSCTL_SET_REPARSE_POINT u32 = 0x900A4u32
+
+#Cval
+#Inline
+let FORMAT_MESSAGE_FROM_SYSTEM u32 = 0x1000u32
+
+#Cval
+#Inline
+let FORMAT_MESSAGE_IGNORE_INSERTS u32 = 0x200u32
+
+#Cval
+#Inline
+let GetFileExInfoStandard i32 = 0
+
+fn winver() u32 = WINVER

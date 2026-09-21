@@ -1,1 +1,43 @@
-; riu.platform.windows 类型。占位；scripts/win32 生成后覆盖。
+; 生成，勿手改。
+; 目标 x86_64-pc-windows-msvc；WINVER/_WIN32_WINNT=0x0A00
+type HANDLE = Ptr
+type BOOL = i32
+type DWORD = u32
+type UINT = u32
+type LPCWSTR = Ptr
+type LPWSTR = Ptr
+type LPVOID = Ptr
+type HLOCAL = Ptr
+
+#Packed
+#Align(4)
+struct FILETIME {
+  dwLowDateTime u32
+  dwHighDateTime u32
+}
+
+#Packed
+#Align(4)
+struct WIN32_FILE_ATTRIBUTE_DATA {
+  dwFileAttributes u32
+  ftCreationTime FILETIME
+  ftLastAccessTime FILETIME
+  ftLastWriteTime FILETIME
+  nFileSizeHigh u32
+  nFileSizeLow u32
+}
+
+#Packed
+#Align(4)
+struct WIN32_FIND_DATAW {
+  dwFileAttributes u32
+  ftCreationTime FILETIME
+  ftLastAccessTime FILETIME
+  ftLastWriteTime FILETIME
+  nFileSizeHigh u32
+  nFileSizeLow u32
+  _ u32
+  _ u32
+  cFileName [u16 * 260]
+  cAlternateFileName [u16 * 14]
+}

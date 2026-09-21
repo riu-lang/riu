@@ -1,0 +1,16 @@
+; 生成，勿手改。
+; 目标 x86_64-pc-windows-msvc；WINVER/_WIN32_WINNT=0x0A00
+; clang sizeof/alignof 对照 riu size_of / align_of
+
+use riu.platform.windows.types.*
+
+#Test
+fn test_win32_struct_layout() {
+  assert_eq(size_of:<FILETIME>(), 8u64)
+  assert_eq(align_of:<FILETIME>(), 4u64)
+  assert_eq(size_of:<WIN32_FILE_ATTRIBUTE_DATA>(), 36u64)
+  assert_eq(align_of:<WIN32_FILE_ATTRIBUTE_DATA>(), 4u64)
+  assert_eq(size_of:<WIN32_FIND_DATAW>(), 592u64)
+  assert_eq(align_of:<WIN32_FIND_DATAW>(), 4u64)
+}
+

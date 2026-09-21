@@ -6,7 +6,7 @@
 ;   普通 riu build 无 handler → OS 终止。
 ; #NoReturn：流终止分析复用（10d-2）。
 
-use riu.core.helper.*
+use riu.platform.windows.kernel32.*
 
 #NoReturn
 fn abort() {

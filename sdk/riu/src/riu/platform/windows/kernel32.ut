@@ -1,1 +1,41 @@
-; riu.platform.windows kernel32 声明。占位；scripts/win32 生成后覆盖。
+; 生成，勿手改。
+; 目标 x86_64-pc-windows-msvc；WINVER/_WIN32_WINNT=0x0A00
+extern {
+  fn GetStdHandle(nStdHandle u32) Ptr
+  fn WriteFile(hFile Ptr, lpBuffer Ptr, nNumberOfBytesToWrite u32, lpNumberOfBytesWritten Ptr, lpOverlapped Ptr) i32
+  fn ReadFile(hFile Ptr, lpBuffer Ptr, nNumberOfBytesToRead u32, lpNumberOfBytesRead Ptr, lpOverlapped Ptr) i32
+  fn CreateFileW(lpFileName Ptr, dwDesiredAccess u32, dwShareMode u32, lpSecurityAttributes Ptr, dwCreationDisposition u32, dwFlagsAndAttributes u32, hTemplateFile Ptr) Ptr
+  fn CloseHandle(hObject Ptr) i32
+  fn FlushFileBuffers(hFile Ptr) i32
+  fn GetLastError() u32
+  fn SetFilePointer(hFile Ptr, lDistanceToMove i32, lpDistanceToMoveHigh Ptr, dwMoveMethod u32) u32
+  fn GetFileAttributesW(lpFileName Ptr) u32
+  fn GetFileAttributesExW(lpFileName Ptr, fInfoLevelId i32, lpFileInformation Ptr) i32
+  fn DeleteFileW(lpFileName Ptr) i32
+  fn RemoveDirectoryW(lpPathName Ptr) i32
+  fn CreateDirectoryW(lpPathName Ptr, lpSecurityAttributes Ptr) i32
+  fn GetCurrentDirectoryW(nBufferLength u32, lpBuffer Ptr) u32
+  fn SetCurrentDirectoryW(lpPathName Ptr) i32
+  fn GetEnvironmentVariableW(lpName Ptr, lpBuffer Ptr, nSize u32) u32
+  fn SetEnvironmentVariableW(lpName Ptr, lpValue Ptr) i32
+  fn FindFirstFileW(lpFileName Ptr, lpFindFileData Ptr) Ptr
+  fn FindNextFileW(hFindFile Ptr, lpFindFileData Ptr) i32
+  fn FindClose(hFindFile Ptr) i32
+  fn SetFileAttributesW(lpFileName Ptr, dwFileAttributes u32) i32
+  fn GetFullPathNameW(lpFileName Ptr, nBufferLength u32, lpBuffer Ptr, lpFilePart Ptr) u32
+  fn CreateHardLinkW(lpFileName Ptr, lpExistingFileName Ptr, lpSecurityAttributes Ptr) i32
+  fn CreateSymbolicLinkW(lpSymlinkFileName Ptr, lpTargetFileName Ptr, dwFlags u32) u8
+  fn DeviceIoControl(hDevice Ptr, dwIoControlCode u32, lpInBuffer Ptr, nInBufferSize u32, lpOutBuffer Ptr, nOutBufferSize u32, lpBytesReturned Ptr, lpOverlapped Ptr) i32
+  fn FormatMessageW(dwFlags u32, lpSource Ptr, dwMessageId u32, dwLanguageId u32, lpBuffer Ptr, nSize u32, Arguments Ptr) u32
+  fn CopyFileW(lpExistingFileName Ptr, lpNewFileName Ptr, bFailIfExists i32) i32
+  fn MoveFileW(lpExistingFileName Ptr, lpNewFileName Ptr) i32
+  fn GetTempPathW(nBufferLength u32, lpBuffer Ptr) u32
+  #NoReturn
+  fn ExitProcess(uExitCode u32)
+  fn GetCommandLineW() Ptr
+  fn CommandLineToArgvW(lpCmdLine Ptr, pNumArgs Ptr) Ptr
+  fn LocalFree(hMem Ptr) Ptr
+  fn GetTickCount() u32
+  #NoReturn
+  fn RaiseException(dwExceptionCode u32, dwExceptionFlags u32, nNumberOfArguments u32, lpArguments Ptr)
+}

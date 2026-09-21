@@ -9,7 +9,7 @@
 ; 失败时编译器合成的 IR 调用本文件 __riu_test_assert_failed()，
 ; 后者触发自定义 SEH 异常码 0xE0FA17ED；riu test 的 SEH wrapper 翻译为 ASSERT_FAILED。
 
-use riu.core.helper.*
+use riu.platform.windows.kernel32.*
 
 #Builtin
 fn assert_eq<T>(actual T, expected T)

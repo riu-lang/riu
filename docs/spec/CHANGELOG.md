@@ -15,6 +15,13 @@
 
 ---
 
+## 2026-09-21 —— SDK core pkg 不再用 helper 藏 Win32
+
+- **修改 §10.4.1.3.1**：去掉 `helper to riu.io` 表述。未公开或仅 `to` 的 core 子模块仍不进用户 parent scope。Win32 绑定不是语言条款。
+- **冲突 / 兼容**：用户本来就不能 `use riu.core.helper`（E5018）；行为不变。
+
+---
+
 ## 2026-09-21 —— FFI 布局：`#Packed` / `#Align` / `overlay`（#19）
 
 - **修改 §7.5.3 / §6.6.2 / §8.7.4.2 / §11.5 / §12.7.3a**：`#Packed` 关掉自然 pad；`#Align(N)`（2 的幂）标在 struct 或字段；`size_of` / `align_of` 反映布局后 ABI；无语言 union，等 size 的 C-layout struct + `overlay:<U>(T&) U&` 换视图。`extern` 按目标 C ABI，Win64 分类用布局后 size / `align_of`。

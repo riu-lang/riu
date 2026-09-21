@@ -5,4 +5,5 @@ use riu.platform.windows.*
 
 fn main() {
   winver();
+  let v u32 = WINVER
 }
