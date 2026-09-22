@@ -180,6 +180,22 @@ if ($DoPack) {
     exit $LASTEXITCODE
 }
 
+function Build-SdkPackages([string]$RiuExe) {
+    if (-not (Test-Path -LiteralPath $RiuExe)) { return }
+    foreach ($pkg in @('core', 'stdlib')) {
+        $dir = Join-Path $ProjectRoot "sdk\$pkg"
+        if (-not (Test-Path -LiteralPath (Join-Path $dir 'riu.toml'))) { continue }
+        Write-Log "`n=== riu build sdk/$pkg ===" Cyan
+        Push-Location $dir
+        try {
+            & $RiuExe build
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        } finally {
+            Pop-Location
+        }
+    }
+}
+
 if ($DoTest) {
     if ($NinjaTargets.Count -eq 0) {
         Write-Log "`n=== ninja riu ===" Cyan
@@ -187,6 +203,7 @@ if ($DoTest) {
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     }
     $riuExe = Join-Path $OutDir 'bin\riu.exe'
+    Build-SdkPackages $riuExe
     $runner = Join-Path $ProjectRoot 'tests\run.ps1'
     if ($Forward.Count -gt 0) {
         $runnerArgs = @('-RiuExe', $riuExe)
@@ -206,5 +223,7 @@ Write-Log ("`n=== ninja {0} ===" -f ($ninjaArgs -join ' ')) Cyan
 & $ninja @ninjaArgs
 $code = $LASTEXITCODE
 if ($code -ne 0) { exit $code }
+$riuExe = Join-Path $OutDir 'bin\riu.exe'
+if (Test-Path -LiteralPath $riuExe) { Build-SdkPackages $riuExe }
 Write-Log "`nbuild ok: $OutDir" Green
 exit 0

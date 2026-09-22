@@ -6,6 +6,7 @@
 
 #include "node/file_node.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 
@@ -58,7 +59,7 @@ struct Executable {
 };
 
 // `[dependencies]` 一条。恰好一种来源（#9）。
-enum class DepSourceKind { Sdk, Path, Git };
+enum class DepSourceKind : std::uint8_t { Sdk, Path, Git };
 
 struct Dependency {
     string name; // 表键，须等于对方顶层 `name`
@@ -84,19 +85,24 @@ struct LibModFile {
     string moduleName;
 };
 
-// 图中一个 path 依赖（不含根项目）。后序：被依赖者在前。
+// 图中一个依赖库（不含根项目）。后序：被依赖者在前。
 struct ResolvedDep {
     string name;
     string projectRoot;
     string sourceRoot;
     ProjectConfig config;
+    DepSourceKind kind = DepSourceKind::Path;
+    string sdk; // kind==Sdk 时为工具链 id
 };
 
 // 读 `tomlPath`。缺字段 / 旧 schema / 非法前缀等抛 RiuError（E5002–E5008、E5021+、E5034+）。
 [[nodiscard]] ProjectConfig parseRiuToml(const string& tomlPath);
 
-// 只走 `{ path }`：递归读 toml，校验键=对方 name、是库、同名不同规范化路径。
-[[nodiscard]] vector<ResolvedDep> resolvePathDepGraph(const string& rootDir, const ProjectConfig& rootCfg);
+// `{ path }` 与 `{ sdk }`：递归读 toml，校验键=对方 name、是库、同名不同源。
+// locateSdk(`id`) → `sdk/<id>/`；空指针则跳过 sdk 边。git 边本阶段跳过。
+using SdkPackageLocator = string (*)(const string& id);
+[[nodiscard]] vector<ResolvedDep> resolvePathDepGraph(const string& rootDir, const ProjectConfig& rootCfg,
+                                                      SdkPackageLocator locateSdk = nullptr);
 
 // 按 `[library].lib_mod` 列出源文件。找不到 → 空。
 [[nodiscard]] vector<LibModFile> collectLibModFiles(const string& sourceRoot, const string& libMod);

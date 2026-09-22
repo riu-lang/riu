@@ -1,0 +1,11 @@
+name="core"
+version="1.0.0"
+
+[library]
+name="riu.core"
+type="static"
+lib_mod="riu.core"
+external_links=[
+    { path="//kernel32" },
+    { path="//shell32" },
+]

@@ -1,7 +1,7 @@
 ; Ptr/FFI builtin 功能测试
 ; 覆盖：ptr_of / _ptr_as_ref / _ptr_write / _ptr_offset / ptr_from_addr / to_int
 ;
-; builtin 声明见 sdk/riu/src/riu/core/base.ut
+; builtin 声明见 sdk/core/src/riu/core/base.ut
 
 ; ---- _ptr_write + _ptr_as_ref (via Rc<i32>) ----
 

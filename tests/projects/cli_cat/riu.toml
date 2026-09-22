@@ -1,5 +1,8 @@
 name = "cli_cat"
 version = "1.0.0"
 
+
+[dependencies]
+stdlib = { sdk = "stdlib" }
 [[executable]]
 entry="main.ut"

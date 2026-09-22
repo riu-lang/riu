@@ -72,12 +72,12 @@ Windows + Clang（无 MSVC 作编译器；仍需 VS 的 Windows SDK / STL）。`
 |--------|-----|------|
 | 单文件诊断 | 任意 | `riu-check <file.ut>` |
 | 诊断回归 | 仓库根 | `riu-check test tests/check-cases/`（子集 `diag_*` / `**/*`；`*` 不跨目录，递归用 `**`，无 `-r`） |
-| SDK `#Test` | `sdk/riu/` | `riu test`（`--verbose` / `--test-mod <M>` / `--threads N`） |
+| SDK `#Test` | `sdk/core/` 与 `sdk/stdlib/` | `riu test`（`--verbose` / `--test-mod <M>` / `--threads N`） |
 | 项目回归 | 仓库根 | `./build.ps1 test`（`-Jobs 1` 串行） |
 
 中途：改了什么跑什么。收尾：先按「改动 / 重编」把 exe 编好，再跑上表三套回归。
 
-测试崩溃：DLL 无摘要行 → 在 `sdk/riu/` 下 `--verbose` → `--test-mod` → `riu build --test -d`。
+测试崩溃：DLL 无摘要行 → 在 `sdk/core/` 或 `sdk/stdlib/` 下 `--verbose` → `--test-mod` → `riu build --test -d`。
 
 改完 C++ 立刻 `./format.ps1`；完成修改+测试通过后 `./lint.ps1` **0 warnings** （无打印的warning）。注释中文；`// ====` 分区；未完成 / 待验证写 `// TODO:`。新诊断码：`riu/include/error_code.h` 段内递增；用户能看到才按 spec-writeback 同步附录 D。
 
@@ -87,7 +87,7 @@ Windows + Clang（无 MSVC 作编译器；仍需 VS 的 Windows SDK / STL）。`
 
 | 测什么 | 放哪 | 形态 |
 |--------|------|------|
-| SDK / 运行时 | `sdk/riu/src/**/*.test.ut` | `#Test fn`；`sdk/riu/` 下 `riu test` |
+| SDK / 运行时 | `sdk/core/src/**/*.test.ut`、`sdk/stdlib/src/**/*.test.ut` | `#Test fn`；对应目录下 `riu test` |
 | 诊断（sema，单文件） | `tests/check-cases/` | 行尾 `; check: E1234`（可多个码）；无错则无注解；习惯名 `diag_*` / `*_ok` |
 | 整项目编跑 | `tests/projects/<name>/` | `riu.toml` + `expected.txt`（stdout） |
 | 预期编译失败 | 同上 | `expected_fail.txt`（对照 stderr） |
@@ -109,7 +109,8 @@ riu/                 构建子系统（各自 BUILD.gn）
   check/             riu-check
   lsp/               riu-lsp
   test-runner/       riu test 内部 spawn
-sdk/riu/src/riu/core/  自举 runtime + *.test.ut
+sdk/core/src/riu/core/  自举 runtime + *.test.ut
+sdk/stdlib/src/riu/     io / time / platform（显式依赖）
 docs/spec/           语言规范；docs/dev/ 旧实施日志（只读归档）
 notes/               本版落地
 examples/            用户示例（非回归）

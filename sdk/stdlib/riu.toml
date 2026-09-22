@@ -1,7 +1,8 @@
-name="riu"
+name="stdlib"
 version="1.0.0"
 
 [library]
+name="riu"
 type="static"
 lib_mod="riu"
 external_links=[

@@ -3,7 +3,7 @@
 
 // 测试断言内建实现 (#Test 断言 API，spec §11.3.5)
 //
-// 为 sdk/riu/src/riu/core/assert.ut 中以 #Builtin 占位的 4 个断言函数
+// 为 sdk/core/src/riu/core/assert.ut 中以 #Builtin 占位的 4 个断言函数
 // 在调用点合成 IR：
 // - assert_eq:<T>(actual, expected)  T ∈ i8..u64 / f32 / f64 / bool（其他类型 E6030）
 // - assert_true(actual bool)

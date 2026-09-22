@@ -182,6 +182,21 @@ bool Project::rebuild() {
             }
         }
 
+        if (_mode == Mode::Project) {
+            try {
+                auto deps = resolvePathDepGraph(_rootDir, _riu->projectConfig(), sdk_loader::findSdkPackage);
+                for (const auto& d : deps) {
+                    if (d.kind != DepSourceKind::Sdk || !d.config.library) continue;
+                    sdk_loader::parseSdkLibrary(d.projectRoot, d.config.library->lib_mod, *_riu);
+                }
+            } catch (const std::exception& e) {
+                if (_buildError.empty())
+                    _buildError = e.what();
+                else
+                    _buildError += "; " + std::string(e.what());
+            }
+        }
+
         std::string baseName;
         if (!_mainPath.empty()) {
             baseName = fs::path(_mainPath).stem().string();

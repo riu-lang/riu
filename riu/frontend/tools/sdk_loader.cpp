@@ -29,10 +29,12 @@ namespace sdk_loader {
 
 namespace fs = std::filesystem;
 
-std::string findSdkPath() {
+namespace {
+
+fs::path toolchainSdkRoot() {
 #ifdef _DEBUG
-    if (fs::is_directory("sdk/riu/src/riu/core")) {
-        return "sdk/riu/src/riu/core";
+    if (fs::is_directory("sdk/core/src/riu/core")) {
+        return {"sdk"};
     }
 #endif
 #ifdef _WIN32
@@ -40,11 +42,39 @@ std::string findSdkPath() {
     GetModuleFileNameA(nullptr, exePath.data(), static_cast<DWORD>(exePath.size()));
     fs::path exe(exePath.data());
     fs::path root = exe.parent_path().parent_path();
-    fs::path newSdk = root / "sdk" / "riu" / "src" / "riu" / "core";
-    if (fs::is_directory(newSdk)) return newSdk.string();
-    fs::path oldSdk = root / "sdk" / "riu" / "core";
-    if (fs::is_directory(oldSdk)) return oldSdk.string();
+    fs::path sdk = root / "sdk";
+    if (fs::is_directory(sdk / "core" / "src" / "riu" / "core")) return sdk;
 #endif
+    return {};
+}
+
+fs::path findTomlRoot(const fs::path& start) {
+    fs::path p = fs::absolute(start);
+    while (true) {
+        if (fs::exists(p / "riu.toml")) return p;
+        auto parent = p.parent_path();
+        if (parent == p) break;
+        p = parent;
+    }
+    return {};
+}
+
+} // namespace
+
+std::string findSdkPath() {
+    fs::path sdk = toolchainSdkRoot();
+    if (sdk.empty()) return "";
+    fs::path core = sdk / "core" / "src" / "riu" / "core";
+    if (fs::is_directory(core)) return core.string();
+    return "";
+}
+
+std::string findSdkPackage(const std::string& id) {
+    if (id.empty()) return "";
+    fs::path sdk = toolchainSdkRoot();
+    if (sdk.empty()) return "";
+    fs::path pkg = sdk / id;
+    if (fs::is_regular_file(pkg / "riu.toml")) return fs::absolute(pkg).lexically_normal().string();
     return "";
 }
 
@@ -95,54 +125,9 @@ void registerSdkModulePaths(Riu& riu, const std::map<std::string, SdkPkgEntry>& 
     sdk->addPackageChild("riu", "core", sdk);
 }
 
-std::vector<SdkExtraPkg> extraSdkPackages(const std::string& sdkDir) {
-    static constexpr std::array kNames{"io", "time"};
-    std::vector<SdkExtraPkg> out;
-    fs::path parent = fs::path(sdkDir).parent_path();
-    for (const char* name : kNames) {
-        fs::path f = parent / (std::string(name) + ".ut");
-        if (!fs::is_regular_file(f)) continue;
-        out.push_back(
-            {.absPath = fs::absolute(f).lexically_normal().generic_string(), .moduleName = std::string("riu.") + name});
-    }
-    // 目录包：须有 pkg，避免空目录被当成模块。
-    fs::path winDir = parent / "platform" / "windows";
-    if (fs::is_directory(winDir) && fs::is_regular_file(winDir / "pkg")) {
-        out.push_back({.absPath = fs::absolute(winDir).lexically_normal().generic_string(),
-                       .moduleName = "riu.platform.windows",
-                       .isDir = true});
-    }
-    return out;
-}
-
-std::vector<SdkExtraPkg> extraSdkSourceModules(const SdkExtraPkg& extra) {
-    if (!extra.isDir) return {extra};
-    std::vector<SdkExtraPkg> out;
-    fs::path dir(extra.absPath);
-    if (!fs::is_directory(dir)) return out;
-    for (const auto& entry : fs::directory_iterator(dir)) {
-        if (!entry.is_regular_file()) continue;
-        std::string filename = entry.path().filename().string();
-        if (!filename.ends_with(".ut") || filename.ends_with(".test.ut")) continue;
-        std::string stem = entry.path().stem().string();
-        out.push_back({.absPath = fs::absolute(entry.path()).lexically_normal().generic_string(),
-                       .moduleName = extra.moduleName + "." + stem});
-    }
-    std::ranges::sort(out, [](const SdkExtraPkg& a, const SdkExtraPkg& b) { return a.moduleName < b.moduleName; });
-    return out;
-}
-
 void parseSdkDir(const std::string& sdkDir, Riu& riu, bool allowDecl,
                  const std::unordered_set<std::string>* forceFullParseAbs) {
     auto pkgMap = readSdkPkg(sdkDir);
-
-    auto extras = extraSdkPackages(sdkDir);
-    for (const auto& extra : extras) {
-        riu.registerModulePath(extra.absPath, extra.moduleName);
-        for (const auto& src : extraSdkSourceModules(extra)) {
-            riu.registerModulePath(src.absPath, src.moduleName);
-        }
-    }
 
     std::vector<std::string> riuFiles;
     for (const auto& entry : fs::directory_iterator(sdkDir)) {
@@ -164,26 +149,12 @@ void parseSdkDir(const std::string& sdkDir, Riu& riu, bool allowDecl,
         return priority(lhs) < priority(rhs);
     });
 
-    // 创建 _sdkFile 空壳作为父作用域（不再合并 AST）
     auto sdk = riu.createSdkFile();
 
-    // .ud 落在 SDK 项目 build/ 下；源码 hash 变了才重 parse，重编 riu.exe 不重 parse
-    fs::path sdkRoot;
-    {
-        fs::path p = fs::absolute(sdkDir);
-        while (true) {
-            if (fs::exists(p / "riu.toml")) {
-                sdkRoot = p;
-                break;
-            }
-            auto parent = p.parent_path();
-            if (parent == p) break;
-            p = parent;
-        }
-    }
+    fs::path sdkRoot = findTomlRoot(sdkDir);
     std::string declRoot = sdkRoot.empty() ? std::string() : sdkRoot.string();
     std::string declBuild = sdkRoot.empty() ? std::string() : (sdkRoot / "build").string();
-    // riu-check 无项目名，但这里仍写 sdk/riu/build/*.ud；必须保留 skeleton 原文。
+    // riu-check 无项目名，但这里仍写 sdk/core/build/*.ud；必须保留 skeleton 原文。
     if (allowDecl && !declRoot.empty()) riu.setKeepItemSourceText(true);
 
     auto attachSdkParent = [&](FileNode* fileNode, bool flattenToCore) {
@@ -228,17 +199,76 @@ void parseSdkDir(const std::string& sdkDir, Riu& riu, bool allowDecl,
         loadOne(riuFile, moduleName, flattenToCore);
     }
 
-    // 独立包：不扁平进 core，未 use 时不可点 `riu.io` / `riu.time` / `riu.platform.windows` / 裸名。
-    for (const auto& extra : extras) {
-        for (const auto& src : extraSdkSourceModules(extra)) {
-            loadOne(src.absPath, src.moduleName, false);
+    registerSdkModulePaths(riu, pkgMap);
+
+    // .ud 只记下 UseSpec，不跑 RdBuilder 的通配展开。消费方要按声明模块的通配把别名展开。
+    for (auto* f : riu.files()) {
+        if (!f) continue;
+        for (auto& u : f->useSpecs()) {
+            if (!u.wildcard) continue;
+            if (auto* imp = riu.module(u.moduleName); imp && imp != f) {
+                f->addWildcardImport(imp);
+            }
+        }
+    }
+    FileNode* sdkFile = riu.sdkFile();
+    for (auto* f : riu.files()) {
+        if (!f || f == sdkFile) continue;
+        sema::recacheDeclFieldAliases(f, sdkFile);
+    }
+}
+
+void parseSdkLibrary(const std::string& pkgRoot, const std::string& libMod, Riu& riu, bool allowDecl) {
+    if (pkgRoot.empty() || libMod.empty()) return;
+    fs::path root(pkgRoot);
+    fs::path src = root / "src";
+    std::string sourceRoot = fs::is_directory(src) ? src.string() : pkgRoot;
+    auto files = collectLibModFiles(sourceRoot, libMod);
+    if (files.empty()) return;
+
+    string rel = libMod;
+    for (char& c : rel)
+        if (c == '.') c = '/';
+    fs::path pkgDir = fs::path(sourceRoot) / rel;
+    if (fs::is_directory(pkgDir)) {
+        riu.registerModulePath(fs::absolute(pkgDir).lexically_normal().string(), libMod);
+        std::error_code ec;
+        for (auto it = fs::recursive_directory_iterator(pkgDir, ec); it != fs::recursive_directory_iterator(); ++it) {
+            if (ec) break;
+            if (!it->is_directory()) continue;
+            auto relDir = fs::relative(it->path(), sourceRoot);
+            string mod = relDir.generic_string();
+            for (char& c : mod)
+                if (c == '/' || c == '\\') c = '.';
+            riu.registerModulePath(fs::absolute(it->path()).lexically_normal().string(), mod);
+        }
+    }
+    for (const auto& f : files) {
+        riu.registerModulePath(f.absPath, f.moduleName);
+    }
+
+    auto sdk = riu.sdkFile();
+    std::string declBuild = (root / "build").string();
+    if (allowDecl) riu.setKeepItemSourceText(true);
+
+    for (const auto& f : files) {
+        if (riu.module(f.moduleName)) continue;
+        std::string abs = fs::absolute(f.absPath).lexically_normal().generic_string();
+        FileNode* fileNode = nullptr;
+        if (allowDecl) {
+            auto dpath = mod_decl::pathFor(pkgRoot, declBuild, abs);
+            fileNode = mod_decl::tryLoad(riu, dpath, abs, f.moduleName);
+        }
+        if (!fileNode) {
+            fileNode = riu.loadMainFile(abs, f.moduleName);
+            mod_decl::write(fileNode, abs, mod_decl::pathFor(pkgRoot, declBuild, abs));
+        }
+        if (sdk && fileNode && fileNode != sdk) {
+            fileNode->setParentScope(sdk);
+            fileNode->addImport("riu.core");
         }
     }
 
-    registerSdkModulePaths(riu, pkgMap);
-
-    // .ud 只记下 UseSpec，不跑 RdBuilder 的通配展开。`FileInputStream._handle HANDLE`
-    // 在消费方（未 `use types.*`）要按声明模块的通配把别名收成 `Ptr<_HANDLE>`。
     for (auto* f : riu.files()) {
         if (!f) continue;
         for (auto& u : f->useSpecs()) {

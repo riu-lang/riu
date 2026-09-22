@@ -181,7 +181,7 @@ entry="main.ut"
 | 项目编译+运行 | `./build.ps1 test` | `tests/projects/` | 每目录一个 `riu.toml` + `expected.txt`；编译产物并比对 stdout |
 | 格式化回归 | `./build.ps1 test` | `tests/projects/` | `expected_format` 文件，比对外格式化输出 |
 | 诊断回归 | `riu-check test` | `tests/check-cases/` | `diag_*.ut`，行尾 `; check: EXXXX` 注解精确匹配 |
-| 单元/行为测试 | `riu test` | `sdk/riu/src/riu/core/*.test.ut` | `#Test` 注解，DLL + 多子进程并行 |
+| 单元/行为测试 | `riu test` | `sdk/core` + `sdk/stdlib` 的 `*.test.ut` | `#Test` 注解，DLL + 多子进程并行 |
 
 **运行方式：**
 
@@ -197,7 +197,8 @@ entry="main.ut"
 riu-check test tests/check-cases/
 
 # SDK 单元测试（主测试集）
-cd sdk/riu && riu test
+cd sdk/core && riu test
+cd sdk/stdlib && riu test
 riu test --verbose          # 打印每个测试 stdout/stderr
 riu test --test-mod riu.core.array  # 只测指定模块
 ```

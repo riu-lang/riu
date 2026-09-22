@@ -81,7 +81,7 @@ function Walk-Dir([string]$Dir, [System.Collections.Generic.List[string]]$Out) {
 
 function Get-AllRepoFiles {
     $out = New-Object System.Collections.Generic.List[string]
-    foreach ($r in @('riu', 'include', 'sdk\riu\src')) {
+    foreach ($r in @('riu', 'include', 'sdk')) {
         Walk-Dir (Join-Path $ProjectRoot $r) $out
     }
     return ,@($out.ToArray())

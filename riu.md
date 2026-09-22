@@ -77,7 +77,7 @@ flowchart TB
     ir --> llc[LLVM 后端]
     llc --> obj[.obj]
     obj --> lld[lld 链接]
-    sdk[(sdk/riu 自举 runtime<br/>riu.lib)] --> lld
+    sdk[(sdk/core + sdk/stdlib<br/>riu.core.lib / riu.lib)] --> lld
     lld --> exe[可执行 / .lib / .dll]
 
     style pm fill:#e0f3e0
@@ -226,7 +226,7 @@ flowchart LR
 详见 [RULES.md](RULES.md) 目录。一句话版：
 
 - `riu/`：编译器实现（`riu/` 零 LLVM；`riu/riu/compiler/` 全 LLVM，`compiler.h` 是 driver，子系统在 `compiler_*.h`；`riu/analyzer/` 语义检查；`riu/lsp/` LSP；`riu/frontend/tools/` 工具）
-- `sdk/riu/`：自举 runtime（独立 riu 项目 → `riu.lib`）
+- `sdk/core/`：隐式 runtime（`riu.core.lib`）；`sdk/stdlib/`：显式 `{ sdk = "stdlib" }`（`riu.lib`）
 - `riu/ast/rd/`：手写 Scanner / Parser / FlatAst
 - `docs/`：中文教程 + `docs/spec/` 规范草案
 - `tests/`：单文件用例 + 项目用例（前缀分组）

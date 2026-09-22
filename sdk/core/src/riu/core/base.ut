@@ -1,8 +1,7 @@
 ; riu SDK - 自举运行时
-; 使用 Windows API 进行 I/O
+; println / args / tick_ms 的 Win32 在 win_io（不进 pkg），避免与 stdlib kernel32 同 C 名 E2036。
 
-use riu.platform.windows.kernel32
-use riu.platform.windows.types.*
+use riu.core.win_io
 
 ; STD_* 是 consts 里的 #Cval，不能写 `consts.NAME`（E5016，同 math.PI）
 #Cval
@@ -12,7 +11,7 @@ let _STD_OUTPUT_HANDLE u32 = 0xFFFFFFF5u32
 #Inline
 let _STD_ERROR_HANDLE u32 = 0xFFFFFFF4u32
 
-; 外部函数声明（内存管理走 riurt；Win32 在 riu.platform.windows）
+; 外部函数声明（内存管理走 riurt）
 extern {
   ; riurt 内存管理（替代 Win32 HeapAlloc/HeapFree）
   fn riurt_alloc(size u64) Ptr
@@ -29,18 +28,18 @@ extern {
 
 ; 内部：向 stdout 写入
 fn _stdout_write(buf Ptr, off i64, len i64) {
-  #Mut let hStdout = kernel32.GetStdHandle(_STD_OUTPUT_HANDLE)
+  #Mut let hStdout = win_io.win_GetStdHandle(_STD_OUTPUT_HANDLE)
   #Mut let bufWithOff Ptr = _ptr_offset(buf, off)
   #Mut let written u32 = 0
-  kernel32.WriteFile(hStdout, bufWithOff, len.to_u32(), ptr_of(&written), null);
+  win_io.win_WriteFile(hStdout, bufWithOff, len.to_u32(), ptr_of(&written), null);
 }
 
 ; 内部：向 stderr 写入（panic / eprint* 模板用，DRAFT-错误.md §8.6）
 fn _stderr_write(buf Ptr, off i64, len i64) {
-  #Mut let hStderr = kernel32.GetStdHandle(_STD_ERROR_HANDLE)
+  #Mut let hStderr = win_io.win_GetStdHandle(_STD_ERROR_HANDLE)
   #Mut let bufWithOff Ptr = _ptr_offset(buf, off)
   #Mut let written u32 = 0
-  kernel32.WriteFile(hStderr, bufWithOff, len.to_u32(), ptr_of(&written), null);
+  win_io.win_WriteFile(hStderr, bufWithOff, len.to_u32(), ptr_of(&written), null);
 }
 
 #Builtin
@@ -747,9 +746,9 @@ fn _from_wide_chars(p Ptr) String {
 
 ; 进程命令行。含 argv[0]（exe 路径）；用户参数从 [1] 起。失败 → []。
 fn args() Array<String> {
-  let cmd = kernel32.GetCommandLineW()
+  let cmd = win_io.win_GetCommandLineW()
   #Mut let n i32 = 0
-  let argv = kernel32.CommandLineToArgvW(cmd, ptr_of(&n))
+  let argv = win_io.win_CommandLineToArgvW(cmd, ptr_of(&n))
   if argv.to_int() == 0u64 {
     ret []
   }
@@ -764,12 +763,12 @@ fn args() Array<String> {
     out.push(_from_wide_chars(wstr))
     i += 1
   }
-  #Mut let mem HANDLE = as_handle(argv)
-  kernel32.LocalFree(mem);
+  #Mut let mem = argv
+  win_io.win_LocalFree(mem);
   out
 }
 
 ; 自开机起的毫秒（GetTickCount，约 49 天回绕）。CLI 种子用，不承诺单调高精度。
 fn tick_ms() u32 {
-  kernel32.GetTickCount()
+  win_io.win_GetTickCount()
 }

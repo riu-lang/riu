@@ -1,0 +1,17 @@
+; core 内部 Win32：不进 pkg，不扁平进 parent scope。
+; 与 stdlib kernel32 等同名 C 符号；不进通配以免 E2036。句柄一律 Ptr，避免跨模块别名无 LLVM 类型。
+
+extern {
+  #CName("GetStdHandle")
+  fn win_GetStdHandle(nStdHandle u32) Ptr
+  #CName("WriteFile")
+  fn win_WriteFile(hFile Ptr, lpBuffer Ptr, nNumberOfBytesToWrite u32, lpNumberOfBytesWritten Ptr<u32>, lpOverlapped Ptr) i32
+  #CName("GetCommandLineW")
+  fn win_GetCommandLineW() Ptr<u16>
+  #CName("CommandLineToArgvW")
+  fn win_CommandLineToArgvW(lpCmdLine Ptr<u16>, pNumArgs Ptr<i32>) Ptr<Ptr<u16>>
+  #CName("LocalFree")
+  fn win_LocalFree(hMem Ptr) Ptr
+  #CName("GetTickCount")
+  fn win_GetTickCount() u32
+}

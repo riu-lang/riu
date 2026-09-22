@@ -1,4 +1,4 @@
-; require-sdk
+; require-sdk-modules
 ; 未 use riu.platform.windows：全限定不引入
 
 fn main() {

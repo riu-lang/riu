@@ -122,11 +122,10 @@ static int copyRuntimeDlls(const std::vector<ExternalLink>& links, const std::st
     return 0;
 }
 
-static std::vector<ExternalLink> loadSdkLibraryLinks(const std::string& sdkPath) {
+static std::vector<ExternalLink> loadLibraryLinks(const std::string& pkgRoot) {
     namespace fs = std::filesystem;
-    if (sdkPath.empty()) return {};
-    fs::path sdkRoot = fs::path(sdkPath).parent_path().parent_path().parent_path();
-    fs::path toml = sdkRoot / "riu.toml";
+    if (pkgRoot.empty()) return {};
+    fs::path toml = fs::path(pkgRoot) / "riu.toml";
     if (!fs::exists(toml)) return {};
     try {
         auto cfg = parseRiuToml(toml.string());
@@ -135,6 +134,21 @@ static std::vector<ExternalLink> loadSdkLibraryLinks(const std::string& sdkPath)
         return {};
     }
     return {};
+}
+
+static bool libNewerThanSources(const std::string& libPath, const std::vector<LibModFile>& files) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    if (files.empty() || !fs::exists(libPath, ec)) return false;
+    try {
+        auto t = fs::last_write_time(libPath);
+        for (const auto& f : files) {
+            if (!fs::exists(f.absPath) || fs::last_write_time(f.absPath) > t) return false;
+        }
+        return true;
+    } catch (...) {
+        return false;
+    }
 }
 
 static bool checkEntryPath(Riu& riu, const std::string& entry, std::string& inputFile) {
@@ -337,7 +351,8 @@ static bool compileLibraryToOutput(Riu& riu, const std::vector<LibModFile>& file
         if (!caches.isFresh(f.absPath, obj)) {
             file = riu.ensureFullAst(f.absPath, f.moduleName);
             if (!file) continue;
-            if (!compileOneModuleToObj(riu, file, f.moduleName, obj, ir, emitIr, false)) {
+            if (!compileOneModuleToObj(riu, file, f.moduleName, obj, ir, emitIr,
+                                       lib.lib_mod == "riu.core" && fs::path(f.absPath).stem() == "base")) {
                 anyCodegenError = true;
                 continue;
             }
@@ -818,7 +833,7 @@ int runBuildCommand(const BuildCmdOptions& opts) {
 
         vector<ResolvedDep> resolved;
         try {
-            resolved = resolvePathDepGraph(cwd, riu.projectConfig());
+            resolved = resolvePathDepGraph(cwd, riu.projectConfig(), sdk_loader::findSdkPackage);
         } catch (runtime_error& e) {
             reportRuntimeError(tomlPath, e);
             return 1;
@@ -871,11 +886,11 @@ int runBuildCommand(const BuildCmdOptions& opts) {
     std::string irDir = emitIrDir.empty() ? buildDir : emitIrDir;
     if (emitIr) ensureBuildDir(irDir);
 
-    // SDK 符号表加载（所有项目都需要，仅解析不编译）
+    // SDK 符号表：core 始终加载。stdlib 仅在图中出现（或本包就是 stdlib）时加载。
     string sdkPath;
     {
         namespace fs = std::filesystem;
-        if (riu.projectName() == "riu") {
+        if (riu.projectName() == "core") {
             fs::path candidate = fs::path(riu.projectRoot()) / "src" / "riu" / "core";
             if (fs::is_directory(candidate)) {
                 sdkPath = candidate.string();
@@ -884,20 +899,16 @@ int runBuildCommand(const BuildCmdOptions& opts) {
         if (sdkPath.empty()) sdkPath = sdk_loader::findSdkPath();
     }
     string sdkLibPath;
-    bool isSdkSelfBuild = riu.projectName() == "riu" && !sdkPath.empty();
+    const bool isCoreSelfBuild = riu.projectName() == "core" && !sdkPath.empty();
+    const bool isStdlibSelfBuild = riu.projectName() == "stdlib";
+    const bool isSdkSelfBuild = isCoreSelfBuild || isStdlibSelfBuild;
 
     if (!sdkPath.empty()) {
         namespace fs = std::filesystem;
         sdkPath = fs::absolute(sdkPath).string();
-        // SDK 静态库路径推导：sdkRoot = sdkPath 向上到含 riu.toml 的目录
-        fs::path sdkRoot =
-            fs::path(sdkPath).parent_path().parent_path().parent_path(); // sdk/riu/src/riu/core → sdk/riu
-        sdkLibPath = (sdkRoot / "build" / "riu.lib").string();
 
-        // 解析 SDK 源码获取符号表（_sdkFile + 各模块 AST）
-        // .ud 无非泛型体，不能拿去 codegen：仅对 obj 过期的模块整文件 parse，其余读 .ud。
         std::unordered_set<std::string> forceFullParse;
-        if (isSdkSelfBuild) {
+        if (isCoreSelfBuild) {
             PkgCacheRegistry probe(riu.projectRoot(), buildDir);
             auto consider = [&](const std::string& abs) {
                 string obj = mirroredOutputBase(riu.projectRoot(), buildDir, abs) + ".obj";
@@ -910,14 +921,9 @@ int runBuildCommand(const BuildCmdOptions& opts) {
                 if (fname.ends_with(".test.ut")) continue;
                 consider(fs::absolute(entry.path()).lexically_normal().generic_string());
             }
-            for (const auto& extra : sdk_loader::extraSdkPackages(sdkPath)) {
-                for (const auto& src : sdk_loader::extraSdkSourceModules(extra)) {
-                    consider(src.absPath);
-                }
-            }
         }
         try {
-            sdk_loader::parseSdkDir(sdkPath, riu, true, isSdkSelfBuild ? &forceFullParse : nullptr);
+            sdk_loader::parseSdkDir(sdkPath, riu, true, isCoreSelfBuild ? &forceFullParse : nullptr);
         } catch (std::runtime_error& e) {
             reportRuntimeError(sdkPath, e, "Error in SDK: ");
             return 1;
@@ -954,9 +960,7 @@ int runBuildCommand(const BuildCmdOptions& opts) {
 
     bool compiled = false;
 
-    std::vector<ExternalLink> sdkLinks =
-        isSdkSelfBuild ? (riu.library() ? riu.library()->external_links : std::vector<ExternalLink>{})
-                       : loadSdkLibraryLinks(sdkPath);
+    std::vector<ExternalLink> sdkLinks;
     std::vector<ExternalLink> testLinks;
     if (riu.library()) {
         testLinks.insert(testLinks.end(), riu.library()->external_links.begin(), riu.library()->external_links.end());
@@ -964,12 +968,50 @@ int runBuildCommand(const BuildCmdOptions& opts) {
     for (const auto& e : riu.executables()) {
         testLinks.insert(testLinks.end(), e.external_links.begin(), e.external_links.end());
     }
-    if (!isSdkSelfBuild) {
-        testLinks.insert(testLinks.end(), sdkLinks.begin(), sdkLinks.end());
-    }
 
     std::vector<std::string> depLibPaths;
     std::vector<ExternalLink> depLinks;
+
+    auto sourceRootOfPkg = [](const std::string& projectRoot) {
+        namespace fs = std::filesystem;
+        fs::path src = fs::path(projectRoot) / "src";
+        return fs::is_directory(src) ? src.string() : projectRoot;
+    };
+
+    // 隐式 core：用户与 stdlib 自构建链 core.lib；core 自构建用本包 external_links。
+    string corePkgRoot = sdk_loader::findSdkPackage("core");
+    if (isCoreSelfBuild) {
+        sdkLinks = riu.library() ? riu.library()->external_links : std::vector<ExternalLink>{};
+        sdkLibPath = joinUnder(projectBuildDir, riu.library() ? riu.library()->name : "riu.core", ".lib");
+    } else if (!corePkgRoot.empty()) {
+        sdkLinks = loadLibraryLinks(corePkgRoot);
+        auto coreFiles = collectLibModFiles(sourceRootOfPkg(corePkgRoot), "riu.core");
+        string toolchainLib = joinUnder((std::filesystem::path(corePkgRoot) / "build").string(), "riu.core", ".lib");
+        if (isStdlibSelfBuild || libNewerThanSources(toolchainLib, coreFiles)) {
+            sdkLibPath = toolchainLib;
+        } else {
+            namespace fs = std::filesystem;
+            string outputRoot = (fs::path(buildDir) / "deps" / "core").string();
+            riu.addDeclOutputRoot(corePkgRoot, outputRoot);
+            Library coreLib;
+            coreLib.name = "riu.core";
+            coreLib.type = "static";
+            coreLib.lib_mod = "riu.core";
+            if (!compileLibraryToOutput(riu, coreFiles, corePkgRoot, outputRoot, coreLib, emitIr, irDir, "",
+                                        riurtLibPath, {}, {}, compiled)) {
+                return 1;
+            }
+            sdkLibPath = joinUnder(outputRoot, "riu.core", ".lib");
+        }
+    }
+    if (!isCoreSelfBuild) {
+        testLinks.insert(testLinks.end(), sdkLinks.begin(), sdkLinks.end());
+    }
+    if (isStdlibSelfBuild && riu.library()) {
+        depLibPaths.push_back(joinUnder(projectBuildDir, riu.library()->name, ".lib"));
+        testLinks.insert(testLinks.end(), riu.library()->external_links.begin(), riu.library()->external_links.end());
+    }
+
     if (!isSdkSelfBuild && !pathDeps.empty()) {
         namespace fs = std::filesystem;
         struct PathDepWork {
@@ -977,24 +1019,45 @@ int runBuildCommand(const BuildCmdOptions& opts) {
             string outputRoot;
             vector<LibModFile> files;
             string libPath;
+            bool skipCompile = false;
         };
         vector<PathDepWork> works;
         for (const auto& pkg : pathDeps) {
             if (!pkg.config.library) continue;
             PathDepWork w;
             w.pkg = pkg;
-            w.outputRoot = (fs::path(buildDir) / "deps" / pkg.name).string();
             w.files = collectLibModFiles(pkg.sourceRoot, pkg.config.library->lib_mod);
             if (w.files.empty()) {
                 std::cerr << "Error: `[library].lib_mod` not found: " << pkg.config.library->lib_mod << '\n';
                 return 1;
             }
-            riu.addDeclOutputRoot(pkg.projectRoot, w.outputRoot);
+            if (pkg.kind == DepSourceKind::Sdk) {
+                string toolchainLib =
+                    joinUnder((fs::path(pkg.projectRoot) / "build").string(), pkg.config.library->name, ".lib");
+                if (libNewerThanSources(toolchainLib, w.files)) {
+                    w.libPath = toolchainLib;
+                    w.skipCompile = true;
+                    w.outputRoot = (fs::path(pkg.projectRoot) / "build").string();
+                }
+            }
+            if (!w.skipCompile) {
+                w.outputRoot = (fs::path(buildDir) / "deps" / pkg.name).string();
+                w.libPath = joinUnder(w.outputRoot, pkg.config.library->name, ".lib");
+                riu.addDeclOutputRoot(pkg.projectRoot, w.outputRoot);
+            }
             registerLibModPaths(riu, pkg.sourceRoot, pkg.config.library->lib_mod, w.files);
-            w.libPath = joinUnder(w.outputRoot, pkg.config.library->name, ".lib");
             works.push_back(std::move(w));
         }
         for (auto& w : works) {
+            if (w.pkg.kind == DepSourceKind::Sdk) {
+                try {
+                    sdk_loader::parseSdkLibrary(w.pkg.projectRoot, w.pkg.config.library->lib_mod, riu, true);
+                } catch (runtime_error& e) {
+                    reportRuntimeError(w.pkg.projectRoot, e, w.pkg.name + ": ");
+                    return 1;
+                }
+                continue;
+            }
             for (const auto& f : w.files) {
                 if (riu.module(f.moduleName)) continue;
                 try {
@@ -1006,11 +1069,15 @@ int runBuildCommand(const BuildCmdOptions& opts) {
             }
         }
         vector<string> builtSoFar;
+        if (!sdkLibPath.empty()) builtSoFar.push_back(sdkLibPath);
         for (auto& w : works) {
-            string depIrDir = emitIr ? (w.outputRoot + "/ir") : irDir;
-            if (!compileLibraryToOutput(riu, w.files, w.pkg.projectRoot, w.outputRoot, *w.pkg.config.library, emitIr,
-                                        depIrDir, sdkLibPath, riurtLibPath, sdkLinks, builtSoFar, compiled)) {
-                return 1;
+            if (!w.skipCompile) {
+                string depIrDir = emitIr ? (w.outputRoot + "/ir") : irDir;
+                if (!compileLibraryToOutput(riu, w.files, w.pkg.projectRoot, w.outputRoot, *w.pkg.config.library,
+                                            emitIr, depIrDir, sdkLibPath, riurtLibPath, sdkLinks, builtSoFar,
+                                            compiled)) {
+                    return 1;
+                }
             }
             depLibPaths.push_back(w.libPath);
             builtSoFar.push_back(w.libPath);
@@ -1078,8 +1145,8 @@ int runBuildCommand(const BuildCmdOptions& opts) {
         }
         std::ranges::sort(libFiles);
 
-        // 加载所有 AST（SDK 自构建时 parseSdkDir 已加载，跳过重复解析）
-        if (!isSdkSelfBuild) {
+        // 加载所有 AST（core 自构建时 parseSdkDir 已加载）
+        if (!isCoreSelfBuild) {
             for (auto& [abs, mn] : libFiles) {
                 try {
                     riu.loadMainFile(abs, mn);
@@ -1095,15 +1162,14 @@ int runBuildCommand(const BuildCmdOptions& opts) {
         bool anyCodegenError = false;
         PkgCacheRegistry libCaches(riu.projectRoot(), buildDir);
 
-        // SDK 自构建：编译列表来自 parseSdkDir 已加载的模块，读 pkg 文件确定 runtime base
+        // core 自构建：编译列表来自 parseSdkDir 已加载的模块，读 pkg 确定 runtime base
         std::map<std::string, SdkPkgEntry> sdkPkgMap;
-        if (isSdkSelfBuild) {
+        if (isCoreSelfBuild) {
             sdkPkgMap = sdk_loader::readSdkPkg(sdkPath);
         }
 
-        // 构建编译列表：SDK 自构建用 riu.files()，普通 lib 用 libFiles
         vector<std::pair<std::string, std::string>> compileList; // {abs, modName}
-        if (isSdkSelfBuild) {
+        if (isCoreSelfBuild) {
             for (auto& file : riu.files()) {
                 if (file == riu.sdkFile()) continue;
                 string mn = file->moduleName();
@@ -1126,9 +1192,8 @@ int runBuildCommand(const BuildCmdOptions& opts) {
             if (emitIr) {
                 fs::create_directories(fs::path(ir).parent_path());
             }
-            // SDK 自构建：runtime base 模块需发射运行时辅助
             bool isSdkRuntime = false;
-            if (isSdkSelfBuild) {
+            if (isCoreSelfBuild) {
                 auto stem = fs::path(abs).stem().string();
                 auto it = sdkPkgMap.find(stem);
                 bool isFlatDep = (it == sdkPkgMap.end()) || it->second.isFlat;
@@ -1288,8 +1353,8 @@ int runBuildCommand(const BuildCmdOptions& opts) {
         }
         std::ranges::sort(nonTestFiles);
 
-        // 加载所有非 test 模块 AST（SDK 自构建时 parseSdkDir 已加载，跳过重复解析）
-        if (!isSdkSelfBuild) {
+        // 加载所有非 test 模块 AST（core 自构建时 parseSdkDir 已加载）
+        if (!isCoreSelfBuild) {
             for (auto& [abs, mn] : nonTestFiles) {
                 try {
                     riu.loadMainFile(abs, mn);
@@ -1300,10 +1365,9 @@ int runBuildCommand(const BuildCmdOptions& opts) {
             }
         }
 
-        // 构建编译列表（SDK 自构建用 riu.files()，普通项目用目录扫描）
         vector<std::pair<std::string, std::string>> compileList; // {abs, modName}
         std::map<std::string, SdkPkgEntry> sdkPkgMap;
-        if (isSdkSelfBuild) {
+        if (isCoreSelfBuild) {
             sdkPkgMap = sdk_loader::readSdkPkg(sdkPath);
             for (auto& file : riu.files()) {
                 if (file == riu.sdkFile()) continue;
@@ -1331,9 +1395,8 @@ int runBuildCommand(const BuildCmdOptions& opts) {
             if (emitIr) {
                 fs::create_directories(fs::path(ir).parent_path());
             }
-            // SDK 自构建：runtime base 模块需发射运行时辅助
             bool isSdkRuntime = false;
-            if (isSdkSelfBuild) {
+            if (isCoreSelfBuild) {
                 auto stem = fs::path(abs).stem().string();
                 auto it = sdkPkgMap.find(stem);
                 bool isFlatDep = (it == sdkPkgMap.end()) || it->second.isFlat;

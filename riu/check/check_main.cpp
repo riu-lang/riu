@@ -536,6 +536,15 @@ static bool loadSdkInto(Riu& sdkRiu, const string& anyFilePath) {
     return sdkRiu.sdkFile() != nullptr;
 }
 
+static void loadStdlibInto(Riu& riu) {
+    string root = sdk_loader::findSdkPackage("stdlib");
+    if (root.empty()) return;
+    auto toml = (filesystem::path(root) / "riu.toml").string();
+    if (!filesystem::is_regular_file(toml)) return;
+    auto cfg = parseRiuToml(toml);
+    if (cfg.library) sdk_loader::parseSdkLibrary(root, cfg.library->lib_mod, riu);
+}
+
 static TestFileResult checkFileWithOptionalSdk(const string& absPath, Riu* sdkRiu) {
     Riu riu;
     riu.initFileRoot(absPath);
@@ -543,7 +552,10 @@ static TestFileResult checkFileWithOptionalSdk(const string& absPath, Riu* sdkRi
     bool attached = !fullSdk && sdkRiu && sdkRiu->sdkFile();
     if (fullSdk) {
         string sdkPath = sdk_loader::findSdkPath();
-        if (!sdkPath.empty()) sdk_loader::parseSdkDir(sdkPath, riu);
+        if (!sdkPath.empty()) {
+            sdk_loader::parseSdkDir(sdkPath, riu);
+            loadStdlibInto(riu);
+        }
     } else if (attached) {
         riu.setSdkFile(sdkRiu->sdkFile());
     }

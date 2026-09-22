@@ -1,5 +1,8 @@
 name = "wln"
 version = "2.0.0"
 
+
+[dependencies]
+stdlib = { sdk = "stdlib" }
 [[executable]]
 entry="main.ut"

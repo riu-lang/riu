@@ -70,7 +70,7 @@ FileNode* Riu::createFile(const string& moduleName) {
 }
 
 FileNode* Riu::createSdkFile() {
-    // SDK 自举运行时。文件 sdk/riu/core/*.ut，模块名 "riu.core"。
+    // SDK 自举运行时。文件 sdk/core/src/riu/core/*.ut，模块名 "riu.core"。
     // 如果 _sdkFile 已存在，返回现有的，避免多个 SDK 文件互相覆盖。
     if (_sdkFile) {
         return _sdkFile;
@@ -442,7 +442,8 @@ string sourceRootOf(const string& projectRoot) {
 
 } // namespace
 
-vector<ResolvedDep> resolvePathDepGraph(const string& rootDir, const ProjectConfig& rootCfg) {
+vector<ResolvedDep> resolvePathDepGraph(const string& rootDir, const ProjectConfig& rootCfg,
+                                        SdkPackageLocator locateSdk) {
     namespace fs = std::filesystem;
     vector<ResolvedDep> out;
     std::map<string, string> nameToRoot;
@@ -450,9 +451,19 @@ vector<ResolvedDep> resolvePathDepGraph(const string& rootDir, const ProjectConf
 
     auto walk = [&](auto&& self, const string& fromRoot, const ProjectConfig& cfg) -> void {
         for (const auto& dep : cfg.dependencies) {
-            if (dep.kind != DepSourceKind::Path) continue;
-            fs::path raw(dep.path);
-            fs::path target = raw.is_absolute() ? raw : (fs::path(fromRoot) / raw);
+            if (dep.kind == DepSourceKind::Git) continue;
+            fs::path target;
+            if (dep.kind == DepSourceKind::Sdk) {
+                if (!locateSdk) continue;
+                string found = locateSdk(dep.sdk);
+                if (found.empty()) {
+                    throw RiuError(1, ErrorCode::E5001, string("sdk/") + dep.sdk);
+                }
+                target = found;
+            } else {
+                fs::path raw(dep.path);
+                target = raw.is_absolute() ? raw : (fs::path(fromRoot) / raw);
+            }
             fs::path toml = target / "riu.toml";
             if (!fs::exists(toml) || !fs::is_regular_file(toml)) {
                 throw RiuError(1, ErrorCode::E5001, target.string()).withFile(toml.string());
@@ -488,6 +499,8 @@ vector<ResolvedDep> resolvePathDepGraph(const string& rootDir, const ProjectConf
             node.projectRoot = canon;
             node.sourceRoot = sourceRootOf(canon);
             node.config = std::move(depCfg);
+            node.kind = dep.kind;
+            node.sdk = dep.sdk;
             out.push_back(std::move(node));
         }
     };
@@ -521,13 +534,13 @@ vector<LibModFile> collectLibModFiles(const string& sourceRoot, const string& li
             modName = modName.substr(0, modName.size() - 3);
             for (auto& c : modName)
                 if (c == '/' || c == '\\') c = '.';
-            files.push_back({fs::absolute(p).string(), std::move(modName)});
+            files.push_back({.absPath = fs::absolute(p).string(), .moduleName = std::move(modName)});
         }
         std::ranges::sort(files, [](const LibModFile& a, const LibModFile& b) { return a.moduleName < b.moduleName; });
         return files;
     }
     if (fs::is_regular_file(fileMod)) {
-        files.push_back({fs::absolute(fileMod).string(), libMod});
+        files.push_back({.absPath = fs::absolute(fileMod).string(), .moduleName = libMod});
     }
     return files;
 }
