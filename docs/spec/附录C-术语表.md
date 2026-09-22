@@ -118,8 +118,11 @@
 |---|---|---|---|
 | 模块 | module | §10 | 文件级编译单元 |
 | 包 | package | §10.1.3 | 目录形式的模块容器 |
-| 项目 | project | §10.1 | `riu.toml` 标记的根 |
-| 入口 | entry | §10.1.1 | `riu.toml` 的 `entry` 字段 |
+| 项目 | project | §10.1 | `riu.toml` 标记的根；身份（`name` / `version`）与产物分离 |
+| 产物 | product | §10.1.1.3 | `[library]` 或一条 `[[executable]]`；产出名可缺省为项目名 |
+| 入口 | entry | §10.1.1.4 | `[[executable]]` 的 `entry` 字段，相对源根 |
+| `lib_mod` | library module root | §10.1.1.5 | `[library]` 拥有的模块根，点分路径 |
+| `external_links` | external links | §10.1.1.6 | 产物上的系统库 / 本树库声明（`//` / `./`） |
 | 源根 | source root | §10.1.3 | `<projectRoot>/src/`，模块解析起点 |
 | `pkg` 文件 | pkg file | §10.2.4 | 包目录的再导出清单；有 `pkg` 时同时是包外可见性边界 |
 | 文件模块 | file module | §10.1.3 / §10.2.2 | 由单个 `.ut`（U Text）文件构成的模块 |

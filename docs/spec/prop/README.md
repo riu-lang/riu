@@ -40,4 +40,4 @@
 | 19 | FFI 布局：`#Packed` / 对齐 / union 展开 | 已落地 | [19-ffi-layout.md](19-ffi-layout.md) |
 | 20 | `_` 丢弃名 | 已落地 | [20-discard.md](20-discard.md) |
 | 21 | `Ptr<T=()>` / 默认类型实参 | 已落地 | [21-ptr-generic.md](21-ptr-generic.md) |
-| 22 | 项目配置（`riu.toml` 多产物） | 实施中 | [22-project-toml.md](22-project-toml.md) |
+| 22 | 项目配置（`riu.toml` 多产物） | 已落地 | [22-project-toml.md](22-project-toml.md) |

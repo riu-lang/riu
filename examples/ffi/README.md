@@ -9,4 +9,12 @@ riu build
 ./build/ffi.exe
 ```
 
-`riu.toml` 的 `external_links` 用 `./lib/ffi_demo` 指向本树导入库。最终链接仍带编译器自带的 `riurt.lib`（`riu_rc_*` 等）。
+`riu.toml` 把链接写在 `[[executable]]` 上：`path="./lib/ffi_demo"` 指向本树导入库（不写 `.lib` 后缀）。最终链接仍带编译器自带的 `riurt.lib`（`riu_rc_*` 等），以及 SDK 传来的 `//kernel32` / `//shell32`。
+
+```toml
+[[executable]]
+entry="main.ut"
+external_links=[
+    { path="./lib/ffi_demo" },
+]
+```

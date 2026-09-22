@@ -8,7 +8,7 @@ riu build
 ./build/<name>.exe
 ```
 
-`entry` 相对源根 `src/`。产物在 `build/<name>.exe`。
+`[[executable]].entry` 相对源根 `src/`。产物在 `build/<产出名>.exe`（缺省即项目 `name`）。
 
 | 目录 | 做什么 |
 |------|--------|

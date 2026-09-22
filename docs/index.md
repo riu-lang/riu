@@ -66,6 +66,8 @@ myproject/
 ```toml
 name="hello"
 version="1.0.0"
+
+[[executable]]
 entry="main.ut"
 ```
 
@@ -83,14 +85,14 @@ fn main() {
 myproject/
 ├── riu.toml
 └── src/
-    └── main.ut         ; entry 相对源根 src/
+    └── main.ut         ; [[executable]].entry 相对源根 src/
 ```
 
 编译并运行：
 
 ```powershell
 cd myproject
-riu build              ; 等价于 riu build hello（<name> 可省）
+riu build              ; 编全部产物；单 exe 缺省产出名 = 项目名时也可用 riu build hello
 ./build/hello.exe
 ```
 

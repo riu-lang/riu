@@ -335,10 +335,10 @@ for-in（E3160；§5.5.4）：
 | E5002 | `riu.toml is missing required field \`name\`` |
 | E5003 | `riu.toml field \`name\` must be a string` |
 | E5004 | `riu.toml field \`name\` must not be empty` |
-| E5005 | `riu.toml \`lib\` must be a table` |
-| E5006 | `riu.toml \`lib.type\` must be "static" or "dynamic"` |
-| E5007 | `riu.toml \`lib.type="dynamic"\` not yet supported` |
-| E5008 | `riu.toml \`[lib]\` and \`entry\` are mutually exclusive` |
+| E5005 | `riu.toml must declare \`[library]\` or \`[[executable]]\`` |
+| E5006 | `riu.toml \`[library].type\` must be "static" or "dynamic"` |
+| E5007 | `riu.toml \`[library].type="dynamic"\` not yet supported` |
+| E5008 | `riu.toml output name \`{}\` is used more than once` |
 | E5009 | `failed to parse riu.toml: {}` |
 | E5010 | `syntax errors in {}` |
 | E5011 | `circular module import: {}` |
@@ -351,8 +351,21 @@ for-in（E3160；§5.5.4）：
 | E5018 | `module \`{}\` is not exported from package \`{}\`` |
 | E5019 | `pkg \`to\` target \`{}\` does not exist` |
 | E5020 | `invalid pkg line in \`{}\`: {}` |
+| E5021 | `riu.toml no longer accepts \`{}\`; use \`[library]\`, \`[[executable]]\`, or \`external_links\`` |
+| E5022 | `riu.toml \`[library]\` must be a table` |
+| E5023 | `riu.toml \`[[executable]]\` must be an array of tables` |
+| E5024 | `riu.toml \`[library]\` is missing required field \`lib_mod\`` |
+| E5025 | `riu.toml \`[[executable]]\` is missing required field \`entry\`` |
+| E5026 | `riu.toml \`external_links\` path must start with \`//\` or \`./\`: \`{}\`` |
+| E5027 | `riu.toml \`external_links\` must not include a library suffix: \`{}\`` |
+| E5028 | `riu.toml product name \`{}\` is not allowed` |
+| E5029 | `riu.toml is missing required field \`version\`` |
+| E5030 | `riu.toml field \`version\` must be a non-empty string` |
+| E5031 | `riu.toml \`external_links\` must be an array of inline tables` |
+| E5032 | `riu.toml \`external_links\` item is missing required field \`path\`` |
+| E5033 | `riu.toml \`[library].lib_mod\` must be a non-empty dotted module path` |
 
-> E5018：有 `pkg` 时包外访问未列出项、`to` 名单不含调用方、或有 `as` 却写源名（§10.2.4.3 / §10.2.4.7）。E5019：`to` 目标不在当前项目源树或已加载依赖（含 SDK）。E5020：`name.* to` / `name.* as`、同一子模块多行、空 `to` 列表等非法行（§10.2.4.2.3）。码已分配；诊断站点随 v0.22 实现接入。
+> E5018：有 `pkg` 时包外访问未列出项、`to` 名单不含调用方、或有 `as` 却写源名（§10.2.4.3 / §10.2.4.7）。E5019：`to` 目标不在当前项目源树或已加载依赖（含 SDK）。E5020：`name.* to` / `name.* as`、同一子模块多行、空 `to` 列表等非法行（§10.2.4.2.3）。E5005–E5008 旧文案（`[lib]` / 顶层 `entry` 互斥等）作废。E5007 码已分配；`type="dynamic"` 落地后不再发出。E5021：旧顶层 `entry` / `[lib]` / `[link]`。E5028：空名、`.` / `..`、路径分隔符、或 Windows 设备名。
 
 ### D.3.6 E6xxx — 内置 / 调用
 

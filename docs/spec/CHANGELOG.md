@@ -15,6 +15,14 @@
 
 ---
 
+## 2026-09-22 —— `riu.toml` 多产物全部落地（#22）
+
+- **修改 §10.1.1 / §10.1.2.1 / §10.1.3.2 / §10.4.1.1**：顶层只留 `name` / `version`；`[library]`（最多一份，`lib_mod` + `type` static/dynamic）与 `[[executable]]`（零到多条）。链接收到产物 `external_links`（`//` 系统库 / `./` 本树，配置不写后缀；`dll` 只复制）。SDK 的链接声明传到用户 exe。`riu build` 无参先库后全部 exe；写出则按产出名命中。删除旧顶层 `entry` / `[lib]` / `[link]`。
+- **修改 §11.5.2.1**：链接库改指向 `external_links`。
+- **附录 C**：产物 / `lib_mod` / `external_links`；入口改为 `[[executable]].entry`。
+- **附录 D**：E5005–E5008 换文案；E5021–E5033。
+- **冲突 / 兼容**：破坏。迁移：exe 改 `[[executable]] entry=…`；库改 `[library] lib_mod=…`；`[link].libs` / `lib_dirs` 改产物 `external_links` 的 `//` / `./`。不双读旧字段。
+
 ## 2026-09-22 —— `Ptr<T=()>` 与默认类型实参全部落地（#21）
 
 - **修改 §3.1 / §3.2.6 / §3.3 / §3.4.1.3 / §3.4.2.6 / §3.5.5 / §3.6.1.3 / §3.10.1.4**：类型形参可 `= type`，使用点尾部补齐（E2041 / E2042 / 补不齐仍 E6011）。`Ptr<T=()>`；裸 `Ptr` ≡ `Ptr<()>`；判等按 `T`；`null` 可赋任意 `Ptr<T>`。

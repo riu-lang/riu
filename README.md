@@ -121,24 +121,32 @@ git submodule update --init scripts/ps-sync-deps
 在项目根目录（含 `riu.toml`）执行：
 
 ```powershell
-riu build                  # 等价于 riu build <toml-name>；当前每个项目仅一个目标
-riu build <name>           # 显式给出时 <name> 必须与 riu.toml 的 name 一致
-                           # 入口取 toml 的 entry，产物落在 <projectRoot>/build/<name>/<name>.exe
+riu build                  # 本项目全部产物：先 [library]（若有），再按序全部 [[executable]]
+riu build <name>           # 只编产出名为 <name> 的那条（exe 或库）
+                           # 单产物且产出名缺省为项目名时，riu build / riu build <项目名> 都能用
+                           # 产物落在 <projectRoot>/build/<产出名>.exe / .lib（动态库另有 .dll）
 ```
 
 ### riu.toml（项目配置）
 
+顶层只写项目身份；产物写在 `[library]` / `[[executable]]`。
+
 | 字段 | 说明 |
 |------|------|
-| `name` | 项目 / 可执行文件名；`riu build` 默认取它，显式 `riu build <name>` 必须与它匹配 |
-| `entry` | 入口 `.ut`，相对项目根 |
+| `name` | 项目身份。**不是**默认输出文件名 |
 | `version` | 版本号（当前仅记录） |
+| `[[executable]].entry` | 入口 `.ut`，相对源根 |
+| `[[executable]].name` | 输出文件名（无扩展名）；缺省 = 项目 `name` |
+| `[library].lib_mod` | 库拥有的模块根 |
+| `external_links` | 写在产物上：`//kernel32` 系统库，`./lib/foo` 本树文件；不写库后缀 |
 
 最小示例：
 
 ```toml
 name="test"
 version="1.0.0"
+
+[[executable]]
 entry="main.ut"
 ```
 
