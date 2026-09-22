@@ -1,3 +1,5 @@
 name="imports_deep_nesting"
 version="1.0.0"
+
+[[executable]]
 entry="main.ut"

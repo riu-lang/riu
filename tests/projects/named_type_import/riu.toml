@@ -1,3 +1,5 @@
 name = "named_type_import"
 version = "1.0.0"
-entry = "main.ut"
+
+[[executable]]
+entry="main.ut"

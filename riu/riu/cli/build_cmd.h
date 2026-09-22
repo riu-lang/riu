@@ -4,7 +4,7 @@
 // `riu build` 子命令实现
 //
 // 从 riu/riu/main.cpp 抠出 (P1 Phase 1.b.iii.b):
-// - 项目模式: 加载 riu.toml + entry, 调度 SDK / lib / exe 三条路径,
+// - 项目模式: 加载 riu.toml 产物（[library] / [[executable]]）, 调度 SDK / lib / exe,
 //   走 codegen → obj → LLD 链接 → exe / lib;
 // - 包级缓存 (PkgCacheRegistry) 控制增量编译。
 
@@ -22,7 +22,7 @@ struct BuildCmdOptions {
     std::vector<std::string> testMods; // --test-mod：可重复；只编译这些测试模块
     int threads = 0;                   // --threads：测试编译并行度（0 = CPU 核数；1 = 进程内串行）
     std::string emitIrDir;             // --emit-ir-dir (IR 输出目录, 默认 build/)
-    std::string buildNameArg;          // `riu build <name>` 可选名 (与 riu.toml.name 校验)
+    std::string buildNameArg;          // `riu build <name>` 可选产出名
 };
 
 // 运行 build 流程。

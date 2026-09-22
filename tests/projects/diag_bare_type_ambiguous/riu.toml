@@ -1,3 +1,5 @@
 name="diag_bare_type_ambiguous"
 version="1.0.0"
+
+[[executable]]
 entry="main.ut"

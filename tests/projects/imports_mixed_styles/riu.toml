@@ -1,3 +1,5 @@
 name="imports_mixed_styles"
 version="1.0.0"
+
+[[executable]]
 entry="main.ut"

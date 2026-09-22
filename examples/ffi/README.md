@@ -9,4 +9,4 @@ riu build
 ./build/ffi.exe
 ```
 
-`riu.toml` 的 `[link] lib_dirs` 指向 `lib/`。最终链接仍带编译器自带的 `riurt.lib`（`riu_rc_*` 等）。
+`riu.toml` 的 `external_links` 用 `./lib/ffi_demo` 指向本树导入库。最终链接仍带编译器自带的 `riurt.lib`（`riu_rc_*` 等）。

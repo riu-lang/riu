@@ -1,0 +1,8 @@
+name="toml_bad_prefix"
+version="1.0.0"
+
+[[executable]]
+entry="main.ut"
+external_links=[
+    { path="kernel32" },
+]

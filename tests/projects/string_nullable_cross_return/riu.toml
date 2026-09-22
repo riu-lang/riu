@@ -1,3 +1,5 @@
 name="string_nullable_cross_return"
 version="1.0.0"
+
+[[executable]]
 entry="main.ut"

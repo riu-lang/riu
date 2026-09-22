@@ -155,17 +155,19 @@ bool Project::rebuild() {
     try {
         if (_mode == Mode::Project) {
             _riu->initProjectFromDir(_rootDir);
-            const auto& entry = _riu->projectEntry();
-            if (entry.empty()) {
-                _buildError = "riu.toml missing `entry`";
-                return false;
+            const auto& exes = _riu->executables();
+            if (exes.empty()) {
+                // 纯 [library]：不要求 entry
+                _mainPath.clear();
+            } else {
+                std::string entry = exes.front().entry;
+                std::string entryPath = (fs::path(_riu->sourceRoot()) / entry).string();
+                if (!fs::exists(entryPath)) {
+                    _buildError = "entry file not found: " + entryPath;
+                    return false;
+                }
+                _mainPath = normalizePath(fs::absolute(entryPath).string());
             }
-            std::string entryPath = (fs::path(_riu->projectRoot()) / entry).string();
-            if (!fs::exists(entryPath)) {
-                _buildError = "entry file not found: " + entryPath;
-                return false;
-            }
-            _mainPath = normalizePath(fs::absolute(entryPath).string());
         } else {
             _riu->initFileRoot(_mainPath);
         }
@@ -180,8 +182,11 @@ bool Project::rebuild() {
             }
         }
 
-        std::string baseName = fs::path(_mainPath).stem().string();
-        _mainFile = _riu->loadMainFile(_mainPath, baseName);
+        std::string baseName;
+        if (!_mainPath.empty()) {
+            baseName = fs::path(_mainPath).stem().string();
+            _mainFile = _riu->loadMainFile(_mainPath, baseName);
+        }
     } catch (const std::exception& e) {
         if (_buildError.empty())
             _buildError = e.what();
@@ -191,16 +196,21 @@ bool Project::rebuild() {
     }
 
     rebuildIndex();
-    _ok = (_mainFile != nullptr);
+    _ok = (_mainFile != nullptr) || (_mode == Mode::Project && _riu->library() != nullptr);
     return _ok;
 }
 
 void Project::rebuildIndex() {
     _byPath.clear();
-    if (_mainFile) {
+    if (_mainFile && !_mainPath.empty()) {
         _byPath[_mainPath] = _mainFile;
     }
     if (!_riu) return;
+    for (FileNode* fn : _riu->files()) {
+        if (!fn || fn->sourcePath().empty()) continue;
+        std::string key = normalizePath(fn->sourcePath());
+        _byPath[key] = fn;
+    }
     for (const auto& mod : _riu->loadOrder()) {
         std::string path = _riu->modulePath(mod);
         if (path.empty()) continue;

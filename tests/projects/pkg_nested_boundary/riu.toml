@@ -1,3 +1,5 @@
 name="pkg_nested_boundary"
 version="1.0.0"
+
+[[executable]]
 entry="main.ut"

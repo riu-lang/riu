@@ -1,3 +1,5 @@
 name="ctor_i64_literal"
 version="1.0.0"
+
+[[executable]]
 entry="main.ut"

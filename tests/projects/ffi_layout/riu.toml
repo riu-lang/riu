@@ -1,7 +1,8 @@
 name = "ffi_layout"
 version = "1.0.0"
-entry = "main.ut"
 
-[link]
-libs = ["layout_demo"]
-lib_dirs = ["lib"]
+[[executable]]
+entry="main.ut"
+external_links=[
+    { path="./lib/layout_demo" },
+]

@@ -1,3 +1,5 @@
 name="diag_generic_method_bound"
 version="1.0.0"
+
+[[executable]]
 entry="main.ut"

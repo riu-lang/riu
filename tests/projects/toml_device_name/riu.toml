@@ -1,0 +1,6 @@
+name="toml_device_name"
+version="1.0.0"
+
+[[executable]]
+name="nul"
+entry="main.ut"

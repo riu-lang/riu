@@ -1,7 +1,8 @@
 name = "ffi"
 version = "1.0.0"
-entry = "main.ut"
 
-[link]
-libs = ["ffi_demo"]
-lib_dirs = ["lib"]
+[[executable]]
+entry="main.ut"
+external_links=[
+    { path="./lib/ffi_demo" },
+]

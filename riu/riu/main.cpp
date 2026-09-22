@@ -111,7 +111,8 @@ int wmain(int argc, wchar_t* argv[]) { // NOLINT(modernize-avoid-c-arrays) Windo
     auto* buildCmd = app.add_subcommand("build", "Build project (must run at project root containing riu.toml)");
     std::string buildNameArg;
     // name 可省略：当前每个 riu.toml 仅声明一个目标，省略时直接取 toml 的 name；显式给出则必须与之一致。
-    buildCmd->add_option("name", buildNameArg, "Project name (optional; must match `name` in riu.toml when given)");
+    buildCmd->add_option("name", buildNameArg,
+                         "Product name (optional; matches [[executable]] / [library] output name)");
     buildCmd->add_flag("--emit-ir", emitIr, "Emit LLVM IR to .ll file");
     buildCmd->add_option("--emit-ir-dir", emitIrDir, "Output directory for .ll files (default: build/)");
     bool testMode = false;

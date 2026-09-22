@@ -1,3 +1,5 @@
 name="generic_cross_module_return"
 version="1.0.0"
+
+[[executable]]
 entry="main.ut"

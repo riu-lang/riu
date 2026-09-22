@@ -1,3 +1,5 @@
 name="pkg_wildcard_export"
 version="1.0.0"
+
+[[executable]]
 entry="main.ut"

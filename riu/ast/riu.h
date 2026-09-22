@@ -7,6 +7,7 @@
 #include "node/file_node.h"
 
 #include <memory>
+#include <optional>
 
 class RdBuilder;
 class SpecRegistry;
@@ -37,6 +38,36 @@ struct PkgExportItem {
 // 非法行抛 E5020（§10.2.4.2.3），不再静默跳过。
 [[nodiscard]] vector<PkgExportItem> parsePkgFileAt(const string& pkgPath);
 
+// riu.toml 产物上的一条外部链接（#22）。`path` / `dll` 带 `//` 或 `./` 前缀，不含库后缀。
+struct ExternalLink {
+    string path;
+    string dll; // 空 = 不复制运行时库
+};
+
+struct Library {
+    string name; // 产出文件名（无扩展名）；解析时已把缺省补成项目名
+    string type; // "static" | "dynamic"
+    string lib_mod;
+    vector<ExternalLink> external_links;
+};
+
+struct Executable {
+    string name;
+    string entry;
+    vector<ExternalLink> external_links;
+};
+
+// 解析后的项目身份 + 产物。供 Riu 与驱动（读 SDK toml 取传递链接）共用。
+struct ProjectConfig {
+    string name;
+    string version;
+    std::optional<Library> library;
+    vector<Executable> executables;
+};
+
+// 读 `tomlPath`。缺字段 / 旧 schema / 非法前缀等抛 RiuError（E5002–E5008、E5021+）。
+[[nodiscard]] ProjectConfig parseRiuToml(const string& tomlPath);
+
 class Riu {
     // 先于 FileNode 析构：intern 指针活过 AST。
     TypeIntern _typeIntern;
@@ -59,17 +90,8 @@ class Riu {
     string _projectRoot;
     // 模块查找根目录：项目模式 = `_projectRoot/src`，文件模式 = `_projectRoot`
     string _sourceRoot;
-    // riu.toml 字段；未找到 toml 或字段缺省则为空。
-    string _projectName;
-    string _projectEntry;
-    string _projectVersion;
-    // [lib].type："static" / "dynamic"；空 = 非库项目
-    // TODO(dynamic)：当前仅 static 生效；dynamic 待项目依赖功能补齐
-    string _projectLibType;
-    // [link].libs：系统库名列表（不含 .lib 后缀），如 ["user32", "shell32"]
-    vector<string> _projectLinkLibs;
-    // [link].lib_dirs：额外库搜索路径（相对项目根或绝对）
-    vector<string> _projectLinkLibDirs;
+    // riu.toml；未走项目模式时 name 为空。
+    ProjectConfig _config;
     // parseSdkDir 写 SDK .ud 时需要 item 原文（skeleton）；无 riu.toml 的
     // riu-check 默认不拷。缺骨架的 .ud 会丢 #Spec 默认体（Eq 等）。
     bool _keepItemSourceText = false;
@@ -97,7 +119,7 @@ public:
     void adoptDeclOwner(std::unique_ptr<mod_decl::NodeOwner> owner);
     // parseSdkDir 即将写出 .ud 时打开：RdBuilder 保留 spec/泛型/全局原文。
     void setKeepItemSourceText(bool v) { _keepItemSourceText = v; }
-    [[nodiscard]] bool keepItemSourceText() const { return _keepItemSourceText || !_projectName.empty(); }
+    [[nodiscard]] bool keepItemSourceText() const { return _keepItemSourceText || !_config.name.empty(); }
 
     [[nodiscard]] FileNode* sdkFile() const { return _sdkFile; }
     // 设置外部 SDK 文件（不转移所有权）。用于批量测试中多文件共享一次 SDK 加载。
@@ -160,24 +182,19 @@ public:
     // 设 _projectRoot = _sourceRoot = 文件所在目录，用于 riu-check / LSP
     // 等工具的单文件快速检查。
     void initFileRoot(const string& mainFileAbsPath);
-    // 项目模式：`rootDir` 必须包含 `riu.toml`。解析 name/entry/version。
-    // `name` 为必填字段；未找到 riu.toml 或缺 `name` 抛 RiuError。
-    // toml11 原生 UTF-8，允许中文等非 ASCII 的项目名。
+    // 项目模式：`rootDir` 必须包含 `riu.toml`。解析身份与产物（#22）。
+    // `name` / `version` 必填；至少一份 `[library]` 或一条 `[[executable]]`。
     void initProjectFromDir(const string& rootDir);
     [[nodiscard]] const string& projectRoot() const { return _projectRoot; }
     // 模块/包源码搜索根：项目模式下为 `<projectRoot>/src`，文件模式下为主文件所在目录
     [[nodiscard]] const string& sourceRoot() const { return _sourceRoot; }
-    // 项目名：riu.toml 的 `name` 字段（必填，非空）。
+    // 项目名：riu.toml 的 `name` 字段（必填，非空）。不是默认输出文件名。
     [[nodiscard]] string projectName() const;
-    // riu.toml 的 `entry` 字段，缺省返回空串。
-    [[nodiscard]] const string& projectEntry() const { return _projectEntry; }
-    [[nodiscard]] const string& projectVersion() const { return _projectVersion; }
-    // 是否为库项目；true 时 entry 应为空
-    [[nodiscard]] bool isLibProject() const { return !_projectLibType.empty(); }
-    [[nodiscard]] const string& projectLibType() const { return _projectLibType; }
-    // [link].libs：项目级系统库名列表
-    [[nodiscard]] const vector<string>& projectLinkLibs() const { return _projectLinkLibs; }
-    [[nodiscard]] const vector<string>& projectLinkLibDirs() const { return _projectLinkLibDirs; }
+    [[nodiscard]] const string& projectVersion() const { return _config.version; }
+    [[nodiscard]] const ProjectConfig& projectConfig() const { return _config; }
+    [[nodiscard]] const Library* library() const { return _config.library ? &*_config.library : nullptr; }
+    [[nodiscard]] const vector<Executable>& executables() const { return _config.executables; }
+    [[nodiscard]] bool isLibProject() const { return _config.library.has_value(); }
 
     // 已成功加载的用户模块名列表（按首次加载顺序）。
     [[nodiscard]] const vector<string>& loadOrder() const { return _loadOrder; }
@@ -192,7 +209,7 @@ private:
     // 底层解析 + RdBuilder。内部用。
     FileNode* _parseFile(const string& absPath, const string& moduleName, int errorLine);
 
-    // 项目模式（有 riu.toml / _projectName）才读写 `.ud`；riu-check 单文件不写。
+    // 项目模式（有 riu.toml / 项目名）才读写 `.ud`；riu-check 单文件不写。
     [[nodiscard]] bool declCacheEnabled() const;
     [[nodiscard]] string declPathFor(const string& srcAbs) const;
     void writeDeclIfPossible(FileNode* file, const string& srcAbs);

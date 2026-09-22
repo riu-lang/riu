@@ -70,20 +70,95 @@ static std::string testDllFileStem(const std::string& testMod) {
     return dllFileName;
 }
 
-// [link] lib_dirs + libs → lld-link。storage 必须在 lldMain 返回前存活。
-static void appendProjectLinkArgs(Riu& riu, std::vector<std::string>& storage, std::vector<const char*>& args) {
+// 产物 / SDK 的 external_links → lld-link。storage 必须在 lldMain 返回前存活。
+static void appendExternalLinkArgs(const std::vector<ExternalLink>& links, const std::string& projectRoot,
+                                   std::vector<std::string>& storage, std::vector<const char*>& args) {
     namespace fs = std::filesystem;
-    for (auto& d : riu.projectLinkLibDirs()) {
-        fs::path p(d);
-        if (!p.is_absolute()) p = fs::path(riu.projectRoot()) / p;
-        storage.push_back("/libpath:" + p.lexically_normal().string());
+    const size_t begin = storage.size();
+    for (const auto& l : links) {
+        if (l.path.starts_with("//")) {
+            storage.push_back(l.path.substr(2) + ".lib");
+        } else {
+            fs::path stem = fs::path(projectRoot) / l.path.substr(2);
+            fs::path lib = stem;
+            lib += ".lib";
+            storage.push_back(lib.lexically_normal().string());
+        }
     }
-    for (auto& lib : riu.projectLinkLibs()) {
-        storage.push_back(lib + ".lib");
+    for (size_t i = begin; i < storage.size(); ++i) {
+        args.push_back(storage[i].c_str());
     }
-    for (auto& s : storage) {
-        args.push_back(s.c_str());
+}
+
+static int copyRuntimeDlls(const std::vector<ExternalLink>& links, const std::string& projectRoot,
+                           const std::filesystem::path& outDir) {
+    namespace fs = std::filesystem;
+    for (const auto& l : links) {
+        if (l.dll.empty() || l.dll.starts_with("//")) continue;
+        fs::path stem = fs::path(projectRoot) / l.dll.substr(2);
+        fs::path src = stem;
+        src += ".dll";
+        std::error_code ec;
+        if (!fs::exists(src, ec)) {
+            std::cerr << "Error: runtime dll not found: " << src.string() << '\n';
+            return 1;
+        }
+        fs::path dest = outDir / (stem.filename().string() + ".dll");
+        if (fs::exists(dest, ec) && fs::equivalent(src, dest, ec)) continue;
+        fs::copy_file(src, dest, fs::copy_options::overwrite_existing, ec);
+        if (ec) {
+            std::cerr << "Error: failed to copy " << src.string() << " -> " << dest.string() << ": " << ec.message()
+                      << '\n';
+            return 1;
+        }
     }
+    return 0;
+}
+
+static std::vector<ExternalLink> loadSdkLibraryLinks(const std::string& sdkPath) {
+    namespace fs = std::filesystem;
+    if (sdkPath.empty()) return {};
+    fs::path sdkRoot = fs::path(sdkPath).parent_path().parent_path().parent_path();
+    fs::path toml = sdkRoot / "riu.toml";
+    if (!fs::exists(toml)) return {};
+    try {
+        auto cfg = parseRiuToml(toml.string());
+        if (cfg.library) return cfg.library->external_links;
+    } catch (const std::exception&) {
+        return {};
+    }
+    return {};
+}
+
+static bool checkEntryPath(Riu& riu, const std::string& entry, std::string& inputFile) {
+    namespace fs = std::filesystem;
+    string tomlPath = (fs::path(riu.projectRoot()) / "riu.toml").string();
+    try {
+        fs::path entryPath(entry);
+        if (entryPath.is_absolute()) {
+            throw RiuError(1, ErrorCode::E5013, entry);
+        }
+        inputFile = (fs::path(riu.sourceRoot()) / entry).string();
+        if (!fs::exists(inputFile)) {
+            std::cerr << "Error: entry file not found: " << inputFile << '\n';
+            return false;
+        }
+        inputFile = fs::absolute(inputFile).string();
+        std::error_code _cec;
+        auto canonEntry = fs::canonical(inputFile, _cec);
+        auto canonRoot = fs::canonical(riu.sourceRoot(), _cec);
+        if (!_cec) {
+            auto rel = fs::relative(canonEntry, canonRoot, _cec);
+            bool escapes = _cec || rel.empty() || rel.native().starts_with(L"..") || rel.string().starts_with("..");
+            if (escapes) {
+                DiagnosticEngine::emit(tomlPath, RiuError(1, ErrorCode::E5014, entry));
+            }
+        }
+    } catch (runtime_error& e) {
+        reportRuntimeError(tomlPath, e);
+        return false;
+    }
+    return true;
 }
 
 // DLL 是否仍新于 test obj + 全部非 test obj + sdk/riurt（保守：任一用户模块变了就 relink）
@@ -125,7 +200,8 @@ static bool matchesTestModFilter(const std::string& mod, const std::vector<std::
 static int buildTestDlls(Riu& riu, const std::filesystem::path& srcDir, const std::string& buildDir,
                          const std::string& irDir, bool emitIr, const std::string& sdkLibPath,
                          const std::string& riurtLibPath, const std::vector<std::string>& testModFilters,
-                         const std::map<std::string, std::string>& allObjMap, int threads) {
+                         const std::map<std::string, std::string>& allObjMap, int threads,
+                         const std::vector<ExternalLink>& extraLinks) {
     namespace fs = std::filesystem;
 
     // 构建 test 专用产物目录
@@ -427,14 +503,13 @@ static int buildTestDlls(Riu& riu, const std::filesystem::path& srcDir, const st
             if (needLink) {
                 std::string dllOut = "/out:" + testDllPath;
                 // DLL 模式：/dll，无需 /entry /subsystem /kernel32.lib
-                std::vector<const char*> linkArgs = {"lld-link", dllOut.c_str(), "/dll",
-                                                     "/noentry", "kernel32.lib", "shell32.lib"};
+                std::vector<const char*> linkArgs = {"lld-link", dllOut.c_str(), "/dll", "/noentry"};
                 for (auto& o : linkObjs)
                     linkArgs.insert(linkArgs.begin() + 1, o.c_str());
                 // riurt 运行时库
                 if (!riurtLibPath.empty()) linkArgs.push_back(riurtLibPath.c_str());
                 std::vector<std::string> projLibArgs;
-                appendProjectLinkArgs(riu, projLibArgs, linkArgs);
+                appendExternalLinkArgs(extraLinks, riu.projectRoot(), projLibArgs, linkArgs);
 
                 std::string outStr, errStr;
                 llvm::raw_string_ostream oOS(outStr), eOS(errStr);
@@ -444,6 +519,10 @@ static int buildTestDlls(Riu& riu, const std::filesystem::path& srcDir, const st
                 if (r.retCode) {
                     std::cerr << "Error: test dll link failed for " << testMod << "\n" << errStr;
                     markAsFailed("link failed: " + errStr);
+                    continue;
+                }
+                if (copyRuntimeDlls(extraLinks, riu.projectRoot(), fs::path(testsDir)) != 0) {
+                    markAsFailed("copy runtime dll failed");
                     continue;
                 }
             }
@@ -479,56 +558,48 @@ int runBuildCommand(const BuildCmdOptions& opts) {
     string projectBuildDir;
     string buildDir;
     std::string inputFile;
+    bool buildLib = false;
+    std::vector<const Executable*> exesToBuild;
 
     {
         string cwd = std::filesystem::current_path().string();
+        string tomlPath = (std::filesystem::path(cwd) / "riu.toml").string();
         try {
             riu.initProjectFromDir(cwd);
         } catch (runtime_error& e) {
-            std::cerr << e.what() << '\n';
+            reportRuntimeError(tomlPath, e);
             return 1;
         }
-        if (!buildNameArg.empty() && riu.projectName() != buildNameArg) {
-            std::cerr << "Error: build target `" << buildNameArg << "` does not match riu.toml name `"
-                      << riu.projectName() << "`" << '\n';
+
+        if (!buildNameArg.empty()) {
+            bool found = false;
+            if (riu.library() && riu.library()->name == buildNameArg) {
+                buildLib = true;
+                found = true;
+            }
+            for (const auto& e : riu.executables()) {
+                if (e.name == buildNameArg) {
+                    exesToBuild.push_back(&e);
+                    found = true;
+                }
+            }
+            if (!found) {
+                std::cerr << "Error: unknown build target `" << buildNameArg << "`\n";
+                return 1;
+            }
+        } else {
+            buildLib = riu.library() != nullptr;
+            for (const auto& e : riu.executables())
+                exesToBuild.push_back(&e);
+        }
+
+        if (exesToBuild.size() == 1) {
+            if (!checkEntryPath(riu, exesToBuild[0]->entry, inputFile)) return 1;
+        } else if (exesToBuild.empty() && !buildLib) {
+            std::cerr << "Error: riu.toml is missing `[library]` or `[[executable]]`\n";
             return 1;
         }
-        if (!riu.isLibProject()) {
-            if (riu.projectEntry().empty()) {
-                std::cerr << "Error: riu.toml is missing `entry`" << '\n';
-                return 1;
-            }
-            // spec §10：entry 必须是 src/ 下的相对路径
-            // E5013：绝对路径 → 直接 error；E5014：解析后逃出 sourceRoot → warning
-            string tomlPath = (std::filesystem::path(riu.projectRoot()) / "riu.toml").string();
-            try {
-                std::filesystem::path entryPath(riu.projectEntry());
-                if (entryPath.is_absolute()) {
-                    throw RiuError(1, ErrorCode::E5013, riu.projectEntry());
-                }
-                inputFile = (std::filesystem::path(riu.sourceRoot()) / riu.projectEntry()).string();
-                if (!std::filesystem::exists(inputFile)) {
-                    std::cerr << "Error: entry file not found: " << inputFile << '\n';
-                    return 1;
-                }
-                inputFile = std::filesystem::absolute(inputFile).string();
-                // 校验 canonical 解析后仍在 sourceRoot/ 子树
-                std::error_code _cec;
-                auto canonEntry = std::filesystem::canonical(inputFile, _cec);
-                auto canonRoot = std::filesystem::canonical(riu.sourceRoot(), _cec);
-                if (!_cec) {
-                    auto rel = std::filesystem::relative(canonEntry, canonRoot, _cec);
-                    bool escapes =
-                        _cec || rel.empty() || rel.native().starts_with(L"..") || rel.string().starts_with("..");
-                    if (escapes) {
-                        DiagnosticEngine::emit(tomlPath, RiuError(1, ErrorCode::E5014, riu.projectEntry()));
-                    }
-                }
-            } catch (runtime_error& e) {
-                reportRuntimeError(tomlPath, e);
-                return 1;
-            }
-        }
+
         projectName = riu.projectName();
         buildDir = getBuildDir(riu.projectRoot());
         projectBuildDir = buildDir;
@@ -625,6 +696,20 @@ int runBuildCommand(const BuildCmdOptions& opts) {
 
     bool compiled = false;
 
+    std::vector<ExternalLink> sdkLinks =
+        isSdkSelfBuild ? (riu.library() ? riu.library()->external_links : std::vector<ExternalLink>{})
+                       : loadSdkLibraryLinks(sdkPath);
+    std::vector<ExternalLink> testLinks;
+    if (riu.library()) {
+        testLinks.insert(testLinks.end(), riu.library()->external_links.begin(), riu.library()->external_links.end());
+    }
+    for (const auto& e : riu.executables()) {
+        testLinks.insert(testLinks.end(), e.external_links.begin(), e.external_links.end());
+    }
+    if (!isSdkSelfBuild) {
+        testLinks.insert(testLinks.end(), sdkLinks.begin(), sdkLinks.end());
+    }
+
     auto codegenTo = [&](FileNode* file, const std::string& moduleName, const std::string& objOut,
                          const std::string& irOut, bool isSdk = false) -> bool {
         std::cout << "Compile IR... (module: " << moduleName << ")" << '\n';
@@ -661,36 +746,55 @@ int runBuildCommand(const BuildCmdOptions& opts) {
         return true;
     };
 
-    // ====== lib 模式：递归扫描 src/ + 静态库 ======
-    if (riu.isLibProject()) {
+    // ====== lib 模式：按 `[library].lib_mod` 扫源 + 静态库 ======
+    if (buildLib) {
         namespace fs = std::filesystem;
         fs::path srcDir(riu.sourceRoot());
         if (!fs::is_directory(srcDir)) {
             std::cerr << "Error: lib project missing `src/` directory at " << srcDir.string() << '\n';
             return 1;
         }
-        // 递归扫 src/ 下 .ut；模块名 = src 下相对路径，点分（不加项目名前缀）
         vector<std::pair<std::string, std::string>> libFiles; // {abs, modName}
-        std::error_code walkEc;
-        for (auto it = fs::recursive_directory_iterator(srcDir, walkEc); it != fs::recursive_directory_iterator();
-             ++it) {
-            if (walkEc) break;
-            if (!it->is_regular_file()) continue;
-            auto& p = it->path();
-            if (p.extension() != ".ut") continue;
-            // 跳过 *.test.ut —— 测试文件仅由 `riu test` 子命令处理（spec §11.3.3.2）
-            {
-                auto fname = p.filename().string();
-                if (fname.ends_with(".test.ut")) {
-                    continue;
-                }
+        fs::path scanDir = srcDir;
+        bool doScan = true;
+        if (const Library* lib = riu.library()) {
+            string rel = lib->lib_mod;
+            for (char& c : rel)
+                if (c == '.') c = '/';
+            fs::path pkgDir = srcDir / rel;
+            fs::path fileMod = pkgDir;
+            fileMod += ".ut";
+            if (fs::is_directory(pkgDir)) {
+                scanDir = pkgDir;
+            } else if (fs::is_regular_file(fileMod)) {
+                libFiles.emplace_back(fs::absolute(fileMod).string(), lib->lib_mod);
+                doScan = false;
+            } else {
+                std::cerr << "Error: `[library].lib_mod` not found: " << lib->lib_mod << '\n';
+                return 1;
             }
-            auto rel = fs::relative(p, srcDir);
-            string modName = rel.generic_string();
-            modName = modName.substr(0, modName.size() - 3); // strip .ut
-            for (auto& c : modName)
-                if (c == '/' || c == '\\') c = '.';
-            libFiles.emplace_back(fs::absolute(p).string(), modName);
+        }
+        std::error_code walkEc;
+        if (doScan) {
+            for (auto it = fs::recursive_directory_iterator(scanDir, walkEc); it != fs::recursive_directory_iterator();
+                 ++it) {
+                if (walkEc) break;
+                if (!it->is_regular_file()) continue;
+                auto& p = it->path();
+                if (p.extension() != ".ut") continue;
+                {
+                    auto fname = p.filename().string();
+                    if (fname.ends_with(".test.ut")) {
+                        continue;
+                    }
+                }
+                auto rel = fs::relative(p, srcDir);
+                string modName = rel.generic_string();
+                modName = modName.substr(0, modName.size() - 3); // strip .ut
+                for (auto& c : modName)
+                    if (c == '/' || c == '\\') c = '.';
+                libFiles.emplace_back(fs::absolute(p).string(), modName);
+            }
         }
         std::ranges::sort(libFiles);
 
@@ -769,7 +873,8 @@ int runBuildCommand(const BuildCmdOptions& opts) {
         }
 
         // 链接为静态库
-        string libPath = projectBuildDir + "/" + projectName + ".lib";
+        string libStem = riu.library() ? riu.library()->name : projectName;
+        string libPath = projectBuildDir + "/" + libStem + ".lib";
         bool needLib = !fs::exists(libPath);
         if (!needLib) {
             try {
@@ -813,15 +918,17 @@ int runBuildCommand(const BuildCmdOptions& opts) {
                 allObjMap[mn] = obj;
             }
             int testFails = buildTestDlls(riu, srcDir, buildDir, irDir, emitIr, sdkLibPath, riurtLibPath, opts.testMods,
-                                          allObjMap, opts.threads);
+                                          allObjMap, opts.threads, testLinks);
             std::cout.flush();
             std::cerr.flush();
             _exit(testFails > 0 ? 1 : 0);
         }
 
-        std::cout.flush();
-        std::cerr.flush();
-        _exit(0);
+        if (exesToBuild.empty()) {
+            std::cout.flush();
+            std::cerr.flush();
+            _exit(0);
+        }
     }
 
     // ====== exe 模式 test：全量扫描 src/ → 编译非 test 模块 → test DLL ======
@@ -928,7 +1035,7 @@ int runBuildCommand(const BuildCmdOptions& opts) {
             allObjMap[mn] = obj;
         }
         int testFails = buildTestDlls(riu, srcDir, buildDir, irDir, emitIr, sdkLibPath, riurtLibPath, opts.testMods,
-                                      allObjMap, opts.threads);
+                                      allObjMap, opts.threads, testLinks);
 
         std::cout.flush();
         std::cerr.flush();
@@ -936,6 +1043,13 @@ int runBuildCommand(const BuildCmdOptions& opts) {
     }
 
     // ====== exe 模式：原流程 ======
+    if (exesToBuild.empty()) {
+        std::cerr << "Error: no executable to build\n";
+        return 1;
+    }
+    const Executable* exe = exesToBuild[0];
+    if (inputFile.empty() && !checkEntryPath(riu, exe->entry, inputFile)) return 1;
+
     std::string baseName = llvm::sys::path::stem(inputFile).str();
     std::string objPath =
         mirroredOutputBase(riu.projectRoot(), buildDir, std::filesystem::absolute(inputFile).string()) + ".obj";
@@ -1005,8 +1119,8 @@ int runBuildCommand(const BuildCmdOptions& opts) {
         return 1;
     }
 
-    // exe 使用 riu.toml 的 name
-    std::string exeStem = projectName;
+    // 产出名取 `[[executable]].name`（缺省已补成项目名）
+    std::string exeStem = exe->name;
     std::string exePath = projectBuildDir + "/" + exeStem + ".exe";
 
     bool needLink = !std::filesystem::exists(exePath);
@@ -1033,8 +1147,8 @@ int runBuildCommand(const BuildCmdOptions& opts) {
     if (needLink) {
         auto exeOut = "/out:" + exePath;
 
-        std::vector<const char*> args = {"lld-link",           objPath.c_str(), exeOut.c_str(), "/subsystem:console",
-                                         "/entry:mainStartup", "kernel32.lib",  "shell32.lib"};
+        std::vector<const char*> args = {"lld-link", objPath.c_str(), exeOut.c_str(), "/subsystem:console",
+                                         "/entry:mainStartup"};
 
         if (!sdkLibPath.empty()) {
             args.insert(args.begin() + 2, sdkLibPath.c_str());
@@ -1042,10 +1156,13 @@ int runBuildCommand(const BuildCmdOptions& opts) {
         for (auto& mo : modObjPaths) {
             args.insert(args.begin() + 2, mo.c_str());
         }
-        // riurt 运行时库
         if (!riurtLibPath.empty()) args.push_back(riurtLibPath.c_str());
+        std::vector<ExternalLink> exeLinks = exe->external_links;
+        if (!isSdkSelfBuild) {
+            exeLinks.insert(exeLinks.end(), sdkLinks.begin(), sdkLinks.end());
+        }
         std::vector<std::string> projLibArgs;
-        appendProjectLinkArgs(riu, projLibArgs, args);
+        appendExternalLinkArgs(exeLinks, riu.projectRoot(), projLibArgs, args);
 
         std::string stdoutStr, stderrStr;
         llvm::raw_string_ostream stdoutOS(stdoutStr), stderrOS(stderrStr);
@@ -1059,6 +1176,16 @@ int runBuildCommand(const BuildCmdOptions& opts) {
             return 1;
         }
         compiled = true;
+    }
+
+    {
+        std::vector<ExternalLink> exeLinks = exe->external_links;
+        if (!isSdkSelfBuild) {
+            exeLinks.insert(exeLinks.end(), sdkLinks.begin(), sdkLinks.end());
+        }
+        if (copyRuntimeDlls(exeLinks, riu.projectRoot(), std::filesystem::path(projectBuildDir)) != 0) {
+            return 1;
+        }
     }
 
     if (!compiled) {

@@ -1,3 +1,5 @@
 name="pkg_to_generic"
 version="1.0.0"
+
+[[executable]]
 entry="main.ut"

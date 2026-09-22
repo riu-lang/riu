@@ -1,3 +1,5 @@
 name="pkg_named_unexported"
 version="1.0.0"
+
+[[executable]]
 entry="main.ut"

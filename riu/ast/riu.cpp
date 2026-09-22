@@ -9,6 +9,7 @@
 #include <iterator>
 #include <map>
 #include <optional>
+#include <unordered_set>
 
 #include <toml.hpp>
 
@@ -79,6 +80,229 @@ FileNode* Riu::createSdkFile() {
     return _sdkFile;
 }
 
+namespace {
+
+string asciiLower(string s) {
+    for (char& c : s) {
+        if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+    }
+    return s;
+}
+
+bool isReservedDeviceName(const string& name) {
+    string stem = name;
+    auto dot = stem.find('.');
+    if (dot != string::npos) stem = stem.substr(0, dot);
+    string l = asciiLower(stem);
+    static const std::unordered_set<string> kNames = {
+        "con",  "prn",  "aux",  "nul",  "com1", "com2", "com3", "com4", "com5", "com6", "com7",
+        "com8", "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
+    };
+    return kNames.contains(l);
+}
+
+bool productNameHasPathSep(const string& name) {
+    return name.find('/') != string::npos || name.find('\\') != string::npos;
+}
+
+void validateProductName(const string& name) {
+    if (name.empty() || name == "." || name == ".." || productNameHasPathSep(name) || isReservedDeviceName(name)) {
+        throw RiuError(1, ErrorCode::E5028, name);
+    }
+}
+
+bool hasForbiddenLibSuffix(const string& spec) {
+    auto slash = spec.find_last_of("/\\");
+    string file = slash == string::npos ? spec : spec.substr(slash + 1);
+    string lower = asciiLower(file);
+    return lower.ends_with(".lib") || lower.ends_with(".dll") || lower.ends_with(".so") || lower.ends_with(".a") ||
+           lower.ends_with(".dylib");
+}
+
+bool isDottedModulePath(const string& s) {
+    if (s.empty()) return false;
+    size_t i = 0;
+    while (i <= s.size()) {
+        auto j = s.find('.', i);
+        string part = s.substr(i, j == string::npos ? string::npos : j - i);
+        if (part.empty()) return false;
+        if (j == string::npos) break;
+        i = j + 1;
+    }
+    return true;
+}
+
+void validateLinkSpec(const string& spec) {
+    if (!spec.starts_with("//") && !spec.starts_with("./")) {
+        throw RiuError(1, ErrorCode::E5026, spec);
+    }
+    string rest = spec.substr(2);
+    if (rest.empty()) {
+        throw RiuError(1, ErrorCode::E5026, spec);
+    }
+    if (hasForbiddenLibSuffix(spec)) {
+        throw RiuError(1, ErrorCode::E5027, spec);
+    }
+}
+
+vector<ExternalLink> parseExternalLinks(const toml::value& parent) {
+    vector<ExternalLink> out;
+    if (!parent.contains("external_links")) return out;
+    const auto& v = parent.at("external_links");
+    if (!v.is_array()) {
+        throw RiuError(1, ErrorCode::E5031);
+    }
+    for (const auto& item : v.as_array()) {
+        if (!item.is_table()) {
+            throw RiuError(1, ErrorCode::E5031);
+        }
+        if (!item.contains("path") || !item.at("path").is_string()) {
+            throw RiuError(1, ErrorCode::E5032);
+        }
+        ExternalLink link;
+        link.path = item.at("path").as_string();
+        validateLinkSpec(link.path);
+        if (item.contains("dll")) {
+            if (!item.at("dll").is_string()) {
+                throw RiuError(1, ErrorCode::E5032);
+            }
+            link.dll = item.at("dll").as_string();
+            validateLinkSpec(link.dll);
+        }
+        out.push_back(std::move(link));
+    }
+    return out;
+}
+
+string requireStringField(const toml::value& data, const char* key, const ErrorCodeDef& missing,
+                          const ErrorCodeDef& notString, const ErrorCodeDef& empty) {
+    if (!data.contains(key)) {
+        throw RiuError(1, missing);
+    }
+    if (!data.at(key).is_string()) {
+        throw RiuError(1, notString);
+    }
+    string v = data.at(key).as_string();
+    if (v.empty()) {
+        throw RiuError(1, empty);
+    }
+    return v;
+}
+
+} // namespace
+
+ProjectConfig parseRiuToml(const string& tomlPath) {
+    try {
+        auto data = toml::parse(tomlPath);
+        ProjectConfig cfg;
+        cfg.name = requireStringField(data, "name", ErrorCode::E5002, ErrorCode::E5003, ErrorCode::E5004);
+        checkDiscardDeclName(cfg.name, "package", 1, 1);
+        cfg.version = requireStringField(data, "version", ErrorCode::E5029, ErrorCode::E5030, ErrorCode::E5030);
+
+        if (data.contains("entry")) {
+            throw RiuError(1, ErrorCode::E5021, string("entry"));
+        }
+        if (data.contains("lib")) {
+            throw RiuError(1, ErrorCode::E5021, string("[lib]"));
+        }
+        if (data.contains("link")) {
+            throw RiuError(1, ErrorCode::E5021, string("[link]"));
+        }
+
+        if (data.contains("library")) {
+            const auto& lib = data.at("library");
+            if (!lib.is_table()) {
+                throw RiuError(1, ErrorCode::E5022);
+            }
+            Library L;
+            if (lib.contains("name")) {
+                if (!lib.at("name").is_string() || lib.at("name").as_string().empty()) {
+                    throw RiuError(1, ErrorCode::E5028, string());
+                }
+                L.name = lib.at("name").as_string();
+            }
+            if (lib.contains("type")) {
+                if (!lib.at("type").is_string()) {
+                    throw RiuError(1, ErrorCode::E5006);
+                }
+                L.type = lib.at("type").as_string();
+            } else {
+                L.type = "static";
+            }
+            if (L.type != "static" && L.type != "dynamic") {
+                throw RiuError(1, ErrorCode::E5006);
+            }
+            if (L.type == "dynamic") {
+                throw RiuError(1, ErrorCode::E5007);
+            }
+            if (!lib.contains("lib_mod") || !lib.at("lib_mod").is_string()) {
+                throw RiuError(1, ErrorCode::E5024);
+            }
+            L.lib_mod = lib.at("lib_mod").as_string();
+            if (!isDottedModulePath(L.lib_mod)) {
+                throw RiuError(1, ErrorCode::E5033);
+            }
+            L.external_links = parseExternalLinks(lib);
+            cfg.library = std::move(L);
+        }
+
+        if (data.contains("executable")) {
+            const auto& exeVal = data.at("executable");
+            if (!exeVal.is_array()) {
+                throw RiuError(1, ErrorCode::E5023);
+            }
+            for (const auto& item : exeVal.as_array()) {
+                if (!item.is_table()) {
+                    throw RiuError(1, ErrorCode::E5023);
+                }
+                Executable E;
+                if (item.contains("name")) {
+                    if (!item.at("name").is_string() || item.at("name").as_string().empty()) {
+                        throw RiuError(1, ErrorCode::E5028, string());
+                    }
+                    E.name = item.at("name").as_string();
+                }
+                if (!item.contains("entry") || !item.at("entry").is_string() || item.at("entry").as_string().empty()) {
+                    throw RiuError(1, ErrorCode::E5025);
+                }
+                E.entry = item.at("entry").as_string();
+                E.external_links = parseExternalLinks(item);
+                cfg.executables.push_back(std::move(E));
+            }
+        }
+
+        if (!cfg.library && cfg.executables.empty()) {
+            throw RiuError(1, ErrorCode::E5005);
+        }
+
+        if (cfg.library && cfg.library->name.empty()) {
+            cfg.library->name = cfg.name;
+        }
+        for (auto& e : cfg.executables) {
+            if (e.name.empty()) e.name = cfg.name;
+        }
+
+        vector<string> names;
+        if (cfg.library) names.push_back(cfg.library->name);
+        for (const auto& e : cfg.executables)
+            names.push_back(e.name);
+
+        std::unordered_set<string> seenLower;
+        for (const auto& n : names) {
+            validateProductName(n);
+            string key = asciiLower(n);
+            if (!seenLower.insert(key).second) {
+                throw RiuError(1, ErrorCode::E5008, n);
+            }
+        }
+        return cfg;
+    } catch (const RiuError&) {
+        throw;
+    } catch (const std::exception& e) {
+        throw RiuError(1, ErrorCode::E5009, e.what());
+    }
+}
+
 void Riu::initFileRoot(const string& mainFileAbsPath) {
     _projectRoot = std::filesystem::path(mainFileAbsPath).parent_path().string();
     _sourceRoot = _projectRoot;
@@ -92,84 +316,13 @@ void Riu::initProjectFromDir(const string& rootDir) {
         throw RiuError(1, ErrorCode::E5001, rootDir);
     }
     _projectRoot = root.string();
-    // 项目模式下，模块/包根路径是 `<projectRoot>/src`
     fs::path srcDir = root / "src";
     _sourceRoot = fs::is_directory(srcDir) ? srcDir.string() : _projectRoot;
-    try {
-        auto data = toml::parse(tomlPath.string());
-        // name 是必填字段：缺失或空串都视为配置错误。
-        // toml11 原生 UTF-8，`name="中文"` 能正确读入。
-        if (!data.contains("name")) {
-            throw RiuError(1, ErrorCode::E5002);
-        }
-        if (!data.at("name").is_string()) {
-            throw RiuError(1, ErrorCode::E5003);
-        }
-        _projectName = data.at("name").as_string();
-        if (_projectName.empty()) {
-            throw RiuError(1, ErrorCode::E5004);
-        }
-        checkDiscardDeclName(_projectName, "package", 1, 1);
-        if (data.contains("entry") && data.at("entry").is_string()) {
-            _projectEntry = data.at("entry").as_string();
-        }
-        if (data.contains("version") && data.at("version").is_string()) {
-            _projectVersion = data.at("version").as_string();
-        }
-        // [lib] 表：type = "static" | "dynamic"
-        if (data.contains("lib")) {
-            const auto& lib = data.at("lib");
-            if (!lib.is_table()) {
-                throw RiuError(1, ErrorCode::E5005);
-            }
-            if (lib.contains("type") && lib.at("type").is_string()) {
-                _projectLibType = lib.at("type").as_string();
-            } else {
-                _projectLibType = "static";
-            }
-            if (_projectLibType != "static" && _projectLibType != "dynamic") {
-                throw RiuError(1, ErrorCode::E5006);
-            }
-            // TODO(dynamic): 暂只实现 static；dynamic 待项目依赖功能完善后做
-            if (_projectLibType == "dynamic") {
-                throw RiuError(1, ErrorCode::E5007);
-            }
-        }
-        // [link] 表：libs = ["user32", "shell32", ...]
-        if (data.contains("link")) {
-            const auto& link = data.at("link");
-            if (!link.is_table()) {
-                throw RiuError(1, ErrorCode::E5005);
-            }
-            if (link.contains("libs") && link.at("libs").is_array()) {
-                for (const auto& lib : link.at("libs").as_array()) {
-                    if (lib.is_string()) {
-                        _projectLinkLibs.push_back(lib.as_string());
-                    }
-                }
-            }
-            if (link.contains("lib_dirs") && link.at("lib_dirs").is_array()) {
-                for (const auto& d : link.at("lib_dirs").as_array()) {
-                    if (d.is_string()) {
-                        _projectLinkLibDirs.push_back(d.as_string());
-                    }
-                }
-            }
-        }
-
-        // lib 与 entry 互斥
-        if (!_projectLibType.empty() && !_projectEntry.empty()) {
-            throw RiuError(1, ErrorCode::E5008);
-        }
-    } catch (const RiuError&) {
-        throw;
-    } catch (const std::exception& e) {
-        throw RiuError(1, ErrorCode::E5009, e.what());
-    }
+    _config = parseRiuToml(tomlPath.string());
 }
 
 string Riu::projectName() const {
-    return _projectName;
+    return _config.name;
 }
 
 FileNode* Riu::module(const string& moduleName) const {
@@ -208,7 +361,7 @@ FileNode* Riu::_parseFile(const string& absPath, const string& moduleName, int e
 }
 
 bool Riu::declCacheEnabled() const {
-    return !_projectName.empty();
+    return !_config.name.empty();
 }
 
 string Riu::declPathFor(const string& srcAbs) const {

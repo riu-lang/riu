@@ -1,3 +1,5 @@
 name = "cli_cat"
 version = "1.0.0"
-entry = "main.ut"
+
+[[executable]]
+entry="main.ut"

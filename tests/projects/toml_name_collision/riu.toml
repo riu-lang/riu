@@ -1,0 +1,10 @@
+name="toml_name_collision"
+version="1.0.0"
+
+[[executable]]
+name="tool"
+entry="a.ut"
+
+[[executable]]
+name="tool"
+entry="b.ut"

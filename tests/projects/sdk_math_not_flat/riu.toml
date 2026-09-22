@@ -1,3 +1,5 @@
 name="sdk_math_not_flat"
 version="1.0.0"
+
+[[executable]]
 entry="main.ut"

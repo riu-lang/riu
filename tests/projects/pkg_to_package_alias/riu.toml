@@ -1,3 +1,5 @@
 name="pkg_to_package_alias"
 version="1.0.0"
+
+[[executable]]
 entry="main.ut"

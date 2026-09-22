@@ -1,3 +1,5 @@
 name="sdk_helper_private"
 version="1.0.0"
+
+[[executable]]
 entry="main.ut"

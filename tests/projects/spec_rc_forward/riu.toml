@@ -1,3 +1,5 @@
 name="spec_rc_forward"
 version="1.0.0"
+
+[[executable]]
 entry="main.ut"

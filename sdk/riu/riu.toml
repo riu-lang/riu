@@ -1,5 +1,10 @@
 name="riu"
 version="1.0.0"
 
-[lib]
+[library]
 type="static"
+lib_mod="riu"
+external_links=[
+    { path="//kernel32" },
+    { path="//shell32" },
+]
