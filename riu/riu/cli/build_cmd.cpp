@@ -1,9 +1,14 @@
 // Copyright (c) 2026. Yin-Jinlong@github
 // MPL-2.0
 
+// windows.h 必须先于 riu 头 (`types.h` 经由 `using namespace std`) include,
+// 否则 std::byte 与 winapi byte 冲突。NOGDI 跳 wingdi.h 的 ERROR 宏。
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOGDI
 #include <windows.h>
-
 #undef ERROR
+#endif
 
 #include "build_cmd.h"
 
@@ -20,10 +25,11 @@
 #include "types.h"
 
 #include <lld/Common/Driver.h>
-#include <llvm/IR/GlobalValue.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
+#include <llvm/Object/ObjectFile.h>
+#include <llvm/Support/Error.h>
 #include <llvm/Support/Path.h>
 #include <llvm/Support/raw_ostream.h>
 
@@ -187,29 +193,60 @@ static bool isTestDllFresh(const std::string& dllPath, const std::string& testOb
     }
 }
 
-// lld-link 拒绝 /EXPORT 名里的 `(` / `,` 等（riu mangle 带形参表），只标合法标识符。
-static bool isValidCoffExportName(llvm::StringRef name) {
-    if (name.empty() || name.starts_with("llvm.")) return false;
-    for (unsigned char c : name) {
-        bool ok = (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_' || c == '.' ||
-                  c == '$' || c == '?';
-        if (!ok) return false;
+// 从本库 obj 收集已定义全局符号，写成带引号的 .def。
+// 不走 .drectve /EXPORT：lld parseExport 按 `,` 切选项，会把 mangle 里的 `(i32,i32)` 拆坏。
+// .def 词法把 `"..."` 当完整 identifier，逗号保留；写出 PE 导出表仍是原样 C 字符串。
+static bool writeDynLibDefFile(const std::string& defPath, const std::string& libStem,
+                               const std::vector<std::string>& objs) {
+    std::map<std::string, bool> exports; // name → isFunction
+    for (const auto& objPath : objs) {
+        auto binOrErr = llvm::object::ObjectFile::createObjectFile(objPath);
+        if (!binOrErr) {
+            std::cerr << "Error: failed to read " << objPath << ": " << llvm::toString(binOrErr.takeError()) << '\n';
+            return false;
+        }
+        llvm::object::ObjectFile* obj = binOrErr->getBinary();
+        for (const auto& sym : obj->symbols()) {
+            auto flagsOr = sym.getFlags();
+            if (!flagsOr) {
+                llvm::consumeError(flagsOr.takeError());
+                continue;
+            }
+            uint32_t flags = *flagsOr;
+            if (flags & llvm::object::SymbolRef::SF_Undefined) continue;
+            if (flags & llvm::object::SymbolRef::SF_FormatSpecific) continue;
+            if (!(flags & llvm::object::SymbolRef::SF_Global)) continue;
+            auto nameOr = sym.getName();
+            if (!nameOr) {
+                llvm::consumeError(nameOr.takeError());
+                continue;
+            }
+            llvm::StringRef name = *nameOr;
+            if (name.empty() || name.starts_with("llvm.") || name.starts_with(".") || name.contains('"')) continue;
+            bool isFn = false;
+            auto typeOr = sym.getType();
+            if (typeOr)
+                isFn = *typeOr == llvm::object::SymbolRef::ST_Function;
+            else
+                llvm::consumeError(typeOr.takeError());
+            auto [it, inserted] = exports.emplace(std::string(name), isFn);
+            if (!inserted) it->second = it->second || isFn;
+        }
     }
-    return true;
-}
 
-// 动态库：已定义的 External 且名字可作 COFF 导出的符号标 dllexport。
-static void markDefinedSymbolsDllExport(llvm::Module* mod) {
-    for (auto& f : *mod) {
-        if (f.isDeclaration() || !f.hasExternalLinkage()) continue;
-        if (!isValidCoffExportName(f.getName())) continue;
-        f.setDLLStorageClass(llvm::GlobalValue::DLLExportStorageClass);
+    std::ofstream out(defPath);
+    if (!out) {
+        std::cerr << "Error: cannot write " << defPath << '\n';
+        return false;
     }
-    for (auto& g : mod->globals()) {
-        if (g.isDeclaration() || !g.hasExternalLinkage()) continue;
-        if (!isValidCoffExportName(g.getName())) continue;
-        g.setDLLStorageClass(llvm::GlobalValue::DLLExportStorageClass);
+    out << "LIBRARY " << libStem << "\nEXPORTS\n";
+    for (const auto& [name, isFn] : exports) {
+        out << "    \"" << name << '"';
+        if (!isFn) out << " DATA";
+        out << '\n';
     }
+    out.flush();
+    return static_cast<bool>(out);
 }
 
 static bool matchesTestModFilter(const std::string& mod, const std::vector<std::string>& filters) {
@@ -741,7 +778,7 @@ int runBuildCommand(const BuildCmdOptions& opts) {
     }
 
     auto codegenTo = [&](FileNode* file, const std::string& moduleName, const std::string& objOut,
-                         const std::string& irOut, bool isSdk = false, bool dllExport = false) -> bool {
+                         const std::string& irOut, bool isSdk = false) -> bool {
         std::cout << "Compile IR... (module: " << moduleName << ")" << '\n';
         auto ctx = std::make_unique<llvm::LLVMContext>();
         auto mod = std::make_unique<llvm::Module>(moduleName, *ctx);
@@ -749,7 +786,6 @@ int runBuildCommand(const BuildCmdOptions& opts) {
         try {
             Compiler compiler(*ctx, builder, mod.get(), file, &riu, isSdk);
             compiler.compile(file);
-            if (dllExport) markDefinedSymbolsDllExport(mod.get());
         } catch (runtime_error& e) {
             // 通过模块名查回源文件路径（Riu::modulePath 维护映射）
             string srcPath = riu.modulePath(moduleName);
@@ -886,11 +922,10 @@ int runBuildCommand(const BuildCmdOptions& opts) {
                 isSdkRuntime = isFlatDep && (stem == "base");
             }
 
-            const bool dllExport = riu.library() && riu.library()->type == "dynamic";
             if (!libCaches.isFresh(abs, obj)) {
                 file = riu.ensureFullAst(abs, mn);
                 if (!file) continue;
-                if (!codegenTo(file, mn, obj, ir, isSdkRuntime, dllExport)) {
+                if (!codegenTo(file, mn, obj, ir, isSdkRuntime)) {
                     anyCodegenError = true;
                     continue; // 跳过 cache 更新与 obj 收集；继续下一个模块
                 }
@@ -936,9 +971,13 @@ int runBuildCommand(const BuildCmdOptions& opts) {
             llvm::raw_string_ostream oOS(outStr), eOS(errStr);
             lld::DriverDef dd = {.f = lld::WinLink, .d = &lld::coff::link};
             if (isDynLib) {
+                string defPath = joinUnder(projectBuildDir, libStem, ".def");
+                if (!writeDynLibDefFile(defPath, libStem, libObjs)) return 1;
+                string defArg = "/def:" + defPath;
                 string outArg = "/out:" + dllPath;
                 string implibArg = "/implib:" + libPath;
-                vector<const char*> args = {"lld-link", "/dll", "/noentry", outArg.c_str(), implibArg.c_str()};
+                vector<const char*> args = {"lld-link",        "/dll",        "/noentry", outArg.c_str(),
+                                            implibArg.c_str(), defArg.c_str()};
                 for (auto& o : libObjs)
                     args.push_back(o.c_str());
                 if (!isSdkSelfBuild && !sdkLibPath.empty()) args.push_back(sdkLibPath.c_str());
