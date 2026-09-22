@@ -4,19 +4,21 @@
 ; Instant 走 QueryPerformanceCounter，与墙上时钟无关、不因校时回跳。
 ; sleep 走 Sleep；零或负时长立即返回。tick_ms() 仍在 riu.core。
 
+use riu.platform.windows.types
+
 extern {
   #CName("QueryPerformanceCounter")
   fn _QueryPerformanceCounter(lpPerformanceCount Ptr) i32
   #CName("QueryPerformanceFrequency")
   fn _QueryPerformanceFrequency(lpFrequency Ptr) i32
   #CName("GetSystemTimePreciseAsFileTime")
-  fn _GetSystemTimePreciseAsFileTime(lpTime Ptr)
+  fn _GetSystemTimePreciseAsFileTime(lpTime Ptr<types.FILETIME>)
   #CName("FileTimeToSystemTime")
   fn _FileTimeToSystemTime(lpFileTime Ptr, lpSystemTime Ptr) i32
   #CName("SystemTimeToFileTime")
   fn _SystemTimeToFileTime(lpSystemTime Ptr, lpFileTime Ptr) i32
   #CName("FileTimeToLocalFileTime")
-  fn _FileTimeToLocalFileTime(lpFileTime Ptr, lpLocalFileTime Ptr) i32
+  fn _FileTimeToLocalFileTime(lpFileTime Ptr<types.FILETIME>, lpLocalFileTime Ptr<types.FILETIME>) i32
   #CName("Sleep")
   fn _Sleep(dwMilliseconds u32)
 }
@@ -100,7 +102,7 @@ fn _offset_text(min i32) String {
 fn _utc_offset_min(utc_ft u64) i32 {
   #Mut let utc_copy u64 = utc_ft
   #Mut let local_ft u64 = 0
-  if _FileTimeToLocalFileTime(&utc_copy, &local_ft) == 0 {
+  if _FileTimeToLocalFileTime(ptr_cast:<u64, types.FILETIME>(ptr_of(&utc_copy)), ptr_cast:<u64, types.FILETIME>(ptr_of(&local_ft))) == 0 {
     ret 0
   }
   let step u64 = _HNS_PER_MIN.to_u64()
@@ -395,7 +397,7 @@ struct SystemTime {
   #Static
   fn now() SystemTime {
     #Mut let ft u64 = 0
-    _GetSystemTimePreciseAsFileTime(&ft);
+    _GetSystemTimePreciseAsFileTime(ptr_cast:<u64, types.FILETIME>(ptr_of(&ft)));
     SystemTime { ft }
   }
 
@@ -574,7 +576,7 @@ fn _datetime_from_ft(ft u64, offset_min i32, as_utc bool) DateTime {
   if !as_utc {
     #Mut let utc_copy u64 = ft
     #Mut let local_ft u64 = 0
-    if _FileTimeToLocalFileTime(&utc_copy, &local_ft) != 0 {
+    if _FileTimeToLocalFileTime(ptr_cast:<u64, types.FILETIME>(ptr_of(&utc_copy)), ptr_cast:<u64, types.FILETIME>(ptr_of(&local_ft))) != 0 {
       use_ft = local_ft
     }
   }

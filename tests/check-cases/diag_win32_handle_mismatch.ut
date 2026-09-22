@@ -1,0 +1,10 @@
+; require-sdk-modules
+; #21 切片 5：HANDLE 幽灵别名 ≢ 裸 Ptr
+use riu.platform.windows.types.*
+
+fn main() {
+  #Mut let h HANDLE = null
+  #Mut let p Ptr = null
+  h = p  ; check: E3014
+  ret;
+}

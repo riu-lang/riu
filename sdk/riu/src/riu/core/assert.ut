@@ -12,7 +12,7 @@
 ; `kernel32.RaiseException` 点链对无返回/#NoReturn extern 会 E3091；这里重复声明。
 extern {
   #NoReturn
-  fn RaiseException(dwExceptionCode u32, dwExceptionFlags u32, nNumberOfArguments u32, lpArguments Ptr)
+  fn RaiseException(dwExceptionCode u32, dwExceptionFlags u32, nNumberOfArguments u32, lpArguments Ptr<u64>)
 }
 
 #Builtin

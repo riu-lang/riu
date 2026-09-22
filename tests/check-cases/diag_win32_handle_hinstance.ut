@@ -1,0 +1,10 @@
+; require-sdk-modules
+; #21 切片 5：HANDLE ≢ HINSTANCE（typedef 链不共用）
+use riu.platform.windows.types.*
+
+fn main() {
+  #Mut let h HANDLE = null
+  #Mut let m HINSTANCE = null
+  h = m  ; check: E3014
+  ret;
+}

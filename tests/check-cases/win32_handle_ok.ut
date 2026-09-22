@@ -1,0 +1,18 @@
+; require-sdk-modules
+; #21 切片 5：HANDLE 与 LPCWSTR / LPDWORD 身份不同；同链别名共用幽灵
+use riu.platform.windows.types.*
+
+fn take_handle(h HANDLE) {}
+fn take_mod(m HMODULE) {}
+
+fn main() {
+  #Mut let h HANDLE = null
+  #Mut let loc HLOCAL = h
+  take_handle(loc)
+  #Mut let inst HINSTANCE = null
+  #Mut let mod HMODULE = inst
+  take_mod(mod)
+  #Mut let w LPCWSTR = null
+  #Mut let dw LPDWORD = null
+  ret;
+}

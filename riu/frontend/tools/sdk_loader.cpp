@@ -17,6 +17,7 @@
 #include "ast/node/file_node.h"
 #include "ast/node/node.h"
 #include "ast/riu.h"
+#include "sema/name_resolver.h"
 
 #include <algorithm>
 #include <filesystem>
@@ -235,6 +236,23 @@ void parseSdkDir(const std::string& sdkDir, Riu& riu, bool allowDecl,
     }
 
     registerSdkModulePaths(riu, pkgMap);
+
+    // .ud 只记下 UseSpec，不跑 RdBuilder 的通配展开。`FileInputStream._handle HANDLE`
+    // 在消费方（未 `use types.*`）要按声明模块的通配把别名收成 `Ptr<_HANDLE>`。
+    for (auto* f : riu.files()) {
+        if (!f) continue;
+        for (auto& u : f->useSpecs()) {
+            if (!u.wildcard) continue;
+            if (auto* imp = riu.module(u.moduleName); imp && imp != f) {
+                f->addWildcardImport(imp);
+            }
+        }
+    }
+    FileNode* sdkFile = riu.sdkFile();
+    for (auto* f : riu.files()) {
+        if (!f || f == sdkFile) continue;
+        sema::recacheDeclFieldAliases(f, sdkFile);
+    }
 }
 
 } // namespace sdk_loader

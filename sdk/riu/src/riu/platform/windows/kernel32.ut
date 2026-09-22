@@ -3,405 +3,405 @@
 use riu.platform.windows.types.*
 
 extern {
-  fn GetStdHandle(nStdHandle u32) Ptr
-  fn WriteFile(hFile Ptr, lpBuffer Ptr, nNumberOfBytesToWrite u32, lpNumberOfBytesWritten Ptr, lpOverlapped Ptr) i32
-  fn ReadFile(hFile Ptr, lpBuffer Ptr, nNumberOfBytesToRead u32, lpNumberOfBytesRead Ptr, lpOverlapped Ptr) i32
-  fn CreateFileW(lpFileName Ptr, dwDesiredAccess u32, dwShareMode u32, lpSecurityAttributes Ptr, dwCreationDisposition u32, dwFlagsAndAttributes u32, hTemplateFile Ptr) Ptr
-  fn CloseHandle(hObject Ptr) i32
-  fn FlushFileBuffers(hFile Ptr) i32
+  fn GetStdHandle(nStdHandle u32) HANDLE
+  fn WriteFile(hFile HANDLE, lpBuffer Ptr, nNumberOfBytesToWrite u32, lpNumberOfBytesWritten Ptr<u32>, lpOverlapped Ptr<OVERLAPPED>) i32
+  fn ReadFile(hFile HANDLE, lpBuffer Ptr, nNumberOfBytesToRead u32, lpNumberOfBytesRead Ptr<u32>, lpOverlapped Ptr<OVERLAPPED>) i32
+  fn CreateFileW(lpFileName Ptr<u16>, dwDesiredAccess u32, dwShareMode u32, lpSecurityAttributes Ptr<SECURITY_ATTRIBUTES>, dwCreationDisposition u32, dwFlagsAndAttributes u32, hTemplateFile HANDLE) HANDLE
+  fn CloseHandle(hObject HANDLE) i32
+  fn FlushFileBuffers(hFile HANDLE) i32
   fn GetLastError() u32
-  fn SetFilePointer(hFile Ptr, lDistanceToMove i32, lpDistanceToMoveHigh Ptr, dwMoveMethod u32) u32
-  fn GetFileAttributesW(lpFileName Ptr) u32
-  fn GetFileAttributesExW(lpFileName Ptr, fInfoLevelId i32, lpFileInformation Ptr) i32
-  fn DeleteFileW(lpFileName Ptr) i32
-  fn RemoveDirectoryW(lpPathName Ptr) i32
-  fn CreateDirectoryW(lpPathName Ptr, lpSecurityAttributes Ptr) i32
-  fn GetCurrentDirectoryW(nBufferLength u32, lpBuffer Ptr) u32
-  fn SetCurrentDirectoryW(lpPathName Ptr) i32
-  fn GetEnvironmentVariableW(lpName Ptr, lpBuffer Ptr, nSize u32) u32
-  fn SetEnvironmentVariableW(lpName Ptr, lpValue Ptr) i32
-  fn FindFirstFileW(lpFileName Ptr, lpFindFileData Ptr) Ptr
-  fn FindNextFileW(hFindFile Ptr, lpFindFileData Ptr) i32
-  fn FindClose(hFindFile Ptr) i32
-  fn SetFileAttributesW(lpFileName Ptr, dwFileAttributes u32) i32
-  fn GetFullPathNameW(lpFileName Ptr, nBufferLength u32, lpBuffer Ptr, lpFilePart Ptr) u32
-  fn CreateHardLinkW(lpFileName Ptr, lpExistingFileName Ptr, lpSecurityAttributes Ptr) i32
-  fn CreateSymbolicLinkW(lpSymlinkFileName Ptr, lpTargetFileName Ptr, dwFlags u32) u8
-  fn DeviceIoControl(hDevice Ptr, dwIoControlCode u32, lpInBuffer Ptr, nInBufferSize u32, lpOutBuffer Ptr, nOutBufferSize u32, lpBytesReturned Ptr, lpOverlapped Ptr) i32
-  fn FormatMessageW(dwFlags u32, lpSource Ptr, dwMessageId u32, dwLanguageId u32, lpBuffer Ptr, nSize u32, Arguments Ptr) u32
-  fn CopyFileW(lpExistingFileName Ptr, lpNewFileName Ptr, bFailIfExists i32) i32
-  fn MoveFileW(lpExistingFileName Ptr, lpNewFileName Ptr) i32
-  fn GetTempPathW(nBufferLength u32, lpBuffer Ptr) u32
+  fn SetFilePointer(hFile HANDLE, lDistanceToMove i32, lpDistanceToMoveHigh Ptr<i32>, dwMoveMethod u32) u32
+  fn GetFileAttributesW(lpFileName Ptr<u16>) u32
+  fn GetFileAttributesExW(lpFileName Ptr<u16>, fInfoLevelId i32, lpFileInformation Ptr) i32
+  fn DeleteFileW(lpFileName Ptr<u16>) i32
+  fn RemoveDirectoryW(lpPathName Ptr<u16>) i32
+  fn CreateDirectoryW(lpPathName Ptr<u16>, lpSecurityAttributes Ptr<SECURITY_ATTRIBUTES>) i32
+  fn GetCurrentDirectoryW(nBufferLength u32, lpBuffer Ptr<u16>) u32
+  fn SetCurrentDirectoryW(lpPathName Ptr<u16>) i32
+  fn GetEnvironmentVariableW(lpName Ptr<u16>, lpBuffer Ptr<u16>, nSize u32) u32
+  fn SetEnvironmentVariableW(lpName Ptr<u16>, lpValue Ptr<u16>) i32
+  fn FindFirstFileW(lpFileName Ptr<u16>, lpFindFileData Ptr<WIN32_FIND_DATAW>) HANDLE
+  fn FindNextFileW(hFindFile HANDLE, lpFindFileData Ptr<WIN32_FIND_DATAW>) i32
+  fn FindClose(hFindFile HANDLE) i32
+  fn SetFileAttributesW(lpFileName Ptr<u16>, dwFileAttributes u32) i32
+  fn GetFullPathNameW(lpFileName Ptr<u16>, nBufferLength u32, lpBuffer Ptr<u16>, lpFilePart Ptr<Ptr<u16>>) u32
+  fn CreateHardLinkW(lpFileName Ptr<u16>, lpExistingFileName Ptr<u16>, lpSecurityAttributes Ptr<SECURITY_ATTRIBUTES>) i32
+  fn CreateSymbolicLinkW(lpSymlinkFileName Ptr<u16>, lpTargetFileName Ptr<u16>, dwFlags u32) u8
+  fn DeviceIoControl(hDevice HANDLE, dwIoControlCode u32, lpInBuffer Ptr, nInBufferSize u32, lpOutBuffer Ptr, nOutBufferSize u32, lpBytesReturned Ptr<u32>, lpOverlapped Ptr<OVERLAPPED>) i32
+  fn FormatMessageW(dwFlags u32, lpSource Ptr, dwMessageId u32, dwLanguageId u32, lpBuffer Ptr<u16>, nSize u32, Arguments Ptr<Ptr<i8>>) u32
+  fn CopyFileW(lpExistingFileName Ptr<u16>, lpNewFileName Ptr<u16>, bFailIfExists i32) i32
+  fn MoveFileW(lpExistingFileName Ptr<u16>, lpNewFileName Ptr<u16>) i32
+  fn GetTempPathW(nBufferLength u32, lpBuffer Ptr<u16>) u32
   #NoReturn
   fn ExitProcess(uExitCode u32)
-  fn GetCommandLineW() Ptr
-  fn CommandLineToArgvW(lpCmdLine Ptr, pNumArgs Ptr) Ptr
-  fn LocalFree(hMem Ptr) Ptr
+  fn GetCommandLineW() Ptr<u16>
+  fn CommandLineToArgvW(lpCmdLine Ptr<u16>, pNumArgs Ptr<i32>) Ptr<Ptr<u16>>
+  fn LocalFree(hMem HANDLE) HANDLE
   fn GetTickCount() u32
   #NoReturn
-  fn RaiseException(dwExceptionCode u32, dwExceptionFlags u32, nNumberOfArguments u32, lpArguments Ptr)
+  fn RaiseException(dwExceptionCode u32, dwExceptionFlags u32, nNumberOfArguments u32, lpArguments Ptr<u64>)
   fn AcquireSRWLockExclusive(SRWLock Ptr)
   fn AcquireSRWLockShared(SRWLock Ptr)
-  fn AddDllDirectory(NewDirectory Ptr) Ptr
+  fn AddDllDirectory(NewDirectory Ptr<u16>) Ptr
   fn AddVectoredContinueHandler(First u32, Handler Ptr) Ptr
   fn AddVectoredExceptionHandler(First u32, Handler Ptr) Ptr
-  fn AllocateUserPhysicalPages(hProcess Ptr, NumberOfPages Ptr, PageArray Ptr) i32
-  fn AllocateUserPhysicalPagesNuma(hProcess Ptr, NumberOfPages Ptr, PageArray Ptr, nndPreferred u32) i32
+  fn AllocateUserPhysicalPages(hProcess HANDLE, NumberOfPages Ptr<u64>, PageArray Ptr<u64>) i32
+  fn AllocateUserPhysicalPagesNuma(hProcess HANDLE, NumberOfPages Ptr<u64>, PageArray Ptr<u64>, nndPreferred u32) i32
   fn AreFileApisANSI() i32
-  fn AreShortNamesEnabled(Handle Ptr, Enabled Ptr) i32
-  fn CallNamedPipeW(lpNamedPipeName Ptr, lpInBuffer Ptr, nInBufferSize u32, lpOutBuffer Ptr, nOutBufferSize u32, lpBytesRead Ptr, nTimeOut u32) i32
-  fn CancelIo(hFile Ptr) i32
-  fn CancelIoEx(hFile Ptr, lpOverlapped Ptr) i32
-  fn CancelSynchronousIo(hThread Ptr) i32
-  fn CancelWaitableTimer(hTimer Ptr) i32
-  fn CompareFileTime(lpFileTime1 Ptr, lpFileTime2 Ptr) i32
-  fn ConnectNamedPipe(hNamedPipe Ptr, lpOverlapped Ptr) i32
-  fn CreateEventExW(lpEventAttributes Ptr, lpName Ptr, dwFlags u32, dwDesiredAccess u32) Ptr
-  fn CreateEventW(lpEventAttributes Ptr, bManualReset i32, bInitialState i32, lpName Ptr) Ptr
-  fn CreateFile2(lpFileName Ptr, dwDesiredAccess u32, dwShareMode u32, dwCreationDisposition u32, pCreateExParams Ptr) Ptr
-  fn CreateFileMappingFromApp(hFile Ptr, SecurityAttributes Ptr, PageProtection u32, MaximumSize u64, Name Ptr) Ptr
-  fn CreateFileMappingNumaW(hFile Ptr, lpFileMappingAttributes Ptr, flProtect u32, dwMaximumSizeHigh u32, dwMaximumSizeLow u32, lpName Ptr, nndPreferred u32) Ptr
-  fn CreateFileMappingW(hFile Ptr, lpFileMappingAttributes Ptr, flProtect u32, dwMaximumSizeHigh u32, dwMaximumSizeLow u32, lpName Ptr) Ptr
-  fn CreateIoCompletionPort(FileHandle Ptr, ExistingCompletionPort Ptr, CompletionKey u64, NumberOfConcurrentThreads u32) Ptr
-  fn CreateMemoryResourceNotification(NotificationType i32) Ptr
-  fn CreateMutexExW(lpMutexAttributes Ptr, lpName Ptr, dwFlags u32, dwDesiredAccess u32) Ptr
-  fn CreateMutexW(lpMutexAttributes Ptr, bInitialOwner i32, lpName Ptr) Ptr
-  fn CreateNamedPipeW(lpName Ptr, dwOpenMode u32, dwPipeMode u32, nMaxInstances u32, nOutBufferSize u32, nInBufferSize u32, nDefaultTimeOut u32, lpSecurityAttributes Ptr) Ptr
-  fn CreatePipe(hReadPipe Ptr, hWritePipe Ptr, lpPipeAttributes Ptr, nSize u32) i32
-  fn CreateProcessAsUserW(hToken Ptr, lpApplicationName Ptr, lpCommandLine Ptr, lpProcessAttributes Ptr, lpThreadAttributes Ptr, bInheritHandles i32, dwCreationFlags u32, lpEnvironment Ptr, lpCurrentDirectory Ptr, lpStartupInfo Ptr, lpProcessInformation Ptr) i32
-  fn CreateProcessW(lpApplicationName Ptr, lpCommandLine Ptr, lpProcessAttributes Ptr, lpThreadAttributes Ptr, bInheritHandles i32, dwCreationFlags u32, lpEnvironment Ptr, lpCurrentDirectory Ptr, lpStartupInfo Ptr, lpProcessInformation Ptr) i32
-  fn CreateRemoteThread(hProcess Ptr, lpThreadAttributes Ptr, dwStackSize u64, lpStartAddress Ptr, lpParameter Ptr, dwCreationFlags u32, lpThreadId Ptr) Ptr
-  fn CreateRemoteThreadEx(hProcess Ptr, lpThreadAttributes Ptr, dwStackSize u64, lpStartAddress Ptr, lpParameter Ptr, dwCreationFlags u32, lpAttributeList Ptr, lpThreadId Ptr) Ptr
-  fn CreateSemaphoreExW(lpSemaphoreAttributes Ptr, lInitialCount i32, lMaximumCount i32, lpName Ptr, dwFlags u32, dwDesiredAccess u32) Ptr
-  fn CreateSemaphoreW(lpSemaphoreAttributes Ptr, lInitialCount i32, lMaximumCount i32, lpName Ptr) Ptr
-  fn CreateThread(lpThreadAttributes Ptr, dwStackSize u64, lpStartAddress Ptr, lpParameter Ptr, dwCreationFlags u32, lpThreadId Ptr) Ptr
-  fn CreateWaitableTimerExW(lpTimerAttributes Ptr, lpTimerName Ptr, dwFlags u32, dwDesiredAccess u32) Ptr
-  fn CreateWaitableTimerW(lpTimerAttributes Ptr, bManualReset i32, lpTimerName Ptr) Ptr
-  fn DefineDosDeviceW(dwFlags u32, lpDeviceName Ptr, lpTargetPath Ptr) i32
+  fn AreShortNamesEnabled(Handle HANDLE, Enabled Ptr<i32>) i32
+  fn CallNamedPipeW(lpNamedPipeName Ptr<u16>, lpInBuffer Ptr, nInBufferSize u32, lpOutBuffer Ptr, nOutBufferSize u32, lpBytesRead Ptr<u32>, nTimeOut u32) i32
+  fn CancelIo(hFile HANDLE) i32
+  fn CancelIoEx(hFile HANDLE, lpOverlapped Ptr<OVERLAPPED>) i32
+  fn CancelSynchronousIo(hThread HANDLE) i32
+  fn CancelWaitableTimer(hTimer HANDLE) i32
+  fn CompareFileTime(lpFileTime1 Ptr<FILETIME>, lpFileTime2 Ptr<FILETIME>) i32
+  fn ConnectNamedPipe(hNamedPipe HANDLE, lpOverlapped Ptr<OVERLAPPED>) i32
+  fn CreateEventExW(lpEventAttributes Ptr<SECURITY_ATTRIBUTES>, lpName Ptr<u16>, dwFlags u32, dwDesiredAccess u32) HANDLE
+  fn CreateEventW(lpEventAttributes Ptr<SECURITY_ATTRIBUTES>, bManualReset i32, bInitialState i32, lpName Ptr<u16>) HANDLE
+  fn CreateFile2(lpFileName Ptr<u16>, dwDesiredAccess u32, dwShareMode u32, dwCreationDisposition u32, pCreateExParams Ptr<CREATEFILE2_EXTENDED_PARAMETERS>) HANDLE
+  fn CreateFileMappingFromApp(hFile HANDLE, SecurityAttributes Ptr<SECURITY_ATTRIBUTES>, PageProtection u32, MaximumSize u64, Name Ptr<u16>) HANDLE
+  fn CreateFileMappingNumaW(hFile HANDLE, lpFileMappingAttributes Ptr<SECURITY_ATTRIBUTES>, flProtect u32, dwMaximumSizeHigh u32, dwMaximumSizeLow u32, lpName Ptr<u16>, nndPreferred u32) HANDLE
+  fn CreateFileMappingW(hFile HANDLE, lpFileMappingAttributes Ptr<SECURITY_ATTRIBUTES>, flProtect u32, dwMaximumSizeHigh u32, dwMaximumSizeLow u32, lpName Ptr<u16>) HANDLE
+  fn CreateIoCompletionPort(FileHandle HANDLE, ExistingCompletionPort HANDLE, CompletionKey u64, NumberOfConcurrentThreads u32) HANDLE
+  fn CreateMemoryResourceNotification(NotificationType i32) HANDLE
+  fn CreateMutexExW(lpMutexAttributes Ptr<SECURITY_ATTRIBUTES>, lpName Ptr<u16>, dwFlags u32, dwDesiredAccess u32) HANDLE
+  fn CreateMutexW(lpMutexAttributes Ptr<SECURITY_ATTRIBUTES>, bInitialOwner i32, lpName Ptr<u16>) HANDLE
+  fn CreateNamedPipeW(lpName Ptr<u16>, dwOpenMode u32, dwPipeMode u32, nMaxInstances u32, nOutBufferSize u32, nInBufferSize u32, nDefaultTimeOut u32, lpSecurityAttributes Ptr<SECURITY_ATTRIBUTES>) HANDLE
+  fn CreatePipe(hReadPipe Ptr<HANDLE>, hWritePipe Ptr<HANDLE>, lpPipeAttributes Ptr<SECURITY_ATTRIBUTES>, nSize u32) i32
+  fn CreateProcessAsUserW(hToken HANDLE, lpApplicationName Ptr<u16>, lpCommandLine Ptr<u16>, lpProcessAttributes Ptr<SECURITY_ATTRIBUTES>, lpThreadAttributes Ptr<SECURITY_ATTRIBUTES>, bInheritHandles i32, dwCreationFlags u32, lpEnvironment Ptr, lpCurrentDirectory Ptr<u16>, lpStartupInfo Ptr<STARTUPINFOW>, lpProcessInformation Ptr<PROCESS_INFORMATION>) i32
+  fn CreateProcessW(lpApplicationName Ptr<u16>, lpCommandLine Ptr<u16>, lpProcessAttributes Ptr<SECURITY_ATTRIBUTES>, lpThreadAttributes Ptr<SECURITY_ATTRIBUTES>, bInheritHandles i32, dwCreationFlags u32, lpEnvironment Ptr, lpCurrentDirectory Ptr<u16>, lpStartupInfo Ptr<STARTUPINFOW>, lpProcessInformation Ptr<PROCESS_INFORMATION>) i32
+  fn CreateRemoteThread(hProcess HANDLE, lpThreadAttributes Ptr<SECURITY_ATTRIBUTES>, dwStackSize u64, lpStartAddress Ptr, lpParameter Ptr, dwCreationFlags u32, lpThreadId Ptr<u32>) HANDLE
+  fn CreateRemoteThreadEx(hProcess HANDLE, lpThreadAttributes Ptr<SECURITY_ATTRIBUTES>, dwStackSize u64, lpStartAddress Ptr, lpParameter Ptr, dwCreationFlags u32, lpAttributeList Ptr, lpThreadId Ptr<u32>) HANDLE
+  fn CreateSemaphoreExW(lpSemaphoreAttributes Ptr<SECURITY_ATTRIBUTES>, lInitialCount i32, lMaximumCount i32, lpName Ptr<u16>, dwFlags u32, dwDesiredAccess u32) HANDLE
+  fn CreateSemaphoreW(lpSemaphoreAttributes Ptr<SECURITY_ATTRIBUTES>, lInitialCount i32, lMaximumCount i32, lpName Ptr<u16>) HANDLE
+  fn CreateThread(lpThreadAttributes Ptr<SECURITY_ATTRIBUTES>, dwStackSize u64, lpStartAddress Ptr, lpParameter Ptr, dwCreationFlags u32, lpThreadId Ptr<u32>) HANDLE
+  fn CreateWaitableTimerExW(lpTimerAttributes Ptr<SECURITY_ATTRIBUTES>, lpTimerName Ptr<u16>, dwFlags u32, dwDesiredAccess u32) HANDLE
+  fn CreateWaitableTimerW(lpTimerAttributes Ptr<SECURITY_ATTRIBUTES>, bManualReset i32, lpTimerName Ptr<u16>) HANDLE
+  fn DefineDosDeviceW(dwFlags u32, lpDeviceName Ptr<u16>, lpTargetPath Ptr<u16>) i32
   fn DeleteCriticalSection(lpCriticalSection Ptr)
   fn DeleteProcThreadAttributeList(lpAttributeList Ptr)
   fn DeleteSynchronizationBarrier(lpBarrier Ptr) i32
-  fn DeleteVolumeMountPointW(lpszVolumeMountPoint Ptr) i32
-  fn DisableThreadLibraryCalls(hLibModule Ptr) i32
+  fn DeleteVolumeMountPointW(lpszVolumeMountPoint Ptr<u16>) i32
+  fn DisableThreadLibraryCalls(hLibModule HMODULE) i32
   fn DiscardVirtualMemory(VirtualAddress Ptr, Size u64) u32
-  fn DisconnectNamedPipe(hNamedPipe Ptr) i32
-  fn DnsHostnameToComputerNameExW(Hostname Ptr, ComputerName Ptr, nSize Ptr) i32
-  fn DuplicateHandle(hSourceProcessHandle Ptr, hSourceHandle Ptr, hTargetProcessHandle Ptr, lpTargetHandle Ptr, dwDesiredAccess u32, bInheritHandle i32, dwOptions u32) i32
+  fn DisconnectNamedPipe(hNamedPipe HANDLE) i32
+  fn DnsHostnameToComputerNameExW(Hostname Ptr<u16>, ComputerName Ptr<u16>, nSize Ptr<u32>) i32
+  fn DuplicateHandle(hSourceProcessHandle HANDLE, hSourceHandle HANDLE, hTargetProcessHandle HANDLE, lpTargetHandle Ptr<HANDLE>, dwDesiredAccess u32, bInheritHandle i32, dwOptions u32) i32
   fn EnterCriticalSection(lpCriticalSection Ptr)
   fn EnterSynchronizationBarrier(lpBarrier Ptr, dwFlags u32) i32
-  fn EnumResourceLanguagesExW(hModule Ptr, lpType Ptr, lpName Ptr, lpEnumFunc Ptr, lParam i64, dwFlags u32, LangId u16) i32
-  fn EnumResourceNamesExW(hModule Ptr, lpType Ptr, lpEnumFunc Ptr, lParam i64, dwFlags u32, LangId u16) i32
-  fn EnumResourceNamesW(hModule Ptr, lpType Ptr, lpEnumFunc Ptr, lParam i64) i32
-  fn EnumResourceTypesExW(hModule Ptr, lpEnumFunc Ptr, lParam i64, dwFlags u32, LangId u16) i32
+  fn EnumResourceLanguagesExW(hModule HMODULE, lpType Ptr<u16>, lpName Ptr<u16>, lpEnumFunc Ptr, lParam i64, dwFlags u32, LangId u16) i32
+  fn EnumResourceNamesExW(hModule HMODULE, lpType Ptr<u16>, lpEnumFunc Ptr, lParam i64, dwFlags u32, LangId u16) i32
+  fn EnumResourceNamesW(hModule HMODULE, lpType Ptr<u16>, lpEnumFunc Ptr, lParam i64) i32
+  fn EnumResourceTypesExW(hModule HMODULE, lpEnumFunc Ptr, lParam i64, dwFlags u32, LangId u16) i32
   fn EnumSystemFirmwareTables(FirmwareTableProviderSignature u32, pFirmwareTableEnumBuffer Ptr, BufferSize u32) u32
   #NoReturn
   fn ExitThread(dwExitCode u32)
-  fn ExpandEnvironmentStringsW(lpSrc Ptr, lpDst Ptr, nSize u32) u32
+  fn ExpandEnvironmentStringsW(lpSrc Ptr<u16>, lpDst Ptr<u16>, nSize u32) u32
   #NoReturn
-  fn FatalAppExitW(uAction u32, lpMessageText Ptr)
-  fn FileTimeToLocalFileTime(lpFileTime Ptr, lpLocalFileTime Ptr) i32
-  fn FindCloseChangeNotification(hChangeHandle Ptr) i32
-  fn FindFirstChangeNotificationW(lpPathName Ptr, bWatchSubtree i32, dwNotifyFilter u32) Ptr
-  fn FindFirstFileExW(lpFileName Ptr, fInfoLevelId i32, lpFindFileData Ptr, fSearchOp i32, lpSearchFilter Ptr, dwAdditionalFlags u32) Ptr
-  fn FindFirstFileNameW(lpFileName Ptr, dwFlags u32, StringLength Ptr, LinkName Ptr) Ptr
-  fn FindFirstStreamW(lpFileName Ptr, InfoLevel i32, lpFindStreamData Ptr, dwFlags u32) Ptr
-  fn FindFirstVolumeW(lpszVolumeName Ptr, cchBufferLength u32) Ptr
-  fn FindNextChangeNotification(hChangeHandle Ptr) i32
-  fn FindNextFileNameW(hFindStream Ptr, StringLength Ptr, LinkName Ptr) i32
-  fn FindNextStreamW(hFindStream Ptr, lpFindStreamData Ptr) i32
-  fn FindNextVolumeW(hFindVolume Ptr, lpszVolumeName Ptr, cchBufferLength u32) i32
-  fn FindResourceExW(hModule Ptr, lpType Ptr, lpName Ptr, wLanguage u16) Ptr
-  fn FindResourceW(hModule Ptr, lpName Ptr, lpType Ptr) Ptr
-  fn FindStringOrdinal(dwFindStringOrdinalFlags u32, lpStringSource Ptr, cchSource i32, lpStringValue Ptr, cchValue i32, bIgnoreCase i32) i32
-  fn FindVolumeClose(hFindVolume Ptr) i32
-  fn FlushInstructionCache(hProcess Ptr, lpBaseAddress Ptr, dwSize u64) i32
+  fn FatalAppExitW(uAction u32, lpMessageText Ptr<u16>)
+  fn FileTimeToLocalFileTime(lpFileTime Ptr<FILETIME>, lpLocalFileTime Ptr<FILETIME>) i32
+  fn FindCloseChangeNotification(hChangeHandle HANDLE) i32
+  fn FindFirstChangeNotificationW(lpPathName Ptr<u16>, bWatchSubtree i32, dwNotifyFilter u32) HANDLE
+  fn FindFirstFileExW(lpFileName Ptr<u16>, fInfoLevelId i32, lpFindFileData Ptr, fSearchOp i32, lpSearchFilter Ptr, dwAdditionalFlags u32) HANDLE
+  fn FindFirstFileNameW(lpFileName Ptr<u16>, dwFlags u32, StringLength Ptr<u32>, LinkName Ptr<u16>) HANDLE
+  fn FindFirstStreamW(lpFileName Ptr<u16>, InfoLevel i32, lpFindStreamData Ptr, dwFlags u32) HANDLE
+  fn FindFirstVolumeW(lpszVolumeName Ptr<u16>, cchBufferLength u32) HANDLE
+  fn FindNextChangeNotification(hChangeHandle HANDLE) i32
+  fn FindNextFileNameW(hFindStream HANDLE, StringLength Ptr<u32>, LinkName Ptr<u16>) i32
+  fn FindNextStreamW(hFindStream HANDLE, lpFindStreamData Ptr) i32
+  fn FindNextVolumeW(hFindVolume HANDLE, lpszVolumeName Ptr<u16>, cchBufferLength u32) i32
+  fn FindResourceExW(hModule HMODULE, lpType Ptr<u16>, lpName Ptr<u16>, wLanguage u16) HRSRC
+  fn FindResourceW(hModule HMODULE, lpName Ptr<u16>, lpType Ptr<u16>) HRSRC
+  fn FindStringOrdinal(dwFindStringOrdinalFlags u32, lpStringSource Ptr<u16>, cchSource i32, lpStringValue Ptr<u16>, cchValue i32, bIgnoreCase i32) i32
+  fn FindVolumeClose(hFindVolume HANDLE) i32
+  fn FlushInstructionCache(hProcess HANDLE, lpBaseAddress Ptr, dwSize u64) i32
   fn FlushProcessWriteBuffers()
   fn FlushViewOfFile(lpBaseAddress Ptr, dwNumberOfBytesToFlush u64) i32
-  fn FreeEnvironmentStringsW(penv Ptr) i32
-  fn FreeLibrary(hLibModule Ptr) i32
+  fn FreeEnvironmentStringsW(penv Ptr<u16>) i32
+  fn FreeLibrary(hLibModule HMODULE) i32
   #NoReturn
-  fn FreeLibraryAndExitThread(hLibModule Ptr, dwExitCode u32)
-  fn FreeResource(hResData Ptr) i32
-  fn FreeUserPhysicalPages(hProcess Ptr, NumberOfPages Ptr, PageArray Ptr) i32
-  fn GetCompressedFileSizeW(lpFileName Ptr, lpFileSizeHigh Ptr) u32
-  fn GetComputerNameExW(NameType i32, lpBuffer Ptr, nSize Ptr) i32
-  fn GetCurrentProcess() Ptr
+  fn FreeLibraryAndExitThread(hLibModule HMODULE, dwExitCode u32)
+  fn FreeResource(hResData HGLOBAL) i32
+  fn FreeUserPhysicalPages(hProcess HANDLE, NumberOfPages Ptr<u64>, PageArray Ptr<u64>) i32
+  fn GetCompressedFileSizeW(lpFileName Ptr<u16>, lpFileSizeHigh Ptr<u32>) u32
+  fn GetComputerNameExW(NameType i32, lpBuffer Ptr<u16>, nSize Ptr<u32>) i32
+  fn GetCurrentProcess() HANDLE
   fn GetCurrentProcessId() u32
   fn GetCurrentProcessorNumber() u32
-  fn GetCurrentProcessorNumberEx(ProcNumber Ptr)
-  fn GetCurrentThread() Ptr
+  fn GetCurrentProcessorNumberEx(ProcNumber Ptr<PROCESSOR_NUMBER>)
+  fn GetCurrentThread() HANDLE
   fn GetCurrentThreadId() u32
-  fn GetCurrentThreadStackLimits(LowLimit Ptr, HighLimit Ptr)
-  fn GetDiskFreeSpaceExW(lpDirectoryName Ptr, lpFreeBytesAvailableToCaller Ptr, lpTotalNumberOfBytes Ptr, lpTotalNumberOfFreeBytes Ptr) i32
-  fn GetDiskFreeSpaceW(lpRootPathName Ptr, lpSectorsPerCluster Ptr, lpBytesPerSector Ptr, lpNumberOfFreeClusters Ptr, lpTotalNumberOfClusters Ptr) i32
-  fn GetDiskSpaceInformationW(rootPath Ptr, diskSpaceInfo Ptr) i32
-  fn GetDriveTypeW(lpRootPathName Ptr) u32
-  fn GetEnvironmentStringsW() Ptr
+  fn GetCurrentThreadStackLimits(LowLimit Ptr<u64>, HighLimit Ptr<u64>)
+  fn GetDiskFreeSpaceExW(lpDirectoryName Ptr<u16>, lpFreeBytesAvailableToCaller Ptr<ULARGE_INTEGER>, lpTotalNumberOfBytes Ptr<ULARGE_INTEGER>, lpTotalNumberOfFreeBytes Ptr<ULARGE_INTEGER>) i32
+  fn GetDiskFreeSpaceW(lpRootPathName Ptr<u16>, lpSectorsPerCluster Ptr<u32>, lpBytesPerSector Ptr<u32>, lpNumberOfFreeClusters Ptr<u32>, lpTotalNumberOfClusters Ptr<u32>) i32
+  fn GetDiskSpaceInformationW(rootPath Ptr<u16>, diskSpaceInfo Ptr) i32
+  fn GetDriveTypeW(lpRootPathName Ptr<u16>) u32
+  fn GetEnvironmentStringsW() Ptr<u16>
   fn GetErrorMode() u32
-  fn GetExitCodeProcess(hProcess Ptr, lpExitCode Ptr) i32
-  fn GetExitCodeThread(hThread Ptr, lpExitCode Ptr) i32
-  fn GetFileInformationByHandle(hFile Ptr, lpFileInformation Ptr) i32
-  fn GetFileSize(hFile Ptr, lpFileSizeHigh Ptr) u32
-  fn GetFileSizeEx(hFile Ptr, lpFileSize Ptr) i32
-  fn GetFileTime(hFile Ptr, lpCreationTime Ptr, lpLastAccessTime Ptr, lpLastWriteTime Ptr) i32
-  fn GetFileType(hFile Ptr) u32
-  fn GetFinalPathNameByHandleW(hFile Ptr, lpszFilePath Ptr, cchFilePath u32, dwFlags u32) u32
-  fn GetHandleInformation(hObject Ptr, lpdwFlags Ptr) i32
+  fn GetExitCodeProcess(hProcess HANDLE, lpExitCode Ptr<u32>) i32
+  fn GetExitCodeThread(hThread HANDLE, lpExitCode Ptr<u32>) i32
+  fn GetFileInformationByHandle(hFile HANDLE, lpFileInformation Ptr<BY_HANDLE_FILE_INFORMATION>) i32
+  fn GetFileSize(hFile HANDLE, lpFileSizeHigh Ptr<u32>) u32
+  fn GetFileSizeEx(hFile HANDLE, lpFileSize Ptr<LARGE_INTEGER>) i32
+  fn GetFileTime(hFile HANDLE, lpCreationTime Ptr<FILETIME>, lpLastAccessTime Ptr<FILETIME>, lpLastWriteTime Ptr<FILETIME>) i32
+  fn GetFileType(hFile HANDLE) u32
+  fn GetFinalPathNameByHandleW(hFile HANDLE, lpszFilePath Ptr<u16>, cchFilePath u32, dwFlags u32) u32
+  fn GetHandleInformation(hObject HANDLE, lpdwFlags Ptr<u32>) i32
   fn GetLargePageMinimum() u64
-  fn GetLocalTime(lpSystemTime Ptr)
-  fn GetLogicalDriveStringsW(nBufferLength u32, lpBuffer Ptr) u32
+  fn GetLocalTime(lpSystemTime Ptr<SYSTEMTIME>)
+  fn GetLogicalDriveStringsW(nBufferLength u32, lpBuffer Ptr<u16>) u32
   fn GetLogicalDrives() u32
-  fn GetLogicalProcessorInformation(Buffer Ptr, ReturnedLength Ptr) i32
-  fn GetLogicalProcessorInformationEx(RelationshipType i32, Buffer Ptr, ReturnedLength Ptr) i32
-  fn GetLongPathNameW(lpszShortPath Ptr, lpszLongPath Ptr, cchBuffer u32) u32
-  fn GetMachineTypeAttributes(Machine u16, MachineTypeAttributes Ptr) i32
-  fn GetMemoryErrorHandlingCapabilities(Capabilities Ptr) i32
-  fn GetModuleFileNameW(hModule Ptr, lpFilename Ptr, nSize u32) u32
-  fn GetModuleHandleExW(dwFlags u32, lpModuleName Ptr, phModule Ptr) i32
-  fn GetModuleHandleW(lpModuleName Ptr) Ptr
-  fn GetNamedPipeClientComputerNameW(Pipe Ptr, ClientComputerName Ptr, ClientComputerNameLength u32) i32
-  fn GetNamedPipeHandleStateW(hNamedPipe Ptr, lpState Ptr, lpCurInstances Ptr, lpMaxCollectionCount Ptr, lpCollectDataTimeout Ptr, lpUserName Ptr, nMaxUserNameSize u32) i32
-  fn GetNamedPipeInfo(hNamedPipe Ptr, lpFlags Ptr, lpOutBufferSize Ptr, lpInBufferSize Ptr, lpMaxInstances Ptr) i32
-  fn GetNativeSystemInfo(lpSystemInfo Ptr)
-  fn GetOverlappedResult(hFile Ptr, lpOverlapped Ptr, lpNumberOfBytesTransferred Ptr, bWait i32) i32
-  fn GetOverlappedResultEx(hFile Ptr, lpOverlapped Ptr, lpNumberOfBytesTransferred Ptr, dwMilliseconds u32, bAlertable i32) i32
-  fn GetPhysicallyInstalledSystemMemory(TotalMemoryInKilobytes Ptr) i32
-  fn GetPriorityClass(hProcess Ptr) u32
-  fn GetProcAddress(hModule Ptr, lpProcName Ptr) Ptr
-  fn GetProcessDefaultCpuSetMasks(Process Ptr, CpuSetMasks Ptr, CpuSetMaskCount u16, RequiredMaskCount Ptr) i32
-  fn GetProcessDefaultCpuSets(Process Ptr, CpuSetIds Ptr, CpuSetIdCount u32, RequiredIdCount Ptr) i32
-  fn GetProcessHandleCount(hProcess Ptr, pdwHandleCount Ptr) i32
-  fn GetProcessHeap() Ptr
-  fn GetProcessHeaps(NumberOfHeaps u32, ProcessHeaps Ptr) u32
-  fn GetProcessId(Process Ptr) u32
-  fn GetProcessIdOfThread(Thread Ptr) u32
-  fn GetProcessInformation(hProcess Ptr, ProcessInformationClass i32, ProcessInformation Ptr, ProcessInformationSize u32) i32
-  fn GetProcessMitigationPolicy(hProcess Ptr, MitigationPolicy i32, lpBuffer Ptr, dwLength u64) i32
-  fn GetProcessPriorityBoost(hProcess Ptr, pDisablePriorityBoost Ptr) i32
-  fn GetProcessShutdownParameters(lpdwLevel Ptr, lpdwFlags Ptr) i32
-  fn GetProcessTimes(hProcess Ptr, lpCreationTime Ptr, lpExitTime Ptr, lpKernelTime Ptr, lpUserTime Ptr) i32
+  fn GetLogicalProcessorInformation(Buffer Ptr, ReturnedLength Ptr<u32>) i32
+  fn GetLogicalProcessorInformationEx(RelationshipType i32, Buffer Ptr, ReturnedLength Ptr<u32>) i32
+  fn GetLongPathNameW(lpszShortPath Ptr<u16>, lpszLongPath Ptr<u16>, cchBuffer u32) u32
+  fn GetMachineTypeAttributes(Machine u16, MachineTypeAttributes Ptr<i32>) i32
+  fn GetMemoryErrorHandlingCapabilities(Capabilities Ptr<u32>) i32
+  fn GetModuleFileNameW(hModule HMODULE, lpFilename Ptr<u16>, nSize u32) u32
+  fn GetModuleHandleExW(dwFlags u32, lpModuleName Ptr<u16>, phModule Ptr<HMODULE>) i32
+  fn GetModuleHandleW(lpModuleName Ptr<u16>) HMODULE
+  fn GetNamedPipeClientComputerNameW(Pipe HANDLE, ClientComputerName Ptr<u16>, ClientComputerNameLength u32) i32
+  fn GetNamedPipeHandleStateW(hNamedPipe HANDLE, lpState Ptr<u32>, lpCurInstances Ptr<u32>, lpMaxCollectionCount Ptr<u32>, lpCollectDataTimeout Ptr<u32>, lpUserName Ptr<u16>, nMaxUserNameSize u32) i32
+  fn GetNamedPipeInfo(hNamedPipe HANDLE, lpFlags Ptr<u32>, lpOutBufferSize Ptr<u32>, lpInBufferSize Ptr<u32>, lpMaxInstances Ptr<u32>) i32
+  fn GetNativeSystemInfo(lpSystemInfo Ptr<SYSTEM_INFO>)
+  fn GetOverlappedResult(hFile HANDLE, lpOverlapped Ptr<OVERLAPPED>, lpNumberOfBytesTransferred Ptr<u32>, bWait i32) i32
+  fn GetOverlappedResultEx(hFile HANDLE, lpOverlapped Ptr<OVERLAPPED>, lpNumberOfBytesTransferred Ptr<u32>, dwMilliseconds u32, bAlertable i32) i32
+  fn GetPhysicallyInstalledSystemMemory(TotalMemoryInKilobytes Ptr<u64>) i32
+  fn GetPriorityClass(hProcess HANDLE) u32
+  fn GetProcAddress(hModule HMODULE, lpProcName Ptr<i8>) Ptr<i8>
+  fn GetProcessDefaultCpuSetMasks(Process HANDLE, CpuSetMasks Ptr<GROUP_AFFINITY>, CpuSetMaskCount u16, RequiredMaskCount Ptr<u16>) i32
+  fn GetProcessDefaultCpuSets(Process HANDLE, CpuSetIds Ptr<u32>, CpuSetIdCount u32, RequiredIdCount Ptr<u32>) i32
+  fn GetProcessHandleCount(hProcess HANDLE, pdwHandleCount Ptr<u32>) i32
+  fn GetProcessHeap() HANDLE
+  fn GetProcessHeaps(NumberOfHeaps u32, ProcessHeaps Ptr<HANDLE>) u32
+  fn GetProcessId(Process HANDLE) u32
+  fn GetProcessIdOfThread(Thread HANDLE) u32
+  fn GetProcessInformation(hProcess HANDLE, ProcessInformationClass i32, ProcessInformation Ptr, ProcessInformationSize u32) i32
+  fn GetProcessMitigationPolicy(hProcess HANDLE, MitigationPolicy i32, lpBuffer Ptr, dwLength u64) i32
+  fn GetProcessPriorityBoost(hProcess HANDLE, pDisablePriorityBoost Ptr<i32>) i32
+  fn GetProcessShutdownParameters(lpdwLevel Ptr<u32>, lpdwFlags Ptr<u32>) i32
+  fn GetProcessTimes(hProcess HANDLE, lpCreationTime Ptr<FILETIME>, lpExitTime Ptr<FILETIME>, lpKernelTime Ptr<FILETIME>, lpUserTime Ptr<FILETIME>) i32
   fn GetProcessVersion(ProcessId u32) u32
-  fn GetProcessWorkingSetSize(hProcess Ptr, lpMinimumWorkingSetSize Ptr, lpMaximumWorkingSetSize Ptr) i32
-  fn GetProcessWorkingSetSizeEx(hProcess Ptr, lpMinimumWorkingSetSize Ptr, lpMaximumWorkingSetSize Ptr, Flags Ptr) i32
-  fn GetProcessorSystemCycleTime(Group u16, Buffer Ptr, ReturnedLength Ptr) i32
-  fn GetProductInfo(dwOSMajorVersion u32, dwOSMinorVersion u32, dwSpMajorVersion u32, dwSpMinorVersion u32, pdwReturnedProductType Ptr) i32
-  fn GetQueuedCompletionStatus(CompletionPort Ptr, lpNumberOfBytesTransferred Ptr, lpCompletionKey Ptr, lpOverlapped Ptr, dwMilliseconds u32) i32
-  fn GetQueuedCompletionStatusEx(CompletionPort Ptr, lpCompletionPortEntries Ptr, ulCount u32, ulNumEntriesRemoved Ptr, dwMilliseconds u32, fAlertable i32) i32
-  fn GetShortPathNameW(lpszLongPath Ptr, lpszShortPath Ptr, cchBuffer u32) u32
-  fn GetStartupInfoW(lpStartupInfo Ptr)
-  fn GetSystemCpuSetInformation(Information Ptr, BufferLength u32, ReturnedLength Ptr, Process Ptr, Flags u32) i32
-  fn GetSystemDirectoryW(lpBuffer Ptr, uSize u32) u32
-  fn GetSystemFileCacheSize(lpMinimumFileCacheSize Ptr, lpMaximumFileCacheSize Ptr, lpFlags Ptr) i32
+  fn GetProcessWorkingSetSize(hProcess HANDLE, lpMinimumWorkingSetSize Ptr<u64>, lpMaximumWorkingSetSize Ptr<u64>) i32
+  fn GetProcessWorkingSetSizeEx(hProcess HANDLE, lpMinimumWorkingSetSize Ptr<u64>, lpMaximumWorkingSetSize Ptr<u64>, Flags Ptr<u32>) i32
+  fn GetProcessorSystemCycleTime(Group u16, Buffer Ptr, ReturnedLength Ptr<u32>) i32
+  fn GetProductInfo(dwOSMajorVersion u32, dwOSMinorVersion u32, dwSpMajorVersion u32, dwSpMinorVersion u32, pdwReturnedProductType Ptr<u32>) i32
+  fn GetQueuedCompletionStatus(CompletionPort HANDLE, lpNumberOfBytesTransferred Ptr<u32>, lpCompletionKey Ptr<u64>, lpOverlapped Ptr<Ptr<OVERLAPPED>>, dwMilliseconds u32) i32
+  fn GetQueuedCompletionStatusEx(CompletionPort HANDLE, lpCompletionPortEntries Ptr<OVERLAPPED_ENTRY>, ulCount u32, ulNumEntriesRemoved Ptr<u32>, dwMilliseconds u32, fAlertable i32) i32
+  fn GetShortPathNameW(lpszLongPath Ptr<u16>, lpszShortPath Ptr<u16>, cchBuffer u32) u32
+  fn GetStartupInfoW(lpStartupInfo Ptr<STARTUPINFOW>)
+  fn GetSystemCpuSetInformation(Information Ptr, BufferLength u32, ReturnedLength Ptr<u32>, Process HANDLE, Flags u32) i32
+  fn GetSystemDirectoryW(lpBuffer Ptr<u16>, uSize u32) u32
+  fn GetSystemFileCacheSize(lpMinimumFileCacheSize Ptr<u64>, lpMaximumFileCacheSize Ptr<u64>, lpFlags Ptr<u32>) i32
   fn GetSystemFirmwareTable(FirmwareTableProviderSignature u32, FirmwareTableID u32, pFirmwareTableBuffer Ptr, BufferSize u32) u32
-  fn GetSystemInfo(lpSystemInfo Ptr)
-  fn GetSystemTime(lpSystemTime Ptr)
-  fn GetSystemTimeAdjustment(lpTimeAdjustment Ptr, lpTimeIncrement Ptr, lpTimeAdjustmentDisabled Ptr) i32
-  fn GetSystemTimeAsFileTime(lpSystemTimeAsFileTime Ptr)
-  fn GetSystemTimePreciseAsFileTime(lpSystemTimeAsFileTime Ptr)
-  fn GetSystemTimes(lpIdleTime Ptr, lpKernelTime Ptr, lpUserTime Ptr) i32
-  fn GetSystemWindowsDirectoryW(lpBuffer Ptr, uSize u32) u32
-  fn GetTempFileNameW(lpPathName Ptr, lpPrefixString Ptr, uUnique u32, lpTempFileName Ptr) u32
-  fn GetTempPath2W(BufferLength u32, Buffer Ptr) u32
-  fn GetThreadContext(hThread Ptr, lpContext Ptr) i32
-  fn GetThreadDescription(hThread Ptr, ppszThreadDescription Ptr) i32
+  fn GetSystemInfo(lpSystemInfo Ptr<SYSTEM_INFO>)
+  fn GetSystemTime(lpSystemTime Ptr<SYSTEMTIME>)
+  fn GetSystemTimeAdjustment(lpTimeAdjustment Ptr<u32>, lpTimeIncrement Ptr<u32>, lpTimeAdjustmentDisabled Ptr<i32>) i32
+  fn GetSystemTimeAsFileTime(lpSystemTimeAsFileTime Ptr<FILETIME>)
+  fn GetSystemTimePreciseAsFileTime(lpSystemTimeAsFileTime Ptr<FILETIME>)
+  fn GetSystemTimes(lpIdleTime Ptr<FILETIME>, lpKernelTime Ptr<FILETIME>, lpUserTime Ptr<FILETIME>) i32
+  fn GetSystemWindowsDirectoryW(lpBuffer Ptr<u16>, uSize u32) u32
+  fn GetTempFileNameW(lpPathName Ptr<u16>, lpPrefixString Ptr<u16>, uUnique u32, lpTempFileName Ptr<u16>) u32
+  fn GetTempPath2W(BufferLength u32, Buffer Ptr<u16>) u32
+  fn GetThreadContext(hThread HANDLE, lpContext Ptr) i32
+  fn GetThreadDescription(hThread HANDLE, ppszThreadDescription Ptr<Ptr<u16>>) i32
   fn GetThreadErrorMode() u32
-  fn GetThreadIOPendingFlag(hThread Ptr, lpIOIsPending Ptr) i32
-  fn GetThreadId(Thread Ptr) u32
-  fn GetThreadIdealProcessorEx(hThread Ptr, lpIdealProcessor Ptr) i32
-  fn GetThreadInformation(hThread Ptr, ThreadInformationClass i32, ThreadInformation Ptr, ThreadInformationSize u32) i32
-  fn GetThreadPriority(hThread Ptr) i32
-  fn GetThreadPriorityBoost(hThread Ptr, pDisablePriorityBoost Ptr) i32
-  fn GetThreadSelectedCpuSetMasks(Thread Ptr, CpuSetMasks Ptr, CpuSetMaskCount u16, RequiredMaskCount Ptr) i32
-  fn GetThreadSelectedCpuSets(Thread Ptr, CpuSetIds Ptr, CpuSetIdCount u32, RequiredIdCount Ptr) i32
-  fn GetThreadTimes(hThread Ptr, lpCreationTime Ptr, lpExitTime Ptr, lpKernelTime Ptr, lpUserTime Ptr) i32
+  fn GetThreadIOPendingFlag(hThread HANDLE, lpIOIsPending Ptr<i32>) i32
+  fn GetThreadId(Thread HANDLE) u32
+  fn GetThreadIdealProcessorEx(hThread HANDLE, lpIdealProcessor Ptr<PROCESSOR_NUMBER>) i32
+  fn GetThreadInformation(hThread HANDLE, ThreadInformationClass i32, ThreadInformation Ptr, ThreadInformationSize u32) i32
+  fn GetThreadPriority(hThread HANDLE) i32
+  fn GetThreadPriorityBoost(hThread HANDLE, pDisablePriorityBoost Ptr<i32>) i32
+  fn GetThreadSelectedCpuSetMasks(Thread HANDLE, CpuSetMasks Ptr<GROUP_AFFINITY>, CpuSetMaskCount u16, RequiredMaskCount Ptr<u16>) i32
+  fn GetThreadSelectedCpuSets(Thread HANDLE, CpuSetIds Ptr<u32>, CpuSetIdCount u32, RequiredIdCount Ptr<u32>) i32
+  fn GetThreadTimes(hThread HANDLE, lpCreationTime Ptr<FILETIME>, lpExitTime Ptr<FILETIME>, lpKernelTime Ptr<FILETIME>, lpUserTime Ptr<FILETIME>) i32
   fn GetTickCount64() u64
   fn GetVersion() u32
-  fn GetVersionExW(lpVersionInformation Ptr) i32
-  fn GetVolumeInformationByHandleW(hFile Ptr, lpVolumeNameBuffer Ptr, nVolumeNameSize u32, lpVolumeSerialNumber Ptr, lpMaximumComponentLength Ptr, lpFileSystemFlags Ptr, lpFileSystemNameBuffer Ptr, nFileSystemNameSize u32) i32
-  fn GetVolumeInformationW(lpRootPathName Ptr, lpVolumeNameBuffer Ptr, nVolumeNameSize u32, lpVolumeSerialNumber Ptr, lpMaximumComponentLength Ptr, lpFileSystemFlags Ptr, lpFileSystemNameBuffer Ptr, nFileSystemNameSize u32) i32
-  fn GetVolumeNameForVolumeMountPointW(lpszVolumeMountPoint Ptr, lpszVolumeName Ptr, cchBufferLength u32) i32
-  fn GetVolumePathNameW(lpszFileName Ptr, lpszVolumePathName Ptr, cchBufferLength u32) i32
-  fn GetVolumePathNamesForVolumeNameW(lpszVolumeName Ptr, lpszVolumePathNames Ptr, cchBufferLength u32, lpcchReturnLength Ptr) i32
-  fn GetWindowsDirectoryW(lpBuffer Ptr, uSize u32) u32
-  fn GetWriteWatch(dwFlags u32, lpBaseAddress Ptr, dwRegionSize u64, lpAddresses Ptr, lpdwCount Ptr, lpdwGranularity Ptr) u32
-  fn GlobalMemoryStatusEx(lpBuffer Ptr) i32
-  fn HeapAlloc(hHeap Ptr, dwFlags u32, dwBytes u64) Ptr
-  fn HeapCompact(hHeap Ptr, dwFlags u32) u64
-  fn HeapCreate(flOptions u32, dwInitialSize u64, dwMaximumSize u64) Ptr
-  fn HeapDestroy(hHeap Ptr) i32
-  fn HeapFree(hHeap Ptr, dwFlags u32, lpMem Ptr) i32
-  fn HeapLock(hHeap Ptr) i32
-  fn HeapQueryInformation(HeapHandle Ptr, HeapInformationClass i32, HeapInformation Ptr, HeapInformationLength u64, ReturnLength Ptr) i32
-  fn HeapReAlloc(hHeap Ptr, dwFlags u32, lpMem Ptr, dwBytes u64) Ptr
-  fn HeapSetInformation(HeapHandle Ptr, HeapInformationClass i32, HeapInformation Ptr, HeapInformationLength u64) i32
-  fn HeapSize(hHeap Ptr, dwFlags u32, lpMem Ptr) u64
-  fn HeapSummary(hHeap Ptr, dwFlags u32, lpSummary Ptr) i32
-  fn HeapUnlock(hHeap Ptr) i32
-  fn HeapValidate(hHeap Ptr, dwFlags u32, lpMem Ptr) i32
-  fn HeapWalk(hHeap Ptr, lpEntry Ptr) i32
-  fn InitOnceBeginInitialize(lpInitOnce Ptr, dwFlags u32, fPending Ptr, lpContext Ptr) i32
+  fn GetVersionExW(lpVersionInformation Ptr<OSVERSIONINFOW>) i32
+  fn GetVolumeInformationByHandleW(hFile HANDLE, lpVolumeNameBuffer Ptr<u16>, nVolumeNameSize u32, lpVolumeSerialNumber Ptr<u32>, lpMaximumComponentLength Ptr<u32>, lpFileSystemFlags Ptr<u32>, lpFileSystemNameBuffer Ptr<u16>, nFileSystemNameSize u32) i32
+  fn GetVolumeInformationW(lpRootPathName Ptr<u16>, lpVolumeNameBuffer Ptr<u16>, nVolumeNameSize u32, lpVolumeSerialNumber Ptr<u32>, lpMaximumComponentLength Ptr<u32>, lpFileSystemFlags Ptr<u32>, lpFileSystemNameBuffer Ptr<u16>, nFileSystemNameSize u32) i32
+  fn GetVolumeNameForVolumeMountPointW(lpszVolumeMountPoint Ptr<u16>, lpszVolumeName Ptr<u16>, cchBufferLength u32) i32
+  fn GetVolumePathNameW(lpszFileName Ptr<u16>, lpszVolumePathName Ptr<u16>, cchBufferLength u32) i32
+  fn GetVolumePathNamesForVolumeNameW(lpszVolumeName Ptr<u16>, lpszVolumePathNames Ptr<u16>, cchBufferLength u32, lpcchReturnLength Ptr<u32>) i32
+  fn GetWindowsDirectoryW(lpBuffer Ptr<u16>, uSize u32) u32
+  fn GetWriteWatch(dwFlags u32, lpBaseAddress Ptr, dwRegionSize u64, lpAddresses Ptr<Ptr>, lpdwCount Ptr<u64>, lpdwGranularity Ptr<u32>) u32
+  fn GlobalMemoryStatusEx(lpBuffer Ptr<MEMORYSTATUSEX>) i32
+  fn HeapAlloc(hHeap HANDLE, dwFlags u32, dwBytes u64) Ptr
+  fn HeapCompact(hHeap HANDLE, dwFlags u32) u64
+  fn HeapCreate(flOptions u32, dwInitialSize u64, dwMaximumSize u64) HANDLE
+  fn HeapDestroy(hHeap HANDLE) i32
+  fn HeapFree(hHeap HANDLE, dwFlags u32, lpMem Ptr) i32
+  fn HeapLock(hHeap HANDLE) i32
+  fn HeapQueryInformation(HeapHandle HANDLE, HeapInformationClass i32, HeapInformation Ptr, HeapInformationLength u64, ReturnLength Ptr<u64>) i32
+  fn HeapReAlloc(hHeap HANDLE, dwFlags u32, lpMem Ptr, dwBytes u64) Ptr
+  fn HeapSetInformation(HeapHandle HANDLE, HeapInformationClass i32, HeapInformation Ptr, HeapInformationLength u64) i32
+  fn HeapSize(hHeap HANDLE, dwFlags u32, lpMem Ptr) u64
+  fn HeapSummary(hHeap HANDLE, dwFlags u32, lpSummary Ptr) i32
+  fn HeapUnlock(hHeap HANDLE) i32
+  fn HeapValidate(hHeap HANDLE, dwFlags u32, lpMem Ptr) i32
+  fn HeapWalk(hHeap HANDLE, lpEntry Ptr) i32
+  fn InitOnceBeginInitialize(lpInitOnce Ptr, dwFlags u32, fPending Ptr<i32>, lpContext Ptr<Ptr>) i32
   fn InitOnceComplete(lpInitOnce Ptr, dwFlags u32, lpContext Ptr) i32
-  fn InitOnceExecuteOnce(InitOnce Ptr, InitFn Ptr, Parameter Ptr, Context Ptr) i32
+  fn InitOnceExecuteOnce(InitOnce Ptr, InitFn Ptr, Parameter Ptr, Context Ptr<Ptr>) i32
   fn InitOnceInitialize(InitOnce Ptr)
   fn InitializeConditionVariable(ConditionVariable Ptr)
   fn InitializeCriticalSection(lpCriticalSection Ptr)
   fn InitializeCriticalSectionAndSpinCount(lpCriticalSection Ptr, dwSpinCount u32) i32
   fn InitializeCriticalSectionEx(lpCriticalSection Ptr, dwSpinCount u32, Flags u32) i32
-  fn InitializeProcThreadAttributeList(lpAttributeList Ptr, dwAttributeCount u32, dwFlags u32, lpSize Ptr) i32
+  fn InitializeProcThreadAttributeList(lpAttributeList Ptr, dwAttributeCount u32, dwFlags u32, lpSize Ptr<u64>) i32
   fn InitializeSRWLock(SRWLock Ptr)
   fn InitializeSynchronizationBarrier(lpBarrier Ptr, lTotalThreads i32, lSpinCount i32) i32
-  fn InstallELAMCertificateInfo(ELAMFile Ptr) i32
-  fn IsProcessCritical(hProcess Ptr, Critical Ptr) i32
+  fn InstallELAMCertificateInfo(ELAMFile HANDLE) i32
+  fn IsProcessCritical(hProcess HANDLE, Critical Ptr<i32>) i32
   fn IsProcessorFeaturePresent(ProcessorFeature u32) i32
   fn IsUserCetAvailableInEnvironment(UserCetEnvironment u32) i32
   fn LeaveCriticalSection(lpCriticalSection Ptr)
-  fn LoadLibraryExW(lpLibFileName Ptr, hFile Ptr, dwFlags u32) Ptr
-  fn LoadLibraryW(lpLibFileName Ptr) Ptr
-  fn LoadResource(hModule Ptr, hResInfo Ptr) Ptr
-  fn LocalFileTimeToFileTime(lpLocalFileTime Ptr, lpFileTime Ptr) i32
-  fn LockFile(hFile Ptr, dwFileOffsetLow u32, dwFileOffsetHigh u32, nNumberOfBytesToLockLow u32, nNumberOfBytesToLockHigh u32) i32
-  fn LockFileEx(hFile Ptr, dwFlags u32, _ u32, nNumberOfBytesToLockLow u32, nNumberOfBytesToLockHigh u32, lpOverlapped Ptr) i32
-  fn LockResource(hResData Ptr) Ptr
-  fn MapUserPhysicalPages(VirtualAddress Ptr, NumberOfPages u64, PageArray Ptr) i32
-  fn MapViewOfFile(hFileMappingObject Ptr, dwDesiredAccess u32, dwFileOffsetHigh u32, dwFileOffsetLow u32, dwNumberOfBytesToMap u64) Ptr
-  fn MapViewOfFileEx(hFileMappingObject Ptr, dwDesiredAccess u32, dwFileOffsetHigh u32, dwFileOffsetLow u32, dwNumberOfBytesToMap u64, lpBaseAddress Ptr) Ptr
-  fn MapViewOfFileFromApp(hFileMappingObject Ptr, DesiredAccess u32, FileOffset u64, NumberOfBytesToMap u64) Ptr
-  fn NeedCurrentDirectoryForExePathW(ExeName Ptr) i32
+  fn LoadLibraryExW(lpLibFileName Ptr<u16>, hFile HANDLE, dwFlags u32) HMODULE
+  fn LoadLibraryW(lpLibFileName Ptr<u16>) HMODULE
+  fn LoadResource(hModule HMODULE, hResInfo HRSRC) HGLOBAL
+  fn LocalFileTimeToFileTime(lpLocalFileTime Ptr<FILETIME>, lpFileTime Ptr<FILETIME>) i32
+  fn LockFile(hFile HANDLE, dwFileOffsetLow u32, dwFileOffsetHigh u32, nNumberOfBytesToLockLow u32, nNumberOfBytesToLockHigh u32) i32
+  fn LockFileEx(hFile HANDLE, dwFlags u32, _ u32, nNumberOfBytesToLockLow u32, nNumberOfBytesToLockHigh u32, lpOverlapped Ptr<OVERLAPPED>) i32
+  fn LockResource(hResData HGLOBAL) Ptr
+  fn MapUserPhysicalPages(VirtualAddress Ptr, NumberOfPages u64, PageArray Ptr<u64>) i32
+  fn MapViewOfFile(hFileMappingObject HANDLE, dwDesiredAccess u32, dwFileOffsetHigh u32, dwFileOffsetLow u32, dwNumberOfBytesToMap u64) Ptr
+  fn MapViewOfFileEx(hFileMappingObject HANDLE, dwDesiredAccess u32, dwFileOffsetHigh u32, dwFileOffsetLow u32, dwNumberOfBytesToMap u64, lpBaseAddress Ptr) Ptr
+  fn MapViewOfFileFromApp(hFileMappingObject HANDLE, DesiredAccess u32, FileOffset u64, NumberOfBytesToMap u64) Ptr
+  fn NeedCurrentDirectoryForExePathW(ExeName Ptr<u16>) i32
   fn OfferVirtualMemory(VirtualAddress Ptr, Size u64, Priority i32) u32
-  fn OpenEventW(dwDesiredAccess u32, bInheritHandle i32, lpName Ptr) Ptr
-  fn OpenFileMappingW(dwDesiredAccess u32, bInheritHandle i32, lpName Ptr) Ptr
-  fn OpenMutexW(dwDesiredAccess u32, bInheritHandle i32, lpName Ptr) Ptr
-  fn OpenProcess(dwDesiredAccess u32, bInheritHandle i32, dwProcessId u32) Ptr
-  fn OpenProcessToken(ProcessHandle Ptr, DesiredAccess u32, TokenHandle Ptr) i32
-  fn OpenSemaphoreW(dwDesiredAccess u32, bInheritHandle i32, lpName Ptr) Ptr
-  fn OpenThread(dwDesiredAccess u32, bInheritHandle i32, dwThreadId u32) Ptr
-  fn OpenThreadToken(ThreadHandle Ptr, DesiredAccess u32, OpenAsSelf i32, TokenHandle Ptr) i32
-  fn OpenWaitableTimerW(dwDesiredAccess u32, bInheritHandle i32, lpTimerName Ptr) Ptr
-  fn PeekNamedPipe(hNamedPipe Ptr, lpBuffer Ptr, nBufferSize u32, lpBytesRead Ptr, lpTotalBytesAvail Ptr, lpBytesLeftThisMessage Ptr) i32
-  fn PostQueuedCompletionStatus(CompletionPort Ptr, dwNumberOfBytesTransferred u32, dwCompletionKey u64, lpOverlapped Ptr) i32
-  fn PrefetchVirtualMemory(hProcess Ptr, NumberOfEntries u64, VirtualAddresses Ptr, Flags u32) i32
-  fn ProcessIdToSessionId(dwProcessId u32, pSessionId Ptr) i32
-  fn QueryDosDeviceW(lpDeviceName Ptr, lpTargetPath Ptr, ucchMax u32) u32
-  fn QueryMemoryResourceNotification(ResourceNotificationHandle Ptr, ResourceState Ptr) i32
-  fn QueryProcessAffinityUpdateMode(hProcess Ptr, lpdwFlags Ptr) i32
-  fn QueryProtectedPolicy(PolicyGuid Ptr, PolicyValue Ptr) i32
-  fn QueueUserAPC(pfnAPC Ptr, hThread Ptr, dwData u64) u32
-  fn QueueUserAPC2(ApcRoutine Ptr, Thread Ptr, Data u64, Flags i32) i32
+  fn OpenEventW(dwDesiredAccess u32, bInheritHandle i32, lpName Ptr<u16>) HANDLE
+  fn OpenFileMappingW(dwDesiredAccess u32, bInheritHandle i32, lpName Ptr<u16>) HANDLE
+  fn OpenMutexW(dwDesiredAccess u32, bInheritHandle i32, lpName Ptr<u16>) HANDLE
+  fn OpenProcess(dwDesiredAccess u32, bInheritHandle i32, dwProcessId u32) HANDLE
+  fn OpenProcessToken(ProcessHandle HANDLE, DesiredAccess u32, TokenHandle Ptr<HANDLE>) i32
+  fn OpenSemaphoreW(dwDesiredAccess u32, bInheritHandle i32, lpName Ptr<u16>) HANDLE
+  fn OpenThread(dwDesiredAccess u32, bInheritHandle i32, dwThreadId u32) HANDLE
+  fn OpenThreadToken(ThreadHandle HANDLE, DesiredAccess u32, OpenAsSelf i32, TokenHandle Ptr<HANDLE>) i32
+  fn OpenWaitableTimerW(dwDesiredAccess u32, bInheritHandle i32, lpTimerName Ptr<u16>) HANDLE
+  fn PeekNamedPipe(hNamedPipe HANDLE, lpBuffer Ptr, nBufferSize u32, lpBytesRead Ptr<u32>, lpTotalBytesAvail Ptr<u32>, lpBytesLeftThisMessage Ptr<u32>) i32
+  fn PostQueuedCompletionStatus(CompletionPort HANDLE, dwNumberOfBytesTransferred u32, dwCompletionKey u64, lpOverlapped Ptr<OVERLAPPED>) i32
+  fn PrefetchVirtualMemory(hProcess HANDLE, NumberOfEntries u64, VirtualAddresses Ptr<WIN32_MEMORY_RANGE_ENTRY>, Flags u32) i32
+  fn ProcessIdToSessionId(dwProcessId u32, pSessionId Ptr<u32>) i32
+  fn QueryDosDeviceW(lpDeviceName Ptr<u16>, lpTargetPath Ptr<u16>, ucchMax u32) u32
+  fn QueryMemoryResourceNotification(ResourceNotificationHandle HANDLE, ResourceState Ptr<i32>) i32
+  fn QueryProcessAffinityUpdateMode(hProcess HANDLE, lpdwFlags Ptr<u32>) i32
+  fn QueryProtectedPolicy(PolicyGuid Ptr<GUID>, PolicyValue Ptr<u64>) i32
+  fn QueueUserAPC(pfnAPC Ptr, hThread HANDLE, dwData u64) u32
+  fn QueueUserAPC2(ApcRoutine Ptr, Thread HANDLE, Data u64, Flags i32) i32
   fn RaiseFailFastException(pExceptionRecord Ptr, pContextRecord Ptr, dwFlags u32)
-  fn ReadFileEx(hFile Ptr, lpBuffer Ptr, nNumberOfBytesToRead u32, lpOverlapped Ptr, lpCompletionRoutine Ptr) i32
-  fn ReadFileScatter(hFile Ptr, aSegmentArray Ptr, nNumberOfBytesToRead u32, _ Ptr, lpOverlapped Ptr) i32
-  fn ReadProcessMemory(hProcess Ptr, lpBaseAddress Ptr, lpBuffer Ptr, nSize u64, lpNumberOfBytesRead Ptr) i32
+  fn ReadFileEx(hFile HANDLE, lpBuffer Ptr, nNumberOfBytesToRead u32, lpOverlapped Ptr<OVERLAPPED>, lpCompletionRoutine Ptr) i32
+  fn ReadFileScatter(hFile HANDLE, aSegmentArray Ptr, nNumberOfBytesToRead u32, _ Ptr<u32>, lpOverlapped Ptr<OVERLAPPED>) i32
+  fn ReadProcessMemory(hProcess HANDLE, lpBaseAddress Ptr, lpBuffer Ptr, nSize u64, lpNumberOfBytesRead Ptr<u64>) i32
   fn ReclaimVirtualMemory(VirtualAddress Ptr, Size u64) u32
   fn RegisterBadMemoryNotification(Callback Ptr) Ptr
-  fn ReleaseMutex(hMutex Ptr) i32
+  fn ReleaseMutex(hMutex HANDLE) i32
   fn ReleaseSRWLockExclusive(SRWLock Ptr)
   fn ReleaseSRWLockShared(SRWLock Ptr)
-  fn ReleaseSemaphore(hSemaphore Ptr, lReleaseCount i32, lpPreviousCount Ptr) i32
+  fn ReleaseSemaphore(hSemaphore HANDLE, lReleaseCount i32, lpPreviousCount Ptr<i32>) i32
   fn RemoveDllDirectory(Cookie Ptr) i32
   fn RemoveVectoredContinueHandler(Handle Ptr) u32
   fn RemoveVectoredExceptionHandler(Handle Ptr) u32
-  fn ResetEvent(hEvent Ptr) i32
+  fn ResetEvent(hEvent HANDLE) i32
   fn ResetWriteWatch(lpBaseAddress Ptr, dwRegionSize u64) u32
-  fn ResumeThread(hThread Ptr) u32
-  fn SearchPathW(lpPath Ptr, lpFileName Ptr, lpExtension Ptr, nBufferLength u32, lpBuffer Ptr, lpFilePart Ptr) u32
-  fn SetComputerNameEx2W(NameType i32, Flags u32, lpBuffer Ptr) i32
-  fn SetComputerNameExW(NameType i32, lpBuffer Ptr) i32
-  fn SetComputerNameW(lpComputerName Ptr) i32
+  fn ResumeThread(hThread HANDLE) u32
+  fn SearchPathW(lpPath Ptr<u16>, lpFileName Ptr<u16>, lpExtension Ptr<u16>, nBufferLength u32, lpBuffer Ptr<u16>, lpFilePart Ptr<Ptr<u16>>) u32
+  fn SetComputerNameEx2W(NameType i32, Flags u32, lpBuffer Ptr<u16>) i32
+  fn SetComputerNameExW(NameType i32, lpBuffer Ptr<u16>) i32
+  fn SetComputerNameW(lpComputerName Ptr<u16>) i32
   fn SetCriticalSectionSpinCount(lpCriticalSection Ptr, dwSpinCount u32) u32
   fn SetDefaultDllDirectories(DirectoryFlags u32) i32
-  fn SetEndOfFile(hFile Ptr) i32
-  fn SetEnvironmentStringsW(NewEnvironment Ptr) i32
+  fn SetEndOfFile(hFile HANDLE) i32
+  fn SetEnvironmentStringsW(NewEnvironment Ptr<u16>) i32
   fn SetErrorMode(uMode u32) u32
-  fn SetEvent(hEvent Ptr) i32
+  fn SetEvent(hEvent HANDLE) i32
   fn SetFileApisToANSI()
   fn SetFileApisToOEM()
-  fn SetFileInformationByHandle(hFile Ptr, FileInformationClass i32, lpFileInformation Ptr, dwBufferSize u32) i32
-  fn SetFileIoOverlappedRange(FileHandle Ptr, OverlappedRangeStart Ptr, Length u32) i32
-  fn SetFilePointerEx(hFile Ptr, liDistanceToMove LARGE_INTEGER, lpNewFilePointer Ptr, dwMoveMethod u32) i32
-  fn SetFileTime(hFile Ptr, lpCreationTime Ptr, lpLastAccessTime Ptr, lpLastWriteTime Ptr) i32
-  fn SetFileValidData(hFile Ptr, ValidDataLength i64) i32
-  fn SetHandleInformation(hObject Ptr, dwMask u32, dwFlags u32) i32
+  fn SetFileInformationByHandle(hFile HANDLE, FileInformationClass i32, lpFileInformation Ptr, dwBufferSize u32) i32
+  fn SetFileIoOverlappedRange(FileHandle HANDLE, OverlappedRangeStart Ptr<u8>, Length u32) i32
+  fn SetFilePointerEx(hFile HANDLE, liDistanceToMove LARGE_INTEGER, lpNewFilePointer Ptr<LARGE_INTEGER>, dwMoveMethod u32) i32
+  fn SetFileTime(hFile HANDLE, lpCreationTime Ptr<FILETIME>, lpLastAccessTime Ptr<FILETIME>, lpLastWriteTime Ptr<FILETIME>) i32
+  fn SetFileValidData(hFile HANDLE, ValidDataLength i64) i32
+  fn SetHandleInformation(hObject HANDLE, dwMask u32, dwFlags u32) i32
   fn SetLastError(dwErrCode u32)
-  fn SetLocalTime(lpSystemTime Ptr) i32
-  fn SetNamedPipeHandleState(hNamedPipe Ptr, lpMode Ptr, lpMaxCollectionCount Ptr, lpCollectDataTimeout Ptr) i32
-  fn SetPriorityClass(hProcess Ptr, dwPriorityClass u32) i32
-  fn SetProcessAffinityUpdateMode(hProcess Ptr, dwFlags u32) i32
-  fn SetProcessDefaultCpuSetMasks(Process Ptr, CpuSetMasks Ptr, CpuSetMaskCount u16) i32
-  fn SetProcessDefaultCpuSets(Process Ptr, CpuSetIds Ptr, CpuSetIdCount u32) i32
-  fn SetProcessDynamicEHContinuationTargets(Process Ptr, NumberOfTargets u16, Targets Ptr) i32
-  fn SetProcessDynamicEnforcedCetCompatibleRanges(Process Ptr, NumberOfRanges u16, Ranges Ptr) i32
-  fn SetProcessInformation(hProcess Ptr, ProcessInformationClass i32, ProcessInformation Ptr, ProcessInformationSize u32) i32
+  fn SetLocalTime(lpSystemTime Ptr<SYSTEMTIME>) i32
+  fn SetNamedPipeHandleState(hNamedPipe HANDLE, lpMode Ptr<u32>, lpMaxCollectionCount Ptr<u32>, lpCollectDataTimeout Ptr<u32>) i32
+  fn SetPriorityClass(hProcess HANDLE, dwPriorityClass u32) i32
+  fn SetProcessAffinityUpdateMode(hProcess HANDLE, dwFlags u32) i32
+  fn SetProcessDefaultCpuSetMasks(Process HANDLE, CpuSetMasks Ptr<GROUP_AFFINITY>, CpuSetMaskCount u16) i32
+  fn SetProcessDefaultCpuSets(Process HANDLE, CpuSetIds Ptr<u32>, CpuSetIdCount u32) i32
+  fn SetProcessDynamicEHContinuationTargets(Process HANDLE, NumberOfTargets u16, Targets Ptr) i32
+  fn SetProcessDynamicEnforcedCetCompatibleRanges(Process HANDLE, NumberOfRanges u16, Ranges Ptr) i32
+  fn SetProcessInformation(hProcess HANDLE, ProcessInformationClass i32, ProcessInformation Ptr, ProcessInformationSize u32) i32
   fn SetProcessMitigationPolicy(MitigationPolicy i32, lpBuffer Ptr, dwLength u64) i32
-  fn SetProcessPriorityBoost(hProcess Ptr, bDisablePriorityBoost i32) i32
+  fn SetProcessPriorityBoost(hProcess HANDLE, bDisablePriorityBoost i32) i32
   fn SetProcessShutdownParameters(dwLevel u32, dwFlags u32) i32
-  fn SetProcessWorkingSetSize(hProcess Ptr, dwMinimumWorkingSetSize u64, dwMaximumWorkingSetSize u64) i32
-  fn SetProcessWorkingSetSizeEx(hProcess Ptr, dwMinimumWorkingSetSize u64, dwMaximumWorkingSetSize u64, Flags u32) i32
-  fn SetProtectedPolicy(PolicyGuid Ptr, PolicyValue u64, OldPolicyValue Ptr) i32
-  fn SetStdHandle(nStdHandle u32, hHandle Ptr) i32
-  fn SetStdHandleEx(nStdHandle u32, hHandle Ptr, phPrevValue Ptr) i32
+  fn SetProcessWorkingSetSize(hProcess HANDLE, dwMinimumWorkingSetSize u64, dwMaximumWorkingSetSize u64) i32
+  fn SetProcessWorkingSetSizeEx(hProcess HANDLE, dwMinimumWorkingSetSize u64, dwMaximumWorkingSetSize u64, Flags u32) i32
+  fn SetProtectedPolicy(PolicyGuid Ptr<GUID>, PolicyValue u64, OldPolicyValue Ptr<u64>) i32
+  fn SetStdHandle(nStdHandle u32, hHandle HANDLE) i32
+  fn SetStdHandleEx(nStdHandle u32, hHandle HANDLE, phPrevValue Ptr<HANDLE>) i32
   fn SetSystemFileCacheSize(MinimumFileCacheSize u64, MaximumFileCacheSize u64, Flags u32) i32
-  fn SetSystemTime(lpSystemTime Ptr) i32
+  fn SetSystemTime(lpSystemTime Ptr<SYSTEMTIME>) i32
   fn SetSystemTimeAdjustment(dwTimeAdjustment u32, bTimeAdjustmentDisabled i32) i32
-  fn SetThreadContext(hThread Ptr, lpContext Ptr) i32
-  fn SetThreadDescription(hThread Ptr, lpThreadDescription Ptr) i32
-  fn SetThreadErrorMode(dwNewMode u32, lpOldMode Ptr) i32
-  fn SetThreadIdealProcessor(hThread Ptr, dwIdealProcessor u32) u32
-  fn SetThreadIdealProcessorEx(hThread Ptr, lpIdealProcessor Ptr, lpPreviousIdealProcessor Ptr) i32
-  fn SetThreadInformation(hThread Ptr, ThreadInformationClass i32, ThreadInformation Ptr, ThreadInformationSize u32) i32
-  fn SetThreadPriority(hThread Ptr, nPriority i32) i32
-  fn SetThreadPriorityBoost(hThread Ptr, bDisablePriorityBoost i32) i32
-  fn SetThreadSelectedCpuSetMasks(Thread Ptr, CpuSetMasks Ptr, CpuSetMaskCount u16) i32
-  fn SetThreadSelectedCpuSets(Thread Ptr, CpuSetIds Ptr, CpuSetIdCount u32) i32
-  fn SetThreadStackGuarantee(StackSizeInBytes Ptr) i32
-  fn SetThreadToken(Thread Ptr, Token Ptr) i32
+  fn SetThreadContext(hThread HANDLE, lpContext Ptr) i32
+  fn SetThreadDescription(hThread HANDLE, lpThreadDescription Ptr<u16>) i32
+  fn SetThreadErrorMode(dwNewMode u32, lpOldMode Ptr<u32>) i32
+  fn SetThreadIdealProcessor(hThread HANDLE, dwIdealProcessor u32) u32
+  fn SetThreadIdealProcessorEx(hThread HANDLE, lpIdealProcessor Ptr<PROCESSOR_NUMBER>, lpPreviousIdealProcessor Ptr<PROCESSOR_NUMBER>) i32
+  fn SetThreadInformation(hThread HANDLE, ThreadInformationClass i32, ThreadInformation Ptr, ThreadInformationSize u32) i32
+  fn SetThreadPriority(hThread HANDLE, nPriority i32) i32
+  fn SetThreadPriorityBoost(hThread HANDLE, bDisablePriorityBoost i32) i32
+  fn SetThreadSelectedCpuSetMasks(Thread HANDLE, CpuSetMasks Ptr<GROUP_AFFINITY>, CpuSetMaskCount u16) i32
+  fn SetThreadSelectedCpuSets(Thread HANDLE, CpuSetIds Ptr<u32>, CpuSetIdCount u32) i32
+  fn SetThreadStackGuarantee(StackSizeInBytes Ptr<u32>) i32
+  fn SetThreadToken(Thread Ptr<HANDLE>, Token HANDLE) i32
   fn SetUnhandledExceptionFilter(lpTopLevelExceptionFilter Ptr) Ptr
-  fn SetWaitableTimer(hTimer Ptr, lpDueTime Ptr, lPeriod i32, pfnCompletionRoutine Ptr, lpArgToCompletionRoutine Ptr, fResume i32) i32
-  fn SetWaitableTimerEx(hTimer Ptr, lpDueTime Ptr, lPeriod i32, pfnCompletionRoutine Ptr, lpArgToCompletionRoutine Ptr, WakeContext Ptr, TolerableDelay u32) i32
-  fn SignalObjectAndWait(hObjectToSignal Ptr, hObjectToWaitOn Ptr, dwMilliseconds u32, bAlertable i32) u32
-  fn SizeofResource(hModule Ptr, hResInfo Ptr) u32
+  fn SetWaitableTimer(hTimer HANDLE, lpDueTime Ptr<LARGE_INTEGER>, lPeriod i32, pfnCompletionRoutine Ptr, lpArgToCompletionRoutine Ptr, fResume i32) i32
+  fn SetWaitableTimerEx(hTimer HANDLE, lpDueTime Ptr<LARGE_INTEGER>, lPeriod i32, pfnCompletionRoutine Ptr, lpArgToCompletionRoutine Ptr, WakeContext Ptr, TolerableDelay u32) i32
+  fn SignalObjectAndWait(hObjectToSignal HANDLE, hObjectToWaitOn HANDLE, dwMilliseconds u32, bAlertable i32) u32
+  fn SizeofResource(hModule HMODULE, hResInfo HRSRC) u32
   fn Sleep(dwMilliseconds u32)
   fn SleepConditionVariableCS(ConditionVariable Ptr, CriticalSection Ptr, dwMilliseconds u32) i32
   fn SleepConditionVariableSRW(ConditionVariable Ptr, SRWLock Ptr, dwMilliseconds u32, Flags u32) i32
   fn SleepEx(dwMilliseconds u32, bAlertable i32) u32
-  fn SuspendThread(hThread Ptr) u32
+  fn SuspendThread(hThread HANDLE) u32
   fn SwitchToThread() i32
-  fn TerminateProcess(hProcess Ptr, uExitCode u32) i32
-  fn TerminateThread(hThread Ptr, dwExitCode u32) i32
+  fn TerminateProcess(hProcess HANDLE, uExitCode u32) i32
+  fn TerminateThread(hThread HANDLE, dwExitCode u32) i32
   fn TlsAlloc() u32
   fn TlsFree(dwTlsIndex u32) i32
   fn TlsGetValue(dwTlsIndex u32) Ptr
   fn TlsGetValue2(dwTlsIndex u32) Ptr
   fn TlsSetValue(dwTlsIndex u32, lpTlsValue Ptr) i32
-  fn TransactNamedPipe(hNamedPipe Ptr, lpInBuffer Ptr, nInBufferSize u32, lpOutBuffer Ptr, nOutBufferSize u32, lpBytesRead Ptr, lpOverlapped Ptr) i32
+  fn TransactNamedPipe(hNamedPipe HANDLE, lpInBuffer Ptr, nInBufferSize u32, lpOutBuffer Ptr, nOutBufferSize u32, lpBytesRead Ptr<u32>, lpOverlapped Ptr<OVERLAPPED>) i32
   fn TryAcquireSRWLockExclusive(SRWLock Ptr) u8
   fn TryAcquireSRWLockShared(SRWLock Ptr) u8
   fn TryEnterCriticalSection(lpCriticalSection Ptr) i32
   fn UnhandledExceptionFilter(ExceptionInfo Ptr) i32
-  fn UnlockFile(hFile Ptr, dwFileOffsetLow u32, dwFileOffsetHigh u32, nNumberOfBytesToUnlockLow u32, nNumberOfBytesToUnlockHigh u32) i32
-  fn UnlockFileEx(hFile Ptr, _ u32, nNumberOfBytesToUnlockLow u32, nNumberOfBytesToUnlockHigh u32, lpOverlapped Ptr) i32
+  fn UnlockFile(hFile HANDLE, dwFileOffsetLow u32, dwFileOffsetHigh u32, nNumberOfBytesToUnlockLow u32, nNumberOfBytesToUnlockHigh u32) i32
+  fn UnlockFileEx(hFile HANDLE, _ u32, nNumberOfBytesToUnlockLow u32, nNumberOfBytesToUnlockHigh u32, lpOverlapped Ptr<OVERLAPPED>) i32
   fn UnmapViewOfFile(lpBaseAddress Ptr) i32
   fn UnmapViewOfFileEx(BaseAddress Ptr, UnmapFlags u32) i32
   fn UnregisterBadMemoryNotification(RegistrationHandle Ptr) i32
-  fn UpdateProcThreadAttribute(lpAttributeList Ptr, dwFlags u32, Attribute u64, lpValue Ptr, cbSize u64, lpPreviousValue Ptr, lpReturnSize Ptr) i32
+  fn UpdateProcThreadAttribute(lpAttributeList Ptr, dwFlags u32, Attribute u64, lpValue Ptr, cbSize u64, lpPreviousValue Ptr, lpReturnSize Ptr<u64>) i32
   fn VirtualAlloc(lpAddress Ptr, dwSize u64, flAllocationType u32, flProtect u32) Ptr
-  fn VirtualAllocEx(hProcess Ptr, lpAddress Ptr, dwSize u64, flAllocationType u32, flProtect u32) Ptr
-  fn VirtualAllocExNuma(hProcess Ptr, lpAddress Ptr, dwSize u64, flAllocationType u32, flProtect u32, nndPreferred u32) Ptr
+  fn VirtualAllocEx(hProcess HANDLE, lpAddress Ptr, dwSize u64, flAllocationType u32, flProtect u32) Ptr
+  fn VirtualAllocExNuma(hProcess HANDLE, lpAddress Ptr, dwSize u64, flAllocationType u32, flProtect u32, nndPreferred u32) Ptr
   fn VirtualFree(lpAddress Ptr, dwSize u64, dwFreeType u32) i32
-  fn VirtualFreeEx(hProcess Ptr, lpAddress Ptr, dwSize u64, dwFreeType u32) i32
+  fn VirtualFreeEx(hProcess HANDLE, lpAddress Ptr, dwSize u64, dwFreeType u32) i32
   fn VirtualLock(lpAddress Ptr, dwSize u64) i32
-  fn VirtualProtect(lpAddress Ptr, dwSize u64, flNewProtect u32, lpflOldProtect Ptr) i32
-  fn VirtualProtectEx(hProcess Ptr, lpAddress Ptr, dwSize u64, flNewProtect u32, lpflOldProtect Ptr) i32
-  fn VirtualQuery(lpAddress Ptr, lpBuffer Ptr, dwLength u64) u64
-  fn VirtualQueryEx(hProcess Ptr, lpAddress Ptr, lpBuffer Ptr, dwLength u64) u64
+  fn VirtualProtect(lpAddress Ptr, dwSize u64, flNewProtect u32, lpflOldProtect Ptr<u32>) i32
+  fn VirtualProtectEx(hProcess HANDLE, lpAddress Ptr, dwSize u64, flNewProtect u32, lpflOldProtect Ptr<u32>) i32
+  fn VirtualQuery(lpAddress Ptr, lpBuffer Ptr<MEMORY_BASIC_INFORMATION>, dwLength u64) u64
+  fn VirtualQueryEx(hProcess HANDLE, lpAddress Ptr, lpBuffer Ptr<MEMORY_BASIC_INFORMATION>, dwLength u64) u64
   fn VirtualUnlock(lpAddress Ptr, dwSize u64) i32
-  fn WaitForMultipleObjects(nCount u32, lpHandles Ptr, bWaitAll i32, dwMilliseconds u32) u32
-  fn WaitForMultipleObjectsEx(nCount u32, lpHandles Ptr, bWaitAll i32, dwMilliseconds u32, bAlertable i32) u32
-  fn WaitForSingleObject(hHandle Ptr, dwMilliseconds u32) u32
-  fn WaitForSingleObjectEx(hHandle Ptr, dwMilliseconds u32, bAlertable i32) u32
-  fn WaitNamedPipeW(lpNamedPipeName Ptr, nTimeOut u32) i32
+  fn WaitForMultipleObjects(nCount u32, lpHandles Ptr<HANDLE>, bWaitAll i32, dwMilliseconds u32) u32
+  fn WaitForMultipleObjectsEx(nCount u32, lpHandles Ptr<HANDLE>, bWaitAll i32, dwMilliseconds u32, bAlertable i32) u32
+  fn WaitForSingleObject(hHandle HANDLE, dwMilliseconds u32) u32
+  fn WaitForSingleObjectEx(hHandle HANDLE, dwMilliseconds u32, bAlertable i32) u32
+  fn WaitNamedPipeW(lpNamedPipeName Ptr<u16>, nTimeOut u32) i32
   fn WakeAllConditionVariable(ConditionVariable Ptr)
   fn WakeConditionVariable(ConditionVariable Ptr)
-  fn WriteFileEx(hFile Ptr, lpBuffer Ptr, nNumberOfBytesToWrite u32, lpOverlapped Ptr, lpCompletionRoutine Ptr) i32
-  fn WriteFileGather(hFile Ptr, aSegmentArray Ptr, nNumberOfBytesToWrite u32, _ Ptr, lpOverlapped Ptr) i32
-  fn WriteProcessMemory(hProcess Ptr, lpBaseAddress Ptr, lpBuffer Ptr, nSize u64, lpNumberOfBytesWritten Ptr) i32
+  fn WriteFileEx(hFile HANDLE, lpBuffer Ptr, nNumberOfBytesToWrite u32, lpOverlapped Ptr<OVERLAPPED>, lpCompletionRoutine Ptr) i32
+  fn WriteFileGather(hFile HANDLE, aSegmentArray Ptr, nNumberOfBytesToWrite u32, _ Ptr<u32>, lpOverlapped Ptr<OVERLAPPED>) i32
+  fn WriteProcessMemory(hProcess HANDLE, lpBaseAddress Ptr, lpBuffer Ptr, nSize u64, lpNumberOfBytesWritten Ptr<u64>) i32
 }

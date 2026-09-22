@@ -3,6 +3,8 @@
 
 #include "sema/name_resolver.h"
 
+#include "ast/node/enum_node.h"
+#include "ast/node/struct_node.h"
 #include "type_validate.h"
 #include "types.h"
 
@@ -41,6 +43,30 @@ void validateAliases(FileNode* file, FileNode* sdkFile) {
 
     // 函数符号表 params / retType 透明别名归一化（原 Compiler::validateAliases 副作用）
     file->normalizeFnSymbolTypes([&](const TypeInfo& t) { return resolveAlias(t, file, sdkFile); });
+
+    recacheDeclFieldAliases(file, sdkFile);
+}
+
+void recacheDeclFieldAliases(FileNode* file, FileNode* sdkFile) {
+    if (!file) return;
+    auto recache = [&](TypeNode* tn) {
+        if (!tn) return;
+        tn->recacheType(resolveAlias(tn->getType(), file, sdkFile));
+    };
+    for (auto* sd : file->getStructDecls()) {
+        if (!sd) continue;
+        for (auto* f : sd->fields()) {
+            if (f) recache(f->type());
+        }
+    }
+    for (auto* ed : file->getEnumDecls()) {
+        if (!ed) continue;
+        for (auto* v : ed->variants()) {
+            if (!v || !v->hasPayload()) continue;
+            for (auto* pt : v->payloadTypes())
+                recache(pt);
+        }
+    }
 }
 
 } // namespace sema

@@ -4,6 +4,7 @@
 
 use riu.platform.windows.kernel32.*
 use riu.platform.windows.consts.*
+use riu.platform.windows.types.*
 
 #Cval
 let _UNIX_FT_EPOCH u64 = 116444736000000000
@@ -19,7 +20,7 @@ enum IoErr {
   Other(u32)
 }
 
-fn _bad_handle(h Ptr) bool {
+fn _bad_handle(h HANDLE) bool {
   let a u64 = h.to_int()
   a == 0 || a == INVALID_HANDLE_VALUE
 }
@@ -53,7 +54,7 @@ fn _win32_message(code u32) String {
     i += 1
   }
   let flags u32 = FORMAT_MESSAGE_FROM_SYSTEM.or(FORMAT_MESSAGE_IGNORE_INSERTS)
-  let got u32 = FormatMessageW(flags, null, code, 0u32, buf, n.to_u32(), null)
+  let got u32 = FormatMessageW(flags, null, code, 0u32, ptr_of(buf), n.to_u32(), null)
   if got == 0 {
     ret "Win32 ${code}"
   }
@@ -102,16 +103,16 @@ fn _from_utf8(bytes Array<u8>&) String ! IoErr {
   got.get()
 }
 
-fn _open(path String&, access u32, disp u32) Ptr ! IoErr {
+fn _open(path String&, access u32, disp u32) HANDLE ! IoErr {
   #Mut let wide Array<u16> = _to_wide(path)
-  let h Ptr = CreateFileW(wide, access, FILE_SHARE_READ.or(FILE_SHARE_WRITE), null, disp, FILE_ATTRIBUTE_NORMAL, null)
+  let h HANDLE = CreateFileW(ptr_of(wide), access, FILE_SHARE_READ.or(FILE_SHARE_WRITE), null, disp, FILE_ATTRIBUTE_NORMAL, null)
   if _bad_handle(h) {
     ret _map_last_err()
   }
   h
 }
 
-fn _close_handle(h Ptr) ! IoErr {
+fn _close_handle(h HANDLE) ! IoErr {
   if _bad_handle(h) {
     ret;
   }
@@ -120,14 +121,14 @@ fn _close_handle(h Ptr) ! IoErr {
   }
 }
 
-fn _close_best_effort(h Ptr) {
+fn _close_best_effort(h HANDLE) {
   if !_bad_handle(h) {
     CloseHandle(h);
   }
 }
 
 ; 从当前游标最多读取 max_bytes；不拥有也不关闭句柄。
-fn _read_handle(h Ptr, max_bytes usize) Array<u8> ! IoErr {
+fn _read_handle(h HANDLE, max_bytes usize) Array<u8> ! IoErr {
   #Mut let out Array<u8> = []
   loop {
     if out.len() >= max_bytes {
@@ -139,7 +140,7 @@ fn _read_handle(h Ptr, max_bytes usize) Array<u8> ! IoErr {
     }
     #Mut let chunk [u8 * 256] = [0u8 ...]
     #Mut let written u32 = 0
-    let ok i32 = ReadFile(h, &chunk, request.to_u32(), &written, null)
+    let ok i32 = ReadFile(h, &chunk, request.to_u32(), ptr_of(&written), null)
     if ok == 0 {
       let err u32 = GetLastError()
       if err == ERROR_HANDLE_EOF {
@@ -162,12 +163,12 @@ fn _read_handle(h Ptr, max_bytes usize) Array<u8> ! IoErr {
 }
 
 ; 从当前游标读到 EOF；不拥有也不关闭句柄。
-fn _read_to_end_handle(h Ptr) Array<u8> ! IoErr {
+fn _read_to_end_handle(h HANDLE) Array<u8> ! IoErr {
   #Mut let out Array<u8> = []
   loop {
     #Mut let chunk [u8 * 256] = [0u8 ...]
     #Mut let written u32 = 0
-    let ok i32 = ReadFile(h, &chunk, 256, &written, null)
+    let ok i32 = ReadFile(h, &chunk, 256, ptr_of(&written), null)
     if ok == 0 {
       let err u32 = GetLastError()
       if err == ERROR_HANDLE_EOF {
@@ -190,7 +191,7 @@ fn _read_to_end_handle(h Ptr) Array<u8> ! IoErr {
 }
 
 ; 循环处理短写；不拥有也不关闭句柄。
-fn _write_bytes_handle(h Ptr, bytes Array<u8>&) ! IoErr {
+fn _write_bytes_handle(h HANDLE, bytes Array<u8>&) ! IoErr {
   #Mut let offset usize = 0
   loop {
     if offset >= bytes.len() {
@@ -209,7 +210,7 @@ fn _write_bytes_handle(h Ptr, bytes Array<u8>&) ! IoErr {
       i += 1
     }
     #Mut let written u32 = 0
-    let ok i32 = WriteFile(h, &chunk, request.to_u32(), &written, null)
+    let ok i32 = WriteFile(h, &chunk, request.to_u32(), ptr_of(&written), null)
     if ok == 0 {
       ret _map_last_err()
     }
@@ -220,7 +221,7 @@ fn _write_bytes_handle(h Ptr, bytes Array<u8>&) ! IoErr {
   }
 }
 
-fn _write_string_handle(h Ptr, content String&) ! IoErr {
+fn _write_string_handle(h HANDLE, content String&) ! IoErr {
   let bytes Array<u8> = content.to_bytes()
   _write_bytes_handle(h, &bytes)!
 }
@@ -362,7 +363,7 @@ fn _ft_to_unix(ft u64) i64 {
 fn _file_info(path String&) FileInfo ! IoErr {
   #Mut let wide Array<u16> = _to_wide(path)
   #Mut let data [u8 * 36] = [0u8 ...]
-  if GetFileAttributesExW(wide, GetFileExInfoStandard, &data) == 0 {
+  if GetFileAttributesExW(ptr_of(wide), GetFileExInfoStandard, &data) == 0 {
     ret _map_last_err()
   }
   let attrs u32 = _read_u32_le(&data, 0usize)
@@ -513,7 +514,7 @@ struct File {
 
 #NoCopy
 struct FileInputStream {
-  _handle Ptr
+  _handle HANDLE
 
   fn ~() {
     _close_best_effort($._handle)
@@ -523,7 +524,7 @@ struct FileInputStream {
   #Static
   fn open(path Path&) FileInputStream ! IoErr {
     let raw String = path.to_string()
-    let h Ptr = _open(&raw, GENERIC_READ, OPEN_EXISTING)!
+    let h HANDLE = _open(&raw, GENERIC_READ, OPEN_EXISTING)!
     Self { h }
   }
 
@@ -532,7 +533,7 @@ struct FileInputStream {
   }
 
   fn close() ! IoErr {
-    let h Ptr = $._handle
+    let h HANDLE = $._handle
     $._handle = null
     _close_handle(h)!
   }
@@ -559,7 +560,7 @@ struct FileInputStream {
 
 #NoCopy
 struct FileOutputStream {
-  _handle Ptr
+  _handle HANDLE
 
   fn ~() {
     _close_best_effort($._handle)
@@ -569,14 +570,14 @@ struct FileOutputStream {
   #Static
   fn create(path Path&) FileOutputStream ! IoErr {
     let raw String = path.to_string()
-    let h Ptr = _open(&raw, GENERIC_WRITE, CREATE_ALWAYS)!
+    let h HANDLE = _open(&raw, GENERIC_WRITE, CREATE_ALWAYS)!
     Self { h }
   }
 
   #Static
   fn append(path Path&) FileOutputStream ! IoErr {
     let raw String = path.to_string()
-    let h Ptr = _open(&raw, GENERIC_WRITE, OPEN_ALWAYS)!
+    let h HANDLE = _open(&raw, GENERIC_WRITE, OPEN_ALWAYS)!
     let pos u32 = SetFilePointer(h, 0, null, FILE_END)
     if pos == INVALID_SET_FILE_POINTER {
       let err u32 = GetLastError()
@@ -593,7 +594,7 @@ struct FileOutputStream {
   }
 
   fn close() ! IoErr {
-    let h Ptr = $._handle
+    let h HANDLE = $._handle
     $._handle = null
     _close_handle(h)!
   }
@@ -658,7 +659,7 @@ fn append_file(path String&, content String&) ! IoErr {
 
 ; stdin 读到换行（不含）；去掉尾随 CR。一开始就 EOF → IoErr::Eof。
 fn read_line() String ! IoErr {
-  #Mut let h Ptr = GetStdHandle(STD_INPUT_HANDLE)
+  #Mut let h HANDLE = GetStdHandle(STD_INPUT_HANDLE)
   if _bad_handle(h) {
     ret _map_last_err()
   }
@@ -666,7 +667,7 @@ fn read_line() String ! IoErr {
   loop {
     #Mut let b [u8 * 1] = [0u8]
     #Mut let written u32 = 0
-    let ok i32 = ReadFile(h, &b, 1, &written, null)
+    let ok i32 = ReadFile(h, &b, 1, ptr_of(&written), null)
     if ok == 0 {
       if raw.is_empty() {
         ret _map_last_err()
@@ -799,17 +800,17 @@ fn dirname(path String&) String {
 
 fn exists(path String&) bool {
   #Mut let wide Array<u16> = _to_wide(path)
-  let attr u32 = GetFileAttributesW(wide)
+  let attr u32 = GetFileAttributesW(ptr_of(wide))
   attr != INVALID_FILE_ATTRIBUTES
 }
 
 fn remove(path String&) ! IoErr {
   #Mut let wide Array<u16> = _to_wide(path)
-  let ok i32 = DeleteFileW(wide)
+  let ok i32 = DeleteFileW(ptr_of(wide))
   if ok != 0 {
     ret;
   }
-  let okd i32 = RemoveDirectoryW(wide)
+  let okd i32 = RemoveDirectoryW(ptr_of(wide))
   if okd != 0 {
     ret;
   }
@@ -818,7 +819,7 @@ fn remove(path String&) ! IoErr {
 
 fn mkdir(path String&) ! IoErr {
   #Mut let wide Array<u16> = _to_wide(path)
-  let ok i32 = CreateDirectoryW(wide, null)
+  let ok i32 = CreateDirectoryW(ptr_of(wide), null)
   if ok == 0 {
     ret _map_last_err()
   }
@@ -838,7 +839,7 @@ fn cwd() String ! IoErr {
     buf.push(0u16)
     i += 1
   }
-  let got u32 = GetCurrentDirectoryW(need, buf)
+  let got u32 = GetCurrentDirectoryW(need, ptr_of(buf))
   if got == 0 {
     ret _map_last_err()
   }
@@ -848,21 +849,21 @@ fn cwd() String ! IoErr {
 fn set_env(name String&, value String&) ! IoErr {
   #Mut let wname Array<u16> = _to_wide(name)
   #Mut let wval Array<u16> = _to_wide(value)
-  if SetEnvironmentVariableW(wname, wval) == 0 {
+  if SetEnvironmentVariableW(ptr_of(wname), ptr_of(wval)) == 0 {
     ret _map_last_err()
   }
 }
 
 fn unset_env(name String&) ! IoErr {
   #Mut let wname Array<u16> = _to_wide(name)
-  if SetEnvironmentVariableW(wname, null) == 0 {
+  if SetEnvironmentVariableW(ptr_of(wname), null) == 0 {
     ret _map_last_err()
   }
 }
 
 fn env(name String&) String? {
   #Mut let wname Array<u16> = _to_wide(name)
-  let need u32 = GetEnvironmentVariableW(wname, null, 0)
+  let need u32 = GetEnvironmentVariableW(ptr_of(wname), null, 0)
   if need == 0 {
     ret null
   }
@@ -875,7 +876,7 @@ fn env(name String&) String? {
     buf.push(0u16)
     i += 1
   }
-  let got u32 = GetEnvironmentVariableW(wname, buf, need)
+  let got u32 = GetEnvironmentVariableW(ptr_of(wname), ptr_of(buf), need)
   if got == 0 {
     ret null
   }
@@ -884,7 +885,7 @@ fn env(name String&) String? {
 
 fn chdir(path String&) ! IoErr {
   #Mut let wide Array<u16> = _to_wide(path)
-  if SetCurrentDirectoryW(wide) == 0 {
+  if SetCurrentDirectoryW(ptr_of(wide)) == 0 {
     ret _map_last_err()
   }
 }
@@ -903,7 +904,7 @@ fn temp_dir() String ! IoErr {
     buf.push(0u16)
     i += 1
   }
-  let got u32 = GetTempPathW(need, buf)
+  let got u32 = GetTempPathW(need, ptr_of(buf))
   if got == 0 {
     ret _map_last_err()
   }
@@ -963,7 +964,7 @@ fn copy_file(src String&, dst String&) ! IoErr {
   }
   #Mut let from Array<u16> = _to_wide(src)
   #Mut let to Array<u16> = _to_wide(dst)
-  if CopyFileW(from, to, 0) == 0 {
+  if CopyFileW(ptr_of(from), ptr_of(to), 0) == 0 {
     ret _map_last_err()
   }
 }
@@ -971,7 +972,7 @@ fn copy_file(src String&, dst String&) ! IoErr {
 fn rename(from String&, to String&) ! IoErr {
   #Mut let src Array<u16> = _to_wide(from)
   #Mut let dst Array<u16> = _to_wide(to)
-  if MoveFileW(src, dst) == 0 {
+  if MoveFileW(ptr_of(src), ptr_of(dst)) == 0 {
     ret _map_last_err()
   }
 }
@@ -1051,7 +1052,8 @@ fn list_dir(path String&) Array<String> ! IoErr {
   let pattern String = join(path, "*")
   #Mut let wide Array<u16> = _to_wide(&pattern)
   #Mut let data [u8 * 592] = [0u8 ...]
-  let h Ptr = FindFirstFileW(wide, &data)
+  let find Ptr<WIN32_FIND_DATAW> = ptr_cast:<[u8 * 592], WIN32_FIND_DATAW>(ptr_of(&data))
+  let h HANDLE = FindFirstFileW(ptr_of(wide), find)
   if _bad_handle(h) {
     ret _map_last_err()
   }
@@ -1061,7 +1063,7 @@ fn list_dir(path String&) Array<String> ! IoErr {
     if name != "." && name != ".." {
       out.push(name)
     }
-    let ok i32 = FindNextFileW(h, &data)
+    let ok i32 = FindNextFileW(h, find)
     if ok == 0 {
       let err u32 = GetLastError()
       if err != ERROR_NO_MORE_FILES && err != 0 {
@@ -1077,14 +1079,14 @@ fn list_dir(path String&) Array<String> ! IoErr {
 
 fn _attrs(path String&) u32 {
   #Mut let wide Array<u16> = _to_wide(path)
-  GetFileAttributesW(wide)
+  GetFileAttributesW(ptr_of(wide))
 }
 
 fn _clear_readonly(path String&) {
   let attr u32 = _attrs(path)
   if attr != INVALID_FILE_ATTRIBUTES && attr.and(FILE_ATTRIBUTE_READONLY) != 0 {
     #Mut let wide Array<u16> = _to_wide(path)
-    SetFileAttributesW(wide, attr.and(FILE_ATTRIBUTE_READONLY.inv()));
+    SetFileAttributesW(ptr_of(wide), attr.and(FILE_ATTRIBUTE_READONLY.inv()));
   }
 }
 
@@ -1167,7 +1169,7 @@ fn is_link(path String&) bool {
 
 fn abs(path String&) String ! IoErr {
   #Mut let wide Array<u16> = _to_wide(path)
-  let need u32 = GetFullPathNameW(wide, 0, null, null)
+  let need u32 = GetFullPathNameW(ptr_of(wide), 0, null, null)
   if need == 0 {
     ret _map_last_err()
   }
@@ -1180,7 +1182,7 @@ fn abs(path String&) String ! IoErr {
     buf.push(0u16)
     i += 1
   }
-  let got u32 = GetFullPathNameW(wide, need, buf, null)
+  let got u32 = GetFullPathNameW(ptr_of(wide), need, ptr_of(buf), null)
   if got == 0 {
     ret _map_last_err()
   }
@@ -1201,9 +1203,9 @@ fn remove_all(path String&) ! IoErr {
   if attr.and(FILE_ATTRIBUTE_REPARSE_POINT) != 0 {
     #Mut let ok i32 = 0
     if attr.and(FILE_ATTRIBUTE_DIRECTORY) != 0 {
-      ok = RemoveDirectoryW(wide)
+      ok = RemoveDirectoryW(ptr_of(wide))
     } else {
-      ok = DeleteFileW(wide)
+      ok = DeleteFileW(ptr_of(wide))
     }
     if ok == 0 {
       ret _map_last_err()
@@ -1216,13 +1218,13 @@ fn remove_all(path String&) ! IoErr {
       let child String = join(path, n)
       remove_all(&child)!
     }
-    let okd i32 = RemoveDirectoryW(wide)
+    let okd i32 = RemoveDirectoryW(ptr_of(wide))
     if okd == 0 {
       ret _map_last_err()
     }
     ret;
   }
-  let okf i32 = DeleteFileW(wide)
+  let okf i32 = DeleteFileW(ptr_of(wide))
   if okf == 0 {
     ret _map_last_err()
   }
@@ -1234,7 +1236,7 @@ fn hardlink(target String&, link String&) ! IoErr {
   }
   #Mut let tw Array<u16> = _to_wide(target)
   #Mut let lw Array<u16> = _to_wide(link)
-  let ok i32 = CreateHardLinkW(lw, tw, null)
+  let ok i32 = CreateHardLinkW(ptr_of(lw), ptr_of(tw), null)
   if ok == 0 {
     ret _map_last_err()
   }
@@ -1247,7 +1249,7 @@ fn symlink(target String&, link String&) ! IoErr {
   }
   #Mut let tw Array<u16> = _to_wide(target)
   #Mut let lw Array<u16> = _to_wide(link)
-  let ok u8 = CreateSymbolicLinkW(lw, tw, flags)
+  let ok u8 = CreateSymbolicLinkW(ptr_of(lw), ptr_of(tw), flags)
   if ok == 0u8 {
     ret _map_last_err()
   }
@@ -1298,14 +1300,14 @@ fn _write_junction(target String&, link String&) ! IoErr {
     subst = "\\??\\" + print0
   }
   #Mut let lw Array<u16> = _to_wide(link)
-  let mk i32 = CreateDirectoryW(lw, null)
+  let mk i32 = CreateDirectoryW(ptr_of(lw), null)
   if mk == 0 {
     ret _map_last_err()
   }
-  let h Ptr = CreateFileW(lw, GENERIC_WRITE, 0u32, null, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS.or(FILE_FLAG_OPEN_REPARSE_POINT), null)
+  let h HANDLE = CreateFileW(ptr_of(lw), GENERIC_WRITE, 0u32, null, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS.or(FILE_FLAG_OPEN_REPARSE_POINT), null)
   if _bad_handle(h) {
     let err IoErr = _map_last_err()
-    RemoveDirectoryW(lw);
+    RemoveDirectoryW(ptr_of(lw));
     ret err
   }
   #Mut let sw Array<u16> = _to_wide(&subst)
@@ -1315,7 +1317,7 @@ fn _write_junction(target String&, link String&) ! IoErr {
   let path_bytes usize = subst_bytes + 2 + print_bytes + 2
   if path_bytes + 8 > 65535 {
     CloseHandle(h);
-    RemoveDirectoryW(lw);
+    RemoveDirectoryW(ptr_of(lw));
     ret IoErr::Other(0u32)
   }
   #Mut let buf Array<u8> = []
@@ -1329,14 +1331,14 @@ fn _write_junction(target String&, link String&) ! IoErr {
   _push_wide(&buf, &sw);
   _push_wide(&buf, &pw);
   #Mut let returned u32 = 0
-  let ok i32 = DeviceIoControl(h, FSCTL_SET_REPARSE_POINT, buf, buf.len().to_u32(), null, 0u32, &returned, null)
+  let ok i32 = DeviceIoControl(h, FSCTL_SET_REPARSE_POINT, buf, buf.len().to_u32(), null, 0u32, ptr_of(&returned), null)
   #Mut let err u32 = 0
   if ok == 0 {
     err = GetLastError()
   }
   CloseHandle(h);
   if ok == 0 {
-    RemoveDirectoryW(lw);
+    RemoveDirectoryW(ptr_of(lw));
     ret _map_err(err)
   }
 }

@@ -1,18 +1,21 @@
 ; 生成，勿手改。
 ; 目标 x86_64-pc-windows-msvc；WINVER/_WIN32_WINNT=0x0A00；NTDDI_VERSION=0x0A00000D（Win10 CU）
-type HANDLE = Ptr
-type HMODULE = Ptr
-type HINSTANCE = Ptr
-type HLOCAL = Ptr
-type HGLOBAL = Ptr
-type HRSRC = Ptr
+struct _HANDLE {}
+struct _HINSTANCE {}
+struct _HRSRC {}
+type HANDLE = Ptr<_HANDLE>
+type HINSTANCE = Ptr<_HINSTANCE>
+type HMODULE = HINSTANCE
+type HLOCAL = HANDLE
+type HGLOBAL = HANDLE
+type HRSRC = Ptr<_HRSRC>
 type BOOL = i32
-type BOOLEAN = u8
+type BYTE = u8
+type BOOLEAN = BYTE
 type DWORD = u32
 type UINT = u32
 type ULONG = u32
 type WORD = u16
-type BYTE = u8
 type WCHAR = u16
 type CHAR = i8
 type LONG = i32
@@ -21,102 +24,26 @@ type SHORT = i16
 type LONGLONG = i64
 type ULONGLONG = u64
 type ULONG_PTR = u64
-type DWORD_PTR = u64
-type SIZE_T = u64
-type SSIZE_T = i64
+type DWORD_PTR = ULONG_PTR
+type SIZE_T = ULONG_PTR
 type LONG_PTR = i64
+type SSIZE_T = LONG_PTR
 type DWORD64 = u64
-type DWORDLONG = u64
+type DWORDLONG = ULONGLONG
 type UINT64 = u64
 type INT64 = i64
 type HRESULT = i32
-type LPCWSTR = Ptr
-type LPWSTR = Ptr
-type LPCSTR = Ptr
-type LPSTR = Ptr
+type LPCWSTR = Ptr<u16>
+type LPWSTR = Ptr<u16>
+type LPCSTR = Ptr<i8>
+type LPSTR = Ptr<i8>
 type LPVOID = Ptr
 type PVOID = Ptr
 type LPCVOID = Ptr
-type LPDWORD = Ptr
-type LPBOOL = Ptr
-type FARPROC = Ptr
-
-#Packed
-#Align(8)
-struct PROCESS_INFORMATION {
-  hProcess Ptr
-  hThread Ptr
-  dwProcessId u32
-  dwThreadId u32
-}
-
-#Packed
-#Align(8)
-struct SECURITY_ATTRIBUTES {
-  nLength u32
-  _ u32
-  lpSecurityDescriptor Ptr
-  bInheritHandle i32
-  _ u32
-}
-
-#Packed
-#Align(8)
-struct CONDITION_VARIABLE {
-  Ptr_ Ptr
-}
-
-#Packed
-#Align(4)
-struct OSVERSIONINFOW {
-  dwOSVersionInfoSize u32
-  dwMajorVersion u32
-  dwMinorVersion u32
-  dwBuildNumber u32
-  dwPlatformId u32
-  szCSDVersion [u16 * 128]
-}
-
-#Packed
-#Align(8)
-struct GROUP_AFFINITY {
-  Mask u64
-  Group u16
-  _ [u16 * 3]
-}
-
-#Packed
-#Align(8)
-struct WIN32_MEMORY_RANGE_ENTRY {
-  VirtualAddress Ptr
-  NumberOfBytes u64
-}
-
-#Packed
-#Align(4)
-struct FILETIME {
-  dwLowDateTime u32
-  dwHighDateTime u32
-}
-
-#Packed
-#Align(4)
-struct WIN32_FILE_ATTRIBUTE_DATA {
-  dwFileAttributes u32
-  ftCreationTime FILETIME
-  ftLastAccessTime FILETIME
-  ftLastWriteTime FILETIME
-  nFileSizeHigh u32
-  nFileSizeLow u32
-}
-
-#Packed
-#Align(2)
-struct PROCESSOR_NUMBER {
-  Group u16
-  Number u8
-  _ u8
-}
+type LPDWORD = Ptr<u32>
+type LPBOOL = Ptr<i32>
+type FARPROC = Ptr<i8>
+fn as_handle(p Ptr) HANDLE = ptr_cast:<(), _HANDLE>(p)
 
 #Packed
 #Align(8)
@@ -133,119 +60,11 @@ struct MEMORYSTATUSEX {
 }
 
 #Packed
-#Align(4)
-struct BY_HANDLE_FILE_INFORMATION {
-  dwFileAttributes u32
-  ftCreationTime FILETIME
-  ftLastAccessTime FILETIME
-  ftLastWriteTime FILETIME
-  dwVolumeSerialNumber u32
-  nFileSizeHigh u32
-  nFileSizeLow u32
-  nNumberOfLinks u32
-  nFileIndexHigh u32
-  nFileIndexLow u32
-}
-
-#Packed
 #Align(8)
-struct STARTUPINFOW {
-  cb u32
-  _ u32
-  _ Ptr
-  lpDesktop Ptr
-  lpTitle Ptr
-  dwX u32
-  dwY u32
-  dwXSize u32
-  dwYSize u32
-  dwXCountChars u32
-  dwYCountChars u32
-  dwFillAttribute u32
-  dwFlags u32
-  wShowWindow u16
-  _ u16
-  _ u32
-  _ Ptr
-  hStdInput Ptr
-  hStdOutput Ptr
-  hStdError Ptr
-}
-
-#Packed
-#Align(8)
-struct CRITICAL_SECTION {
-  DebugInfo Ptr
-  LockCount i32
-  RecursionCount i32
-  OwningThread Ptr
-  LockSemaphore Ptr
-  SpinCount u64
-}
-
-#Packed
-#Align(8)
-struct SYSTEM_INFO {
-  wProcessorArchitecture u16
-  _ u16
-  dwPageSize u32
-  lpMinimumApplicationAddress Ptr
-  lpMaximumApplicationAddress Ptr
-  dwActiveProcessorMask u64
-  dwNumberOfProcessors u32
-  dwProcessorType u32
-  dwAllocationGranularity u32
-  wProcessorLevel u16
-  wProcessorRevision u16
-}
-
-#Packed
-#Align(8)
-struct OVERLAPPED_ENTRY {
-  lpCompletionKey u64
-  lpOverlapped Ptr
-  Internal u64
-  dwNumberOfBytesTransferred u32
-  _ u32
-}
-
-#Packed
-#Align(2)
-struct SYSTEMTIME {
-  wYear u16
-  wMonth u16
-  wDayOfWeek u16
-  wDay u16
-  wHour u16
-  wMinute u16
-  wSecond u16
-  wMilliseconds u16
-}
-
-#Packed
-#Align(8)
-struct MEMORY_BASIC_INFORMATION {
-  BaseAddress Ptr
-  AllocationBase Ptr
-  AllocationProtect u32
-  PartitionId u16
-  _ u16
-  RegionSize u64
-  State u32
-  Protect u32
-  Type u32
-  _ u32
-}
-
-#Packed
-#Align(8)
-struct CREATEFILE2_EXTENDED_PARAMETERS {
-  dwSize u32
-  dwFileAttributes u32
-  dwFileFlags u32
-  dwSecurityQosFlags u32
-  lpSecurityAttributes Ptr
-  hTemplateFile Ptr
+struct GROUP_AFFINITY {
+  Mask u64
+  Group u16
+  _ [u16 * 3]
 }
 
 #Packed
@@ -256,11 +75,28 @@ struct SRWLOCK {
 
 #Packed
 #Align(4)
-struct GUID {
-  Data1 u32
-  Data2 u16
-  Data3 u16
-  Data4 [u8 * 8]
+struct OSVERSIONINFOW {
+  dwOSVersionInfoSize u32
+  dwMajorVersion u32
+  dwMinorVersion u32
+  dwBuildNumber u32
+  dwPlatformId u32
+  szCSDVersion [u16 * 128]
+}
+
+#Packed
+#Align(2)
+struct PROCESSOR_NUMBER {
+  Group u16
+  Number u8
+  _ u8
+}
+
+#Packed
+#Align(4)
+struct FILETIME {
+  dwLowDateTime u32
+  dwHighDateTime u32
 }
 
 #Packed
@@ -280,12 +116,180 @@ struct WIN32_FIND_DATAW {
 
 #Packed
 #Align(8)
+struct MEMORY_BASIC_INFORMATION {
+  BaseAddress Ptr
+  AllocationBase Ptr
+  AllocationProtect u32
+  PartitionId u16
+  _ u16
+  RegionSize u64
+  State u32
+  Protect u32
+  Type u32
+  _ u32
+}
+
+#Packed
+#Align(8)
+struct SECURITY_ATTRIBUTES {
+  nLength u32
+  _ u32
+  lpSecurityDescriptor Ptr
+  bInheritHandle i32
+  _ u32
+}
+
+#Packed
+#Align(8)
+struct CREATEFILE2_EXTENDED_PARAMETERS {
+  dwSize u32
+  dwFileAttributes u32
+  dwFileFlags u32
+  dwSecurityQosFlags u32
+  lpSecurityAttributes Ptr<SECURITY_ATTRIBUTES>
+  hTemplateFile HANDLE
+}
+
+#Packed
+#Align(4)
+struct BY_HANDLE_FILE_INFORMATION {
+  dwFileAttributes u32
+  ftCreationTime FILETIME
+  ftLastAccessTime FILETIME
+  ftLastWriteTime FILETIME
+  dwVolumeSerialNumber u32
+  nFileSizeHigh u32
+  nFileSizeLow u32
+  nNumberOfLinks u32
+  nFileIndexHigh u32
+  nFileIndexLow u32
+}
+
+#Packed
+#Align(8)
+struct PROCESS_INFORMATION {
+  hProcess HANDLE
+  hThread HANDLE
+  dwProcessId u32
+  dwThreadId u32
+}
+
+#Packed
+#Align(8)
+struct CONDITION_VARIABLE {
+  Ptr_ Ptr
+}
+
+#Packed
+#Align(8)
 struct OVERLAPPED {
   Internal u64
   InternalHigh u64
   Offset u32
   OffsetHigh u32
-  hEvent Ptr
+  hEvent HANDLE
+}
+
+#Packed
+#Align(8)
+struct OVERLAPPED_ENTRY {
+  lpCompletionKey u64
+  lpOverlapped Ptr<OVERLAPPED>
+  Internal u64
+  dwNumberOfBytesTransferred u32
+  _ u32
+}
+
+#Packed
+#Align(8)
+struct SYSTEM_INFO {
+  wProcessorArchitecture u16
+  _ u16
+  dwPageSize u32
+  lpMinimumApplicationAddress Ptr
+  lpMaximumApplicationAddress Ptr
+  dwActiveProcessorMask u64
+  dwNumberOfProcessors u32
+  dwProcessorType u32
+  dwAllocationGranularity u32
+  wProcessorLevel u16
+  wProcessorRevision u16
+}
+
+#Packed
+#Align(2)
+struct SYSTEMTIME {
+  wYear u16
+  wMonth u16
+  wDayOfWeek u16
+  wDay u16
+  wHour u16
+  wMinute u16
+  wSecond u16
+  wMilliseconds u16
+}
+
+#Packed
+#Align(8)
+struct STARTUPINFOW {
+  cb u32
+  _ u32
+  _ Ptr<u16>
+  lpDesktop Ptr<u16>
+  lpTitle Ptr<u16>
+  dwX u32
+  dwY u32
+  dwXSize u32
+  dwYSize u32
+  dwXCountChars u32
+  dwYCountChars u32
+  dwFillAttribute u32
+  dwFlags u32
+  wShowWindow u16
+  _ u16
+  _ u32
+  _ Ptr<u8>
+  hStdInput HANDLE
+  hStdOutput HANDLE
+  hStdError HANDLE
+}
+
+#Packed
+#Align(4)
+struct GUID {
+  Data1 u32
+  Data2 u16
+  Data3 u16
+  Data4 [u8 * 8]
+}
+
+#Packed
+#Align(4)
+struct WIN32_FILE_ATTRIBUTE_DATA {
+  dwFileAttributes u32
+  ftCreationTime FILETIME
+  ftLastAccessTime FILETIME
+  ftLastWriteTime FILETIME
+  nFileSizeHigh u32
+  nFileSizeLow u32
+}
+
+#Packed
+#Align(8)
+struct CRITICAL_SECTION {
+  DebugInfo Ptr
+  LockCount i32
+  RecursionCount i32
+  OwningThread HANDLE
+  LockSemaphore HANDLE
+  SpinCount u64
+}
+
+#Packed
+#Align(8)
+struct WIN32_MEMORY_RANGE_ENTRY {
+  VirtualAddress Ptr
+  NumberOfBytes u64
 }
 
 #Packed

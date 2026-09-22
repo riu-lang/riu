@@ -5,7 +5,7 @@ use riu.io.*
 
 extern {
   #CName("SetFileAttributesW")
-  fn _TestSetFileAttributesW(path Ptr, attrs u32) i32
+  fn _TestSetFileAttributesW(path Ptr<u16>, attrs u32) i32
 }
 
 fn _cleanup(path String&) {
@@ -829,7 +829,7 @@ fn test_file_info_readonly() {
   }
 
   #Mut let wide Array<u16> = [95u16, 114u16, 105u16, 117u16, 95u16, 105u16, 111u16, 95u16, 114u16, 101u16, 97u16, 100u16, 111u16, 110u16, 108u16, 121u16, 46u16, 116u16, 120u16, 116u16, 0u16]
-  if _TestSetFileAttributesW(wide, 1u32) == 0 {
+  if _TestSetFileAttributesW(ptr_of(wide), 1u32) == 0 {
     _cleanup(&raw)
     fail("set readonly failed")
   }
@@ -838,13 +838,13 @@ fn test_file_info_readonly() {
   let info FileInfo = try {
     file.info()
   } catch e IoErr {
-    _TestSetFileAttributesW(wide, 128u32);
+    _TestSetFileAttributesW(ptr_of(wide), 128u32);
     _cleanup(&raw)
     _fail_io("readonly_info", e)
     ret;
   }
   assert_true(info.readonly)
-  assert_eq(_TestSetFileAttributesW(wide, 128u32), 1)
+  assert_eq(_TestSetFileAttributesW(ptr_of(wide), 128u32), 1)
   _cleanup(&raw)
 }
 

@@ -1,0 +1,12 @@
+; require-sdk-modules
+; #21：模块限定调用里 null 可进 Ptr<T>（与裸名调用 / 赋值一致）
+use riu.platform.windows.kernel32
+use riu.platform.windows.types.*
+
+fn main() {
+  #Mut let h HANDLE = null
+  #Mut let written u32 = 0
+  #Mut let buf Ptr = null
+  kernel32.WriteFile(h, buf, 0u32, ptr_of(&written), null)
+  ret;
+}

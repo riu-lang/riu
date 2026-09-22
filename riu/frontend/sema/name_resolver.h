@@ -8,9 +8,13 @@
 
 namespace sema {
 
-// 顶层别名一次性校验：E2017 名字冲突 + E2016 环 + fn 符号表归一化。
+// 顶层别名一次性校验：E2017 名字冲突 + E2016 环 + fn 符号表 / struct 字段 / enum payload 归一化。
 // SemaPass::run 起始处调一次；Compiler 不再双跑。查找实现见 ast/name_lookup.h。
 void validateAliases(FileNode* file, FileNode* sdkFile = nullptr);
+
+// .ud 加载后：只展开 struct 字段 / enum payload 上的透明别名（不改 fn 符号表，
+// 以免 `kernel32.LocalFree(HANDLE)` 在消费方尚未 subst 时对不上已展开的 Ptr）。
+void recacheDeclFieldAliases(FileNode* file, FileNode* sdkFile = nullptr);
 
 } // namespace sema
 

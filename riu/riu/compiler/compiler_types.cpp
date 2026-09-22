@@ -932,7 +932,7 @@ llvm::FunctionType* Compiler::getLLVMFunctionType(FnHeaderNode* header) {
 
     vector<llvm::Type*> paramTypes;
     for (auto param : header->params()) {
-        TypeInfo paramType = param->type() ? param->type()->getType() : TypeInfo();
+        TypeInfo paramType = param->type() ? withMangleOwners(param->type()->getType(), _file) : TypeInfo();
         // 指针和引用类型作为指针传递
         if (paramType.isPtr() || paramType.isRef()) {
             paramTypes.push_back(llvm::PointerType::get(_context, 0));
@@ -948,7 +948,7 @@ llvm::FunctionType* Compiler::getLLVMFunctionType(FnHeaderNode* header) {
     }
     // 处理返回类型
     auto retType = header->retType();
-    TypeInfo retTypeInfo = retType ? retType->getType() : TypeInfo();
+    TypeInfo retTypeInfo = retType ? withMangleOwners(retType->getType(), _file) : TypeInfo();
     // DRAFT-错误.md [#10.A]：#Fallible(E) 函数返回类型包成 { i1, T_ok?, ErrEnum }
     string fallibleErr;
     if (header->fallibleErrTypeNode()) {

@@ -16,33 +16,36 @@
 #include <llvm/Support/Alignment.h>
 
 Compiler::ExternAbiSlot Compiler::externAbiSlot(const TypeInfo& t) {
+    // HANDLE 等透明别名在 FnSymbolInfo 里可能仍是裸名；先展开再判 isPtr，
+    // 否则会按 8 字节聚合走 i64，和 getOrCreateWindowsAPI 的指针签名冲突（E3091）。
+    TypeInfo resolved = withMangleOwners(t, _file);
     ExternAbiSlot s;
-    s.riuTy = t;
-    if (t.empty()) {
+    s.riuTy = resolved;
+    if (resolved.empty()) {
         s.abiTy = _builder.getVoidTy();
         return s;
     }
-    if (t.isPtr() || t.isRef()) {
+    if (resolved.isPtr() || resolved.isRef()) {
         s.abiTy = llvm::PointerType::get(_context, 0);
         s.valueTy = s.abiTy;
         return s;
     }
-    if (t.name == "bool") {
+    if (resolved.name == "bool") {
         s.valueTy = _builder.getInt1Ty();
         s.abiTy = _builder.getInt8Ty();
         s.boolExt = true;
         return s;
     }
-    s.valueTy = getLLVMType(t);
+    s.valueTy = getLLVMType(resolved);
     if (!s.valueTy) {
         s.abiTy = llvm::PointerType::get(_context, 0);
         return s;
     }
-    if (isBuiltinType(t.name)) {
+    if (isBuiltinType(resolved.name)) {
         s.abiTy = s.valueTy;
         return s;
     }
-    const uint64_t sz = abiSizeOf(t);
+    const uint64_t sz = abiSizeOf(resolved);
     if (sz == 1 || sz == 2 || sz == 4 || sz == 8) {
         s.abiTy = llvm::Type::getIntNTy(_context, static_cast<unsigned>(sz * 8));
         s.integerAgg = true;
@@ -115,6 +118,7 @@ llvm::Function* Compiler::getOrCreateExternFunction(const string& cName, const F
     if (auto* existed = _module->getFunction(cName)) {
         if (existed->getFunctionType() != fnTy) {
             // E2036 由 SemaPass::validateExternFns 先抛；此处防 IR 链入冲突签名。
+            DEBUG_LOG_VAL("extern LLVM sig mismatch", cName);
             const int line = fnSymbol.declLine > 0 ? fnSymbol.declLine : 1;
             throwSemaGap(static_cast<size_t>(line));
         }

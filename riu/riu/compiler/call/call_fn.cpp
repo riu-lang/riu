@@ -968,19 +968,21 @@ llvm::Value* Compiler::compileKnownFunctionCall(ExprCallNode* callNode, const st
     if (!fn) {
         vector<llvm::Type*> paramTypes;
         for (auto* param : fnSymbol->params) {
-            if (param->isPtr() || param->isRef() || structParamUsesPointer(*param)) {
+            TypeInfo pt = withMangleOwners(*param, _file);
+            if (pt.isPtr() || pt.isRef() || structParamUsesPointer(pt)) {
                 paramTypes.push_back(llvm::PointerType::get(_context, 0));
             } else {
-                paramTypes.push_back(getLLVMType(*param));
+                paramTypes.push_back(getLLVMType(pt));
             }
         }
         // extern fn 禁 #Fallible（[#7]）—— extern 路径走原 isPtr 分支不包装；
         // 用户 fn 走 wrapFallibleRetType，按 fnSymbol->fallibleErrType 决定是否包成 struct
         llvm::Type* retType;
-        if (fnSymbol->isExternal && !fnSymbol->retTypeRef().empty() && TypeInfo(fnSymbol->retTypeRef()).isPtr()) {
+        TypeInfo retTi = fnSymbol->retTypeRef().empty() ? TypeInfo() : withMangleOwners(fnSymbol->retTypeRef(), _file);
+        if (fnSymbol->isExternal && retTi.isPtr()) {
             retType = llvm::PointerType::get(_context, 0);
         } else {
-            retType = wrapFallibleRetType(TypeInfo(fnSymbol->retTypeRef()), fnSymbol->fallibleErrType);
+            retType = wrapFallibleRetType(retTi, fnSymbol->fallibleErrType);
         }
         auto fnType = llvm::FunctionType::get(retType, paramTypes, false);
         fn = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, cName, _module);
@@ -1033,22 +1035,23 @@ llvm::Value* Compiler::compileKnownFunctionCall(ExprCallNode* callNode, const st
         }
         DEBUG_LOG_VAL("    Param",
                       i << " argType=" << argTypes[i].name << " paramType=" << fnSymbol->paramType(i).name);
-        DEBUG_LOG_VAL("    Param isPtr", argTypes[i].isPtr() << " paramIsPtr=" << fnSymbol->paramType(i).isPtr());
+        TypeInfo pTy = withMangleOwners(fnSymbol->paramType(i), _file);
+        DEBUG_LOG_VAL("    Param isPtr", argTypes[i].isPtr() << " paramIsPtr=" << pTy.isPtr());
         recordBdangIfEligible(i);
-        if (fnSymbol->paramType(i).isRef() && !fnSymbol->isExternal) {
+        if (pTy.isRef() && !fnSymbol->isExternal) {
             ExprNode* argExpr = i < callNode->getArgs().size() ? callNode->getArgs()[i] : nullptr;
             callArgs.push_back(pointerForRefParam(argExpr, args[i]));
             continue;
         }
 
-        if (fnSymbol->paramType(i).isPtr()) {
+        if (pTy.isPtr()) {
             if (args[i]->getType()->isPointerTy()) {
                 auto ptrVal = _builder.CreateBitCast(args[i], llvm::PointerType::get(_context, 0), "ptr_cast");
                 callArgs.push_back(ptrVal);
                 continue;
             }
             // §6.6.3：extern 堆句柄 / T& 隐式转 Ptr 仅进裸 Ptr / Ptr<()>
-            if (fnSymbol->isExternal && fnSymbol->paramType(i).isErasedPtr()) {
+            if (fnSymbol->isExternal && pTy.isErasedPtr()) {
                 auto& aType = argTypes[i];
                 auto ptrTy = llvm::PointerType::get(_context, 0);
                 if (aType.isRef()) {
@@ -1191,7 +1194,8 @@ llvm::Value* Compiler::compileKnownFunctionCall(ExprCallNode* callNode, const st
         }
     }
 
-    if (fnSymbol->isExternal && !fnSymbol->retTypeRef().empty() && TypeInfo(fnSymbol->retTypeRef()).isPtr()) {
+    if (fnSymbol->isExternal && !fnSymbol->retTypeRef().empty() &&
+        withMangleOwners(fnSymbol->retTypeRef(), _file).isPtr()) {
         return callResult;
     }
 

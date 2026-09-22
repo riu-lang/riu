@@ -13,6 +13,7 @@
 #include "analyzer/spec_impl_checker.h"
 #include "analyzer/spec_registry.h"
 #include "ast/layout.h"
+#include "ast/name_lookup.h"
 #include "ast/node/enum_node.h"
 #include "ast/node/expr_node.h"
 #include "ast/node/struct_node.h"
@@ -723,6 +724,43 @@ void checkErrPropagateForFnValueCall(FnNode* currentFnNode, ExprCallNode* callNo
     }
 }
 
+// 模块限定调用：先按已推断实参精确查，失败再用灵活 null / 整数匹配（与 resolveFnOverload 同款）。
+// `kernel32.WriteFile(..., null)` 的 null 在 getType() 时尚为擦除 Ptr，不能只走 matchFnParams。
+static FnSymbolInfo* lookupModuleFn(FileNode* target, const string& fnName, ExprCallNode* callNode,
+                                    const vector<TypeInfo>& argTypes) {
+    if (auto* exact = target->lookupFnSymbolWithParams(fnName, argTypes)) return exact;
+    vector<FnSymbolInfo*> candidates;
+    target->collectFnOverloads(fnName, candidates);
+    if (candidates.empty()) return nullptr;
+    const auto& args = callNode->getArgs();
+    vector<FnSymbolInfo*> defaultMatches;
+    for (auto* c : candidates) {
+        if (overloadMatchesDefault(args, c->params)) defaultMatches.push_back(c);
+    }
+    vector<FnSymbolInfo*> matches;
+    if (defaultMatches.empty()) {
+        for (auto* c : candidates) {
+            if (overloadMatchesFlexible(args, c->params)) matches.push_back(c);
+        }
+    } else {
+        matches = std::move(defaultMatches);
+    }
+    if (matches.size() != 1) return nullptr;
+    auto* fn = matches[0];
+    for (size_t i = 0; i < args.size() && i < fn->params.size(); ++i) {
+        if (isFlexibleIntExpr(args[i]) && isIntTypeName(fn->paramType(i).name)) {
+            tryInferIntType(args[i], fn->paramType(i));
+        } else if (isFlexibleIntExpr(args[i]) && fn->paramType(i).isNullable()) {
+            auto inner = fn->paramType(i).nullableInnerType();
+            if (inner && isIntTypeName(inner->name)) tryInferIntType(args[i], *inner);
+        }
+        if (isFlexibleNullExpr(args[i]) && (fn->paramType(i).isNullable() || fn->paramType(i).isPtr())) {
+            tryInferNullType(args[i], fn->paramType(i));
+        }
+    }
+    return fn;
+}
+
 // ==================== 包/模块别名调用解析 (Phase 3.3.1.a) ====================
 // 原 `compileMethodCall` line 195-254 的两个 inline 块 (包别名 + 模块别名)
 // 抠到 sema 层. 命中其中一种时返回 {matched=true, fnName, fnSym}, 调用方
@@ -761,7 +799,7 @@ ModuleFnCallResult resolveModuleFnCall(FileNode* file, Riu* riu, ExprCallNode* c
                                    aliasSym->moduleName);
                 }
                 const string& fnName = segs.back();
-                auto* fnSym = target->lookupFnSymbolWithParams(fnName, argTypes);
+                auto* fnSym = lookupModuleFn(target, fnName, callNode, argTypes);
                 if (!fnSym) {
                     // 泛型回退：检查目标模块是否有同名泛型函数
                     auto [gFn, gOwner] = target->getGenericFunction(fnName);
@@ -797,7 +835,7 @@ ModuleFnCallResult resolveModuleFnCall(FileNode* file, Riu* riu, ExprCallNode* c
                     throw RiuError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6005,
                                    aliasSym->moduleName, aliasName);
                 }
-                auto* fnSym = targetMod->lookupFnSymbolWithParams(member, argTypes);
+                auto* fnSym = lookupModuleFn(targetMod, member, callNode, argTypes);
                 if (!fnSym) {
                     // 泛型回退：检查目标模块是否有同名泛型函数
                     auto [gFn, gOwner] = targetMod->getGenericFunction(member);
@@ -1351,8 +1389,23 @@ bool typeHasLlvmLayout(const TypeInfo& raw, FileNode* file, FileNode* sdkFile,
             return ok;
         };
 
+        // 字段 / payload 上的透明别名按声明模块展开（`HANDLE` 在 riu.io 里解析，
+        // 不依赖调用方是否 `use` 了别名所属模块）。
+        auto recField = [&](TypeInfo ft, FileNode* owner) -> bool {
+            FileNode* search = owner ? owner : file;
+            try {
+                ft = resolveAlias(ft, search, sdkFile);
+            } catch (const RiuError&) {
+                throw;
+            } catch (...) { // NOLINT(bugprone-empty-catch)
+                return false;
+            }
+            return rec(std::move(ft));
+        };
+
         auto* sd = nr.lookupStruct(t);
         if (sd) {
+            FileNode* owner = sd->enclosingFile();
             if (sd->isGeneric()) {
                 if (t.genericArgs.size() != sd->typeParams().size()) return finish(true); // E6011
                 map<string, TypeInfo> subst;
@@ -1362,19 +1415,19 @@ bool typeHasLlvmLayout(const TypeInfo& raw, FileNode* file, FileNode* sdkFile,
                 }
                 for (auto* f : sd->fields()) {
                     if (!f || f->isStatic()) continue;
-                    TypeInfo ft = f->getType().substitute(subst);
-                    if (!rec(std::move(ft))) return finish(false);
+                    if (!recField(f->getType().substitute(subst), owner)) return finish(false);
                 }
                 return finish(true);
             }
             for (auto* f : sd->fields()) {
                 if (!f || f->isStatic()) continue;
-                if (!rec(f->getType())) return finish(false);
+                if (!recField(f->getType(), owner)) return finish(false);
             }
             return finish(true);
         }
         auto* ed = nr.lookupEnum(t);
         if (ed) {
+            FileNode* owner = ed->enclosingFile();
             if (ed->isGeneric()) {
                 // 缺参 / 错元留给 E6011；与泛型 struct 同档，不在这里报 E3096。
                 if (t.genericArgs.size() != ed->typeParams().size()) return finish(true);
@@ -1387,7 +1440,7 @@ bool typeHasLlvmLayout(const TypeInfo& raw, FileNode* file, FileNode* sdkFile,
                     if (!v || !v->hasPayload()) continue;
                     for (auto* pt : v->payloadTypes()) {
                         if (!pt) continue;
-                        if (!rec(pt->getType().substitute(subst))) return finish(false);
+                        if (!recField(pt->getType().substitute(subst), owner)) return finish(false);
                     }
                 }
                 return finish(true);
@@ -1395,7 +1448,7 @@ bool typeHasLlvmLayout(const TypeInfo& raw, FileNode* file, FileNode* sdkFile,
             for (auto* v : ed->variants()) {
                 if (!v || !v->hasPayload()) continue;
                 for (auto* pt : v->payloadTypes()) {
-                    if (!pt || !rec(pt->getType())) return finish(false);
+                    if (!pt || !recField(pt->getType(), owner)) return finish(false);
                 }
             }
             return finish(true);
