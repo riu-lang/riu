@@ -57,16 +57,49 @@ struct Executable {
     vector<ExternalLink> external_links;
 };
 
+// `[dependencies]` 一条。恰好一种来源（#9）。
+enum class DepSourceKind { Sdk, Path, Git };
+
+struct Dependency {
+    string name; // 表键，须等于对方顶层 `name`
+    DepSourceKind kind = DepSourceKind::Path;
+    string sdk;
+    string path; // 相对声明方项目根，或绝对路径
+    string git;
+    string rev;
+};
+
 // 解析后的项目身份 + 产物。供 Riu 与驱动（读 SDK toml 取传递链接）共用。
 struct ProjectConfig {
     string name;
     string version;
     std::optional<Library> library;
     vector<Executable> executables;
+    vector<Dependency> dependencies;
 };
 
-// 读 `tomlPath`。缺字段 / 旧 schema / 非法前缀等抛 RiuError（E5002–E5008、E5021+）。
+// `lib_mod` 扫到的一个源文件（模块名相对该包源根）。
+struct LibModFile {
+    string absPath;
+    string moduleName;
+};
+
+// 图中一个 path 依赖（不含根项目）。后序：被依赖者在前。
+struct ResolvedDep {
+    string name;
+    string projectRoot;
+    string sourceRoot;
+    ProjectConfig config;
+};
+
+// 读 `tomlPath`。缺字段 / 旧 schema / 非法前缀等抛 RiuError（E5002–E5008、E5021+、E5034+）。
 [[nodiscard]] ProjectConfig parseRiuToml(const string& tomlPath);
+
+// 只走 `{ path }`：递归读 toml，校验键=对方 name、是库、同名不同规范化路径。
+[[nodiscard]] vector<ResolvedDep> resolvePathDepGraph(const string& rootDir, const ProjectConfig& rootCfg);
+
+// 按 `[library].lib_mod` 列出源文件。找不到 → 空。
+[[nodiscard]] vector<LibModFile> collectLibModFiles(const string& sourceRoot, const string& libMod);
 
 class Riu {
     // 先于 FileNode 析构：intern 指针活过 AST。
@@ -92,6 +125,12 @@ class Riu {
     string _sourceRoot;
     // riu.toml；未走项目模式时 name 为空。
     ProjectConfig _config;
+    // 额外 `.ud` 根：源码在 `sourceRoot` 下时写到 `outputRoot`（相对该源根镜像）。
+    struct DeclOutputRoot {
+        string sourceRoot;
+        string outputRoot;
+    };
+    vector<DeclOutputRoot> _declOutputRoots;
     // parseSdkDir 写 SDK .ud 时需要 item 原文（skeleton）；无 riu.toml 的
     // riu-check 默认不拷。缺骨架的 .ud 会丢 #Spec 默认体（Eq 等）。
     bool _keepItemSourceText = false;
@@ -185,6 +224,8 @@ public:
     // 项目模式：`rootDir` 必须包含 `riu.toml`。解析身份与产物（#22）。
     // `name` / `version` 必填；至少一份 `[library]` 或一条 `[[executable]]`。
     void initProjectFromDir(const string& rootDir);
+    // path 依赖的 `.ud` 写到调用方 `build/deps/<name>/`，不写对方自己的 `build/`。
+    void addDeclOutputRoot(const string& sourceRoot, const string& outputRoot);
     [[nodiscard]] const string& projectRoot() const { return _projectRoot; }
     // 模块/包源码搜索根：项目模式下为 `<projectRoot>/src`，文件模式下为主文件所在目录
     [[nodiscard]] const string& sourceRoot() const { return _sourceRoot; }

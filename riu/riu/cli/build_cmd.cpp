@@ -171,7 +171,7 @@ static bool checkEntryPath(Riu& riu, const std::string& entry, std::string& inpu
 // DLL 是否仍新于 test obj + 全部非 test obj + sdk/riurt（保守：任一用户模块变了就 relink）
 static bool isTestDllFresh(const std::string& dllPath, const std::string& testObj,
                            const std::map<std::string, std::string>& allObjMap, const std::string& sdkLibPath,
-                           const std::string& riurtLibPath) {
+                           const std::string& riurtLibPath, const std::vector<std::string>& extraLibPaths) {
     namespace fs = std::filesystem;
     std::error_code ec;
     if (!fs::exists(dllPath, ec) || !fs::exists(testObj, ec)) return false;
@@ -186,6 +186,11 @@ static bool isTestDllFresh(const std::string& dllPath, const std::string& testOb
         }
         if (!riurtLibPath.empty() && fs::exists(riurtLibPath) && fs::last_write_time(riurtLibPath) > dllTime) {
             return false;
+        }
+        for (const auto& extra : extraLibPaths) {
+            if (!extra.empty() && fs::exists(extra) && fs::last_write_time(extra) > dllTime) {
+                return false;
+            }
         }
         return true;
     } catch (...) {
@@ -249,6 +254,179 @@ static bool writeDynLibDefFile(const std::string& defPath, const std::string& li
     return static_cast<bool>(out);
 }
 
+// 编一个模块到 obj（依赖库与根产物共用）。
+static bool compileOneModuleToObj(Riu& riu, FileNode* file, const std::string& moduleName, const std::string& objOut,
+                                  const std::string& irOut, bool emitIr, bool isSdk) {
+    std::cout << "Compile IR... (module: " << moduleName << ")" << '\n';
+    auto ctx = std::make_unique<llvm::LLVMContext>();
+    auto mod = std::make_unique<llvm::Module>(moduleName, *ctx);
+    llvm::IRBuilder<> builder(*ctx);
+    try {
+        Compiler compiler(*ctx, builder, mod.get(), file, &riu, isSdk);
+        compiler.compile(file);
+    } catch (runtime_error& e) {
+        string srcPath = riu.modulePath(moduleName);
+        reportRuntimeError(srcPath, e);
+        return false;
+    }
+    if (emitIr) {
+        std::error_code ec;
+        llvm::raw_fd_ostream irFile(irOut, ec);
+        if (ec) {
+            std::cerr << "Error opening IR file: " << ec.message() << '\n';
+        } else {
+            mod->print(irFile, nullptr);
+            irFile.flush();
+            std::cout << "Write IR ok: " << irOut << '\n';
+        }
+    }
+    if (!compileIRToObj(mod.get(), objOut)) {
+        std::cerr << "Failed to compile IR to object file: " << objOut << '\n';
+        return false;
+    }
+    std::cout << "Write obj: " << objOut << '\n';
+    return true;
+}
+
+static void registerLibModPaths(Riu& riu, const std::string& sourceRoot, const std::string& libMod,
+                                const std::vector<LibModFile>& files) {
+    namespace fs = std::filesystem;
+    string rel = libMod;
+    for (char& c : rel)
+        if (c == '.') c = '/';
+    fs::path pkgDir = fs::path(sourceRoot) / rel;
+    if (fs::is_directory(pkgDir)) {
+        riu.registerModulePath(fs::absolute(pkgDir).lexically_normal().string(), libMod);
+        std::error_code ec;
+        for (auto it = fs::recursive_directory_iterator(pkgDir, ec); it != fs::recursive_directory_iterator(); ++it) {
+            if (ec) break;
+            if (!it->is_directory()) continue;
+            auto relDir = fs::relative(it->path(), sourceRoot);
+            string mod = relDir.generic_string();
+            for (char& c : mod)
+                if (c == '/' || c == '\\') c = '.';
+            riu.registerModulePath(fs::absolute(it->path()).lexically_normal().string(), mod);
+        }
+    }
+    for (const auto& f : files) {
+        riu.registerModulePath(f.absPath, f.moduleName);
+    }
+}
+
+// 已加载的 `[library]` 源 → `outputRoot/<library.name>.lib`。镜像相对 `mirrorRoot`。
+static bool compileLibraryToOutput(Riu& riu, const std::vector<LibModFile>& files, const std::string& mirrorRoot,
+                                   const std::string& outputRoot, const Library& lib, bool emitIr,
+                                   const std::string& irDir, const std::string& sdkLibPath,
+                                   const std::string& riurtLibPath, const std::vector<ExternalLink>& sdkLinks,
+                                   const std::vector<std::string>& extraLibPaths, bool& compiled) {
+    namespace fs = std::filesystem;
+    ensureBuildDir(outputRoot);
+    PkgCacheRegistry caches(mirrorRoot, outputRoot);
+    vector<std::string> libObjs;
+    bool anyCodegenError = false;
+    for (const auto& f : files) {
+        auto file = riu.module(f.moduleName);
+        if (!file) continue;
+        string base = mirroredOutputBase(mirrorRoot, outputRoot, f.absPath);
+        fs::create_directories(fs::path(base).parent_path());
+        string obj = base + ".obj";
+        string ir = mirroredOutputBase(mirrorRoot, irDir, f.absPath) + ".ll";
+        if (emitIr) {
+            fs::create_directories(fs::path(ir).parent_path());
+        }
+        if (!caches.isFresh(f.absPath, obj)) {
+            file = riu.ensureFullAst(f.absPath, f.moduleName);
+            if (!file) continue;
+            if (!compileOneModuleToObj(riu, file, f.moduleName, obj, ir, emitIr, false)) {
+                anyCodegenError = true;
+                continue;
+            }
+            caches.mark(f.absPath);
+            compiled = true;
+        }
+        libObjs.push_back(obj);
+    }
+    caches.flushAll();
+    if (anyCodegenError) return false;
+
+    const bool isDynLib = lib.type == "dynamic";
+    string libPath = joinUnder(outputRoot, lib.name, ".lib");
+    string dllPath = joinUnder(outputRoot, lib.name, ".dll");
+    bool needLib = isDynLib ? (!fs::exists(dllPath) || !fs::exists(libPath)) : !fs::exists(libPath);
+    if (!needLib) {
+        try {
+            auto t = fs::last_write_time(isDynLib ? dllPath : libPath);
+            for (auto& o : libObjs) {
+                if (fs::last_write_time(o) > t) {
+                    needLib = true;
+                    break;
+                }
+            }
+            if (!needLib && isDynLib) {
+                if (!sdkLibPath.empty() && fs::exists(sdkLibPath) && fs::last_write_time(sdkLibPath) > t) {
+                    needLib = true;
+                }
+                if (!riurtLibPath.empty() && fs::exists(riurtLibPath) && fs::last_write_time(riurtLibPath) > t) {
+                    needLib = true;
+                }
+                for (const auto& extra : extraLibPaths) {
+                    if (!extra.empty() && fs::exists(extra) && fs::last_write_time(extra) > t) {
+                        needLib = true;
+                        break;
+                    }
+                }
+            }
+        } catch (...) {
+            needLib = true;
+        }
+    }
+    if (!needLib) return true;
+
+    std::string outStr, errStr;
+    llvm::raw_string_ostream oOS(outStr), eOS(errStr);
+    lld::DriverDef dd = {.f = lld::WinLink, .d = &lld::coff::link};
+    if (isDynLib) {
+        string defPath = joinUnder(outputRoot, lib.name, ".def");
+        if (!writeDynLibDefFile(defPath, lib.name, libObjs)) return false;
+        string defArg = "/def:" + defPath;
+        string outArg = "/out:" + dllPath;
+        string implibArg = "/implib:" + libPath;
+        vector<const char*> args = {"lld-link", "/dll", "/noentry", outArg.c_str(), implibArg.c_str(), defArg.c_str()};
+        for (auto& o : libObjs)
+            args.push_back(o.c_str());
+        if (!sdkLibPath.empty()) args.push_back(sdkLibPath.c_str());
+        if (!riurtLibPath.empty()) args.push_back(riurtLibPath.c_str());
+        for (const auto& extra : extraLibPaths) {
+            if (!extra.empty()) args.push_back(extra.c_str());
+        }
+        std::vector<ExternalLink> libLinks = lib.external_links;
+        libLinks.insert(libLinks.end(), sdkLinks.begin(), sdkLinks.end());
+        std::vector<std::string> projLibArgs;
+        appendExternalLinkArgs(libLinks, mirrorRoot, projLibArgs, args);
+        std::cout << "Dynamic lib: " << dllPath << '\n';
+        std::cout.flush();
+        lld::Result r = lldMain(args, oOS, eOS, llvm::ArrayRef{dd});
+        if (r.retCode) {
+            std::cerr << errStr;
+            return false;
+        }
+        if (copyRuntimeDlls(libLinks, mirrorRoot, fs::path(outputRoot)) != 0) return false;
+    } else {
+        string outArg = "/out:" + libPath;
+        vector<const char*> args = {"lld-link", "/lib", outArg.c_str()};
+        for (auto& o : libObjs)
+            args.push_back(o.c_str());
+        std::cout << "Static lib: " << libPath << '\n';
+        lld::Result r = lldMain(args, oOS, eOS, llvm::ArrayRef{dd});
+        if (r.retCode) {
+            llvm::errs() << errStr;
+            return false;
+        }
+    }
+    compiled = true;
+    return true;
+}
+
 static bool matchesTestModFilter(const std::string& mod, const std::vector<std::string>& filters) {
     if (filters.empty()) return true;
     std::string base = stripTestSuffix(mod);
@@ -264,7 +442,7 @@ static int buildTestDlls(Riu& riu, const std::filesystem::path& srcDir, const st
                          const std::string& irDir, bool emitIr, const std::string& sdkLibPath,
                          const std::string& riurtLibPath, const std::vector<std::string>& testModFilters,
                          const std::map<std::string, std::string>& allObjMap, int threads,
-                         const std::vector<ExternalLink>& extraLinks) {
+                         const std::vector<ExternalLink>& extraLinks, const std::vector<std::string>& extraLibPaths) {
     namespace fs = std::filesystem;
 
     // 构建 test 专用产物目录
@@ -350,7 +528,7 @@ static int buildTestDlls(Riu& riu, const std::filesystem::path& srcDir, const st
             std::string testObj = objOf(testAbs);
             std::string dllPath = joinUnder(testsDir, stem, ".test.dll");
             if (isStampFresh(stampOf(testAbs), testAbs, testObj, fingerprint) &&
-                isTestDllFresh(dllPath, testObj, allObjMap, sdkLibPath, riurtLibPath)) {
+                isTestDllFresh(dllPath, testObj, allObjMap, sdkLibPath, riurtLibPath, extraLibPaths)) {
                 ++testExeCount;
             } else {
                 stale.emplace_back(testAbs, testMod);
@@ -539,6 +717,9 @@ static int buildTestDlls(Riu& riu, const std::filesystem::path& srcDir, const st
             }
             // SDK lib
             if (!sdkLibPath.empty()) linkObjs.push_back(sdkLibPath);
+            for (const auto& extra : extraLibPaths) {
+                if (!extra.empty()) linkObjs.push_back(extra);
+            }
 
             // LLD 链接 test dll（dllFileName 已在循环顶部计算）
             std::string testDllPath = testsDir;
@@ -623,6 +804,7 @@ int runBuildCommand(const BuildCmdOptions& opts) {
     std::vector<std::string> exeInputFiles;
     bool buildLib = false;
     std::vector<const Executable*> exesToBuild;
+    vector<ResolvedDep> pathDeps;
 
     {
         string cwd = std::filesystem::current_path().string();
@@ -633,6 +815,15 @@ int runBuildCommand(const BuildCmdOptions& opts) {
             reportRuntimeError(tomlPath, e);
             return 1;
         }
+
+        vector<ResolvedDep> resolved;
+        try {
+            resolved = resolvePathDepGraph(cwd, riu.projectConfig());
+        } catch (runtime_error& e) {
+            reportRuntimeError(tomlPath, e);
+            return 1;
+        }
+        pathDeps = std::move(resolved);
 
         if (!buildNameArg.empty()) {
             bool found = false;
@@ -777,40 +968,62 @@ int runBuildCommand(const BuildCmdOptions& opts) {
         testLinks.insert(testLinks.end(), sdkLinks.begin(), sdkLinks.end());
     }
 
-    auto codegenTo = [&](FileNode* file, const std::string& moduleName, const std::string& objOut,
-                         const std::string& irOut, bool isSdk = false) -> bool {
-        std::cout << "Compile IR... (module: " << moduleName << ")" << '\n';
-        auto ctx = std::make_unique<llvm::LLVMContext>();
-        auto mod = std::make_unique<llvm::Module>(moduleName, *ctx);
-        llvm::IRBuilder<> builder(*ctx);
-        try {
-            Compiler compiler(*ctx, builder, mod.get(), file, &riu, isSdk);
-            compiler.compile(file);
-        } catch (runtime_error& e) {
-            // 通过模块名查回源文件路径（Riu::modulePath 维护映射）
-            string srcPath = riu.modulePath(moduleName);
-            reportRuntimeError(srcPath, e);
-            return false;
+    std::vector<std::string> depLibPaths;
+    std::vector<ExternalLink> depLinks;
+    if (!isSdkSelfBuild && !pathDeps.empty()) {
+        namespace fs = std::filesystem;
+        struct PathDepWork {
+            ResolvedDep pkg;
+            string outputRoot;
+            vector<LibModFile> files;
+            string libPath;
+        };
+        vector<PathDepWork> works;
+        for (const auto& pkg : pathDeps) {
+            if (!pkg.config.library) continue;
+            PathDepWork w;
+            w.pkg = pkg;
+            w.outputRoot = (fs::path(buildDir) / "deps" / pkg.name).string();
+            w.files = collectLibModFiles(pkg.sourceRoot, pkg.config.library->lib_mod);
+            if (w.files.empty()) {
+                std::cerr << "Error: `[library].lib_mod` not found: " << pkg.config.library->lib_mod << '\n';
+                return 1;
+            }
+            riu.addDeclOutputRoot(pkg.projectRoot, w.outputRoot);
+            registerLibModPaths(riu, pkg.sourceRoot, pkg.config.library->lib_mod, w.files);
+            w.libPath = joinUnder(w.outputRoot, pkg.config.library->name, ".lib");
+            works.push_back(std::move(w));
         }
-
-        if (emitIr) {
-            std::error_code ec;
-            llvm::raw_fd_ostream irFile(irOut, ec);
-            if (ec) {
-                std::cerr << "Error opening IR file: " << ec.message() << '\n';
-            } else {
-                mod->print(irFile, nullptr);
-                irFile.flush();
-                std::cout << "Write IR ok: " << irOut << '\n';
+        for (auto& w : works) {
+            for (const auto& f : w.files) {
+                if (riu.module(f.moduleName)) continue;
+                try {
+                    riu.loadMainFile(f.absPath, f.moduleName);
+                } catch (runtime_error& e) {
+                    reportRuntimeError(f.absPath, e, f.moduleName + ": ");
+                    return 1;
+                }
             }
         }
-
-        if (!compileIRToObj(mod.get(), objOut)) {
-            std::cerr << "Failed to compile IR to object file: " << objOut << '\n';
-            return false;
+        vector<string> builtSoFar;
+        for (auto& w : works) {
+            string depIrDir = emitIr ? (w.outputRoot + "/ir") : irDir;
+            if (!compileLibraryToOutput(riu, w.files, w.pkg.projectRoot, w.outputRoot, *w.pkg.config.library, emitIr,
+                                        depIrDir, sdkLibPath, riurtLibPath, sdkLinks, builtSoFar, compiled)) {
+                return 1;
+            }
+            depLibPaths.push_back(w.libPath);
+            builtSoFar.push_back(w.libPath);
+            depLinks.insert(depLinks.end(), w.pkg.config.library->external_links.begin(),
+                            w.pkg.config.library->external_links.end());
+            testLinks.insert(testLinks.end(), w.pkg.config.library->external_links.begin(),
+                             w.pkg.config.library->external_links.end());
         }
-        std::cout << "Write obj: " << objOut << '\n';
-        return true;
+    }
+
+    auto codegenTo = [&](FileNode* file, const std::string& moduleName, const std::string& objOut,
+                         const std::string& irOut, bool isSdk = false) -> bool {
+        return compileOneModuleToObj(riu, file, moduleName, objOut, irOut, emitIr, isSdk);
     };
 
     // ====== lib 模式：按 `[library].lib_mod` 扫源 + 静态库 / 动态库 ======
@@ -981,11 +1194,14 @@ int runBuildCommand(const BuildCmdOptions& opts) {
                 for (auto& o : libObjs)
                     args.push_back(o.c_str());
                 if (!isSdkSelfBuild && !sdkLibPath.empty()) args.push_back(sdkLibPath.c_str());
+                for (const auto& depLib : depLibPaths)
+                    args.push_back(depLib.c_str());
                 if (!riurtLibPath.empty()) args.push_back(riurtLibPath.c_str());
                 std::vector<ExternalLink> libLinks =
                     riu.library() ? riu.library()->external_links : std::vector<ExternalLink>{};
                 if (!isSdkSelfBuild) {
                     libLinks.insert(libLinks.end(), sdkLinks.begin(), sdkLinks.end());
+                    libLinks.insert(libLinks.end(), depLinks.begin(), depLinks.end());
                 }
                 std::vector<std::string> projLibArgs;
                 appendExternalLinkArgs(libLinks, riu.projectRoot(), projLibArgs, args);
@@ -1030,7 +1246,7 @@ int runBuildCommand(const BuildCmdOptions& opts) {
                 allObjMap[mn] = obj;
             }
             int testFails = buildTestDlls(riu, srcDir, buildDir, irDir, emitIr, sdkLibPath, riurtLibPath, opts.testMods,
-                                          allObjMap, opts.threads, testLinks);
+                                          allObjMap, opts.threads, testLinks, depLibPaths);
             std::cout.flush();
             std::cerr.flush();
             _exit(testFails > 0 ? 1 : 0);
@@ -1147,7 +1363,7 @@ int runBuildCommand(const BuildCmdOptions& opts) {
             allObjMap[mn] = obj;
         }
         int testFails = buildTestDlls(riu, srcDir, buildDir, irDir, emitIr, sdkLibPath, riurtLibPath, opts.testMods,
-                                      allObjMap, opts.threads, testLinks);
+                                      allObjMap, opts.threads, testLinks, depLibPaths);
 
         std::cout.flush();
         std::cerr.flush();
@@ -1212,6 +1428,15 @@ int runBuildCommand(const BuildCmdOptions& opts) {
             if (!modFile || modFile == riu.sdkFile()) continue;
             std::string modSrc = riu.modulePath(modName);
             if (otherEntryAbs.contains(modSrc)) continue;
+            {
+                namespace fs = std::filesystem;
+                std::error_code ec;
+                auto rel = fs::relative(fs::weakly_canonical(fs::path(modSrc), ec),
+                                        fs::weakly_canonical(fs::path(riu.projectRoot()), ec), ec);
+                if (ec) continue;
+                string s = rel.generic_string();
+                if (!(s.empty() || s == "." || (s != ".." && !s.starts_with("../")))) continue;
+            }
             std::string modBase = mirroredOutputBase(riu.projectRoot(), buildDir, modSrc);
             std::filesystem::create_directories(std::filesystem::path(modBase).parent_path());
             std::string modObj = modBase + ".obj";
@@ -1254,6 +1479,13 @@ int runBuildCommand(const BuildCmdOptions& opts) {
                 if (!sdkLibPath.empty() && std::filesystem::last_write_time(sdkLibPath) > exeTime) {
                     needLink = true;
                 }
+                for (const auto& depLib : depLibPaths) {
+                    if (!depLib.empty() && std::filesystem::exists(depLib) &&
+                        std::filesystem::last_write_time(depLib) > exeTime) {
+                        needLink = true;
+                        break;
+                    }
+                }
                 for (auto& mo : modObjPaths) {
                     if (std::filesystem::last_write_time(mo) > exeTime) {
                         needLink = true;
@@ -1274,6 +1506,9 @@ int runBuildCommand(const BuildCmdOptions& opts) {
             if (!sdkLibPath.empty()) {
                 args.insert(args.begin() + 2, sdkLibPath.c_str());
             }
+            for (const auto& depLib : depLibPaths) {
+                args.insert(args.begin() + 2, depLib.c_str());
+            }
             for (auto& mo : modObjPaths) {
                 args.insert(args.begin() + 2, mo.c_str());
             }
@@ -1281,6 +1516,7 @@ int runBuildCommand(const BuildCmdOptions& opts) {
             std::vector<ExternalLink> exeLinks = exe->external_links;
             if (!isSdkSelfBuild) {
                 exeLinks.insert(exeLinks.end(), sdkLinks.begin(), sdkLinks.end());
+                exeLinks.insert(exeLinks.end(), depLinks.begin(), depLinks.end());
             }
             std::vector<std::string> projLibArgs;
             appendExternalLinkArgs(exeLinks, riu.projectRoot(), projLibArgs, args);
@@ -1303,6 +1539,7 @@ int runBuildCommand(const BuildCmdOptions& opts) {
             std::vector<ExternalLink> exeLinks = exe->external_links;
             if (!isSdkSelfBuild) {
                 exeLinks.insert(exeLinks.end(), sdkLinks.begin(), sdkLinks.end());
+                exeLinks.insert(exeLinks.end(), depLinks.begin(), depLinks.end());
             }
             if (copyRuntimeDlls(exeLinks, riu.projectRoot(), std::filesystem::path(projectBuildDir)) != 0) {
                 return 1;

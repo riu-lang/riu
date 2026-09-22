@@ -1,0 +1,8 @@
+name="toml_dep_name_mismatch"
+version="1.0.0"
+
+[dependencies]
+foo = { path = "lib" }
+
+[[executable]]
+entry="main.ut"

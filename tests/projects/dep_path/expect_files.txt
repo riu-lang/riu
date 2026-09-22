@@ -1,0 +1,2 @@
+deps/mid/mid.lib
+deps/utils/utils.lib

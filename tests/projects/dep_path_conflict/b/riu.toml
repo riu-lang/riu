@@ -1,0 +1,8 @@
+name="b"
+version="1.0.0"
+
+[dependencies]
+utils = { path = "../u2" }
+
+[library]
+lib_mod="b"

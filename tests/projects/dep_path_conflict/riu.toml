@@ -1,0 +1,9 @@
+name="dep_path_conflict"
+version="1.0.0"
+
+[dependencies]
+a = { path = "a" }
+b = { path = "b" }
+
+[[executable]]
+entry="main.ut"

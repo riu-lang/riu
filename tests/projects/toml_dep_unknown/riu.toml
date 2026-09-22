@@ -1,0 +1,8 @@
+name="toml_dep_unknown"
+version="1.0.0"
+
+[dependencies]
+foo = { path = "../foo", branch = "main" }
+
+[[executable]]
+entry="main.ut"

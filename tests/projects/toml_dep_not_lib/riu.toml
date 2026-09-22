@@ -1,0 +1,8 @@
+name="toml_dep_not_lib"
+version="1.0.0"
+
+[dependencies]
+app = { path = "app" }
+
+[[executable]]
+entry="main.ut"

@@ -1,0 +1,8 @@
+name="toml_dep_sdk_core"
+version="1.0.0"
+
+[dependencies]
+core = { sdk = "core" }
+
+[[executable]]
+entry="main.ut"

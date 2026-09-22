@@ -1,0 +1,8 @@
+use riu.core.*
+use mid.*
+use utils.*
+
+fn main() {
+  mid_hi()
+  answer()
+}

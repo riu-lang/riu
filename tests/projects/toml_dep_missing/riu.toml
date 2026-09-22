@@ -1,0 +1,8 @@
+name="toml_dep_missing"
+version="1.0.0"
+
+[dependencies]
+foo = {}
+
+[[executable]]
+entry="main.ut"

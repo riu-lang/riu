@@ -422,6 +422,16 @@ DEF_ERR(5030, "riu.toml field `version` must be a non-empty string")
 DEF_ERR(5031, "riu.toml `external_links` must be an array of inline tables")
 DEF_ERR(5032, "riu.toml `external_links` item is missing required field `path`")
 DEF_ERR(5033, "riu.toml `[library].lib_mod` must be a non-empty dotted module path")
+// 三方依赖（#9）。E5034 起。
+DEF_ERR(5034, "riu.toml `[dependencies].{}` mixes multiple sources (`sdk` / `path` / `git`)")
+DEF_ERR(5035, "riu.toml `[dependencies].{}` is missing a source (`sdk`, `path`, or `git`)")
+DEF_ERR(5036, "riu.toml `[dependencies]` cannot declare `sdk = \"core\"` (core is implicit)")
+DEF_ERR(5037, "riu.toml `[dependencies]` key `{}` does not match package name `{}`")
+DEF_ERR(5038, "riu.toml `[dependencies].{}` is not a library project")
+DEF_ERR(5039, "riu.toml `[dependencies]` does not accept `dir` (v1 requires `riu.toml` at the source root)")
+DEF_ERR(5040, "riu.toml `[dependencies].{}` has unknown field `{}`")
+DEF_ERR(5041, "package `{}` is provided by different sources: `{}` and `{}`")
+DEF_ERR(5042, "riu.toml `[dependencies].{}` `git` and `rev` must be used together (`rev` = full commit)")
 
 // ── E6xxx 内置 / 调用 ─────────────────────────────────────────────────
 DEF_ERR(6001, "module `{}` not found in package `{}`")

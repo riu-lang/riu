@@ -9,6 +9,7 @@
 #include <iterator>
 #include <map>
 #include <optional>
+#include <set>
 #include <unordered_set>
 
 #include <toml.hpp>
@@ -174,6 +175,79 @@ vector<ExternalLink> parseExternalLinks(const toml::value& parent) {
     return out;
 }
 
+string tomlFieldString(const toml::value& item, const char* field, const string& depName) {
+    if (!item.at(field).is_string()) {
+        throw RiuError(1, ErrorCode::E5009, string("`[dependencies].") + depName + "." + field + "` must be a string");
+    }
+    return item.at(field).as_string();
+}
+
+vector<Dependency> parseDependencies(const toml::value& data) {
+    vector<Dependency> out;
+    if (!data.contains("dependencies")) return out;
+    const auto& depsVal = data.at("dependencies");
+    if (!depsVal.is_table()) {
+        throw RiuError(1, ErrorCode::E5009, string("`[dependencies]` must be a table"));
+    }
+    for (const auto& kv : depsVal.as_table()) {
+        string depName = kv.first;
+        const auto& item = kv.second;
+        if (!item.is_table()) {
+            throw RiuError(1, ErrorCode::E5009, string("`[dependencies].") + depName + "` must be a table");
+        }
+        if (item.contains("dir")) {
+            throw RiuError(1, ErrorCode::E5039);
+        }
+        for (const auto& fieldKv : item.as_table()) {
+            string field = fieldKv.first;
+            if (field != "sdk" && field != "path" && field != "git" && field != "rev") {
+                throw RiuError(1, ErrorCode::E5040, depName, field);
+            }
+        }
+        bool hasSdk = item.contains("sdk");
+        bool hasPath = item.contains("path");
+        bool hasGit = item.contains("git");
+        bool hasRev = item.contains("rev");
+        int nsrc = (hasSdk ? 1 : 0) + (hasPath ? 1 : 0) + (hasGit ? 1 : 0);
+        if (nsrc == 0) {
+            throw RiuError(1, ErrorCode::E5035, depName);
+        }
+        if (nsrc > 1) {
+            throw RiuError(1, ErrorCode::E5034, depName);
+        }
+        if (hasGit != hasRev) {
+            throw RiuError(1, ErrorCode::E5042, depName);
+        }
+        Dependency d;
+        d.name = depName;
+        if (hasSdk) {
+            d.kind = DepSourceKind::Sdk;
+            d.sdk = tomlFieldString(item, "sdk", depName);
+            if (d.sdk.empty()) {
+                throw RiuError(1, ErrorCode::E5035, depName);
+            }
+            if (d.sdk == "core") {
+                throw RiuError(1, ErrorCode::E5036);
+            }
+        } else if (hasPath) {
+            d.kind = DepSourceKind::Path;
+            d.path = tomlFieldString(item, "path", depName);
+            if (d.path.empty()) {
+                throw RiuError(1, ErrorCode::E5035, depName);
+            }
+        } else {
+            d.kind = DepSourceKind::Git;
+            d.git = tomlFieldString(item, "git", depName);
+            d.rev = tomlFieldString(item, "rev", depName);
+            if (d.git.empty() || d.rev.empty()) {
+                throw RiuError(1, ErrorCode::E5042, depName);
+            }
+        }
+        out.push_back(std::move(d));
+    }
+    return out;
+}
+
 string requireStringField(const toml::value& data, const char* key, const ErrorCodeDef& missing,
                           const ErrorCodeDef& notString, const ErrorCodeDef& empty) {
     if (!data.contains(key)) {
@@ -242,6 +316,8 @@ ProjectConfig parseRiuToml(const string& tomlPath) {
             L.external_links = parseExternalLinks(lib);
             cfg.library = std::move(L);
         }
+
+        cfg.dependencies = parseDependencies(data);
 
         if (data.contains("executable")) {
             const auto& exeVal = data.at("executable");
@@ -318,6 +394,144 @@ void Riu::initProjectFromDir(const string& rootDir) {
     _config = parseRiuToml(tomlPath.string());
 }
 
+void Riu::addDeclOutputRoot(const string& sourceRoot, const string& outputRoot) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    DeclOutputRoot m;
+    m.sourceRoot = fs::weakly_canonical(fs::absolute(sourceRoot), ec).lexically_normal().generic_string();
+    if (m.sourceRoot.empty()) m.sourceRoot = sourceRoot;
+    m.outputRoot = outputRoot;
+    _declOutputRoots.push_back(std::move(m));
+}
+
+namespace {
+
+string canonDir(const std::filesystem::path& p) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    auto abs = fs::absolute(p, ec);
+    auto c = fs::weakly_canonical(abs, ec);
+    return c.lexically_normal().generic_string();
+}
+
+bool sameDir(const string& a, const string& b) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    if (fs::exists(a) && fs::exists(b)) {
+        bool eq = fs::equivalent(a, b, ec);
+        if (!ec) return eq;
+    }
+    return canonDir(a) == canonDir(b);
+}
+
+bool pathIsUnder(const string& child, const string& root) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    auto rel = fs::relative(canonDir(child), canonDir(root), ec);
+    if (ec) return false;
+    string s = rel.generic_string();
+    if (s.empty() || s == ".") return true;
+    return s != ".." && !s.starts_with("../");
+}
+
+string sourceRootOf(const string& projectRoot) {
+    namespace fs = std::filesystem;
+    fs::path src = fs::path(projectRoot) / "src";
+    return fs::is_directory(src) ? src.string() : projectRoot;
+}
+
+} // namespace
+
+vector<ResolvedDep> resolvePathDepGraph(const string& rootDir, const ProjectConfig& rootCfg) {
+    namespace fs = std::filesystem;
+    vector<ResolvedDep> out;
+    std::map<string, string> nameToRoot;
+    std::set<string> visiting;
+
+    auto walk = [&](auto&& self, const string& fromRoot, const ProjectConfig& cfg) -> void {
+        for (const auto& dep : cfg.dependencies) {
+            if (dep.kind != DepSourceKind::Path) continue;
+            fs::path raw(dep.path);
+            fs::path target = raw.is_absolute() ? raw : (fs::path(fromRoot) / raw);
+            fs::path toml = target / "riu.toml";
+            if (!fs::exists(toml) || !fs::is_regular_file(toml)) {
+                throw RiuError(1, ErrorCode::E5001, target.string()).withFile(toml.string());
+            }
+            ProjectConfig depCfg;
+            try {
+                depCfg = parseRiuToml(toml.string());
+            } catch (RiuError& e) {
+                if (e.file().empty()) throw std::move(e).withFile(toml.string());
+                throw;
+            }
+            if (depCfg.name != dep.name) {
+                throw RiuError(1, ErrorCode::E5037, dep.name, depCfg.name).withFile(toml.string());
+            }
+            if (!depCfg.library) {
+                throw RiuError(1, ErrorCode::E5038, dep.name).withFile(toml.string());
+            }
+            string canon = canonDir(target);
+            auto seen = nameToRoot.find(dep.name);
+            if (seen != nameToRoot.end()) {
+                if (!sameDir(seen->second, canon)) {
+                    throw RiuError(1, ErrorCode::E5041, dep.name, seen->second, canon);
+                }
+                continue;
+            }
+            if (visiting.contains(canon)) continue;
+            visiting.insert(canon);
+            nameToRoot[dep.name] = canon;
+            self(self, canon, depCfg);
+            visiting.erase(canon);
+            ResolvedDep node;
+            node.name = dep.name;
+            node.projectRoot = canon;
+            node.sourceRoot = sourceRootOf(canon);
+            node.config = std::move(depCfg);
+            out.push_back(std::move(node));
+        }
+    };
+    walk(walk, canonDir(rootDir), rootCfg);
+    return out;
+}
+
+vector<LibModFile> collectLibModFiles(const string& sourceRoot, const string& libMod) {
+    namespace fs = std::filesystem;
+    vector<LibModFile> files;
+    fs::path srcDir(sourceRoot);
+    if (!fs::is_directory(srcDir) || libMod.empty()) return files;
+    string rel = libMod;
+    for (char& c : rel)
+        if (c == '.') c = '/';
+    fs::path pkgDir = srcDir / rel;
+    fs::path fileMod = pkgDir;
+    fileMod += ".ut";
+    if (fs::is_directory(pkgDir)) {
+        std::error_code walkEc;
+        for (auto it = fs::recursive_directory_iterator(pkgDir, walkEc); it != fs::recursive_directory_iterator();
+             ++it) {
+            if (walkEc) break;
+            if (!it->is_regular_file()) continue;
+            auto& p = it->path();
+            if (p.extension() != ".ut") continue;
+            auto fname = p.filename().string();
+            if (fname.ends_with(".test.ut")) continue;
+            auto relFile = fs::relative(p, srcDir);
+            string modName = relFile.generic_string();
+            modName = modName.substr(0, modName.size() - 3);
+            for (auto& c : modName)
+                if (c == '/' || c == '\\') c = '.';
+            files.push_back({fs::absolute(p).string(), std::move(modName)});
+        }
+        std::ranges::sort(files, [](const LibModFile& a, const LibModFile& b) { return a.moduleName < b.moduleName; });
+        return files;
+    }
+    if (fs::is_regular_file(fileMod)) {
+        files.push_back({fs::absolute(fileMod).string(), libMod});
+    }
+    return files;
+}
+
 string Riu::projectName() const {
     return _config.name;
 }
@@ -362,7 +576,13 @@ bool Riu::declCacheEnabled() const {
 }
 
 string Riu::declPathFor(const string& srcAbs) const {
-    auto buildDir = (std::filesystem::path(_projectRoot) / "build").string();
+    namespace fs = std::filesystem;
+    for (const auto& m : _declOutputRoots) {
+        if (pathIsUnder(srcAbs, m.sourceRoot)) {
+            return mod_decl::pathFor(m.sourceRoot, m.outputRoot, srcAbs);
+        }
+    }
+    auto buildDir = (fs::path(_projectRoot) / "build").string();
     return mod_decl::pathFor(_projectRoot, buildDir, srcAbs);
 }
 

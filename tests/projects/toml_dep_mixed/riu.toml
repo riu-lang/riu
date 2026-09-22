@@ -1,0 +1,8 @@
+name="toml_dep_mixed"
+version="1.0.0"
+
+[dependencies]
+foo = { path = "x", sdk = "stdlib" }
+
+[[executable]]
+entry="main.ut"
