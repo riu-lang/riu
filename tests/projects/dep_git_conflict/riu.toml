@@ -1,0 +1,9 @@
+name="dep_git_conflict"
+version="1.0.0"
+
+[dependencies]
+a = { path = "build/a" }
+b = { path = "build/b" }
+
+[[executable]]
+entry="main.ut"

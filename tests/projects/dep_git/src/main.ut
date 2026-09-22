@@ -1,0 +1,6 @@
+use riu.core.*
+use utils.*
+
+fn main() {
+  git_hi()
+}

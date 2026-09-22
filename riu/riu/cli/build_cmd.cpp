@@ -834,6 +834,10 @@ int runBuildCommand(const BuildCmdOptions& opts) {
         vector<ResolvedDep> resolved;
         try {
             resolved = resolvePathDepGraph(cwd, riu.projectConfig(), sdk_loader::findSdkPackage);
+        } catch (const GitCommandFailed& e) {
+            std::cerr << e.output();
+            if (!e.output().empty() && e.output().back() != '\n') std::cerr << '\n';
+            return e.exitCode();
         } catch (runtime_error& e) {
             reportRuntimeError(tomlPath, e);
             return 1;

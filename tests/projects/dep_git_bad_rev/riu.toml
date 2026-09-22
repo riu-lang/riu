@@ -1,0 +1,8 @@
+name="dep_git_bad_rev"
+version="1.0.0"
+
+[dependencies]
+utils = { git = "build/origin.git", rev = "0123456789abcdef0123456789abcdef01234567" }
+
+[[executable]]
+entry="main.ut"

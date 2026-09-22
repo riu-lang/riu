@@ -432,6 +432,8 @@ DEF_ERR(5039, "riu.toml `[dependencies]` does not accept `dir` (v1 requires `riu
 DEF_ERR(5040, "riu.toml `[dependencies].{}` has unknown field `{}`")
 DEF_ERR(5041, "package `{}` is provided by different sources: `{}` and `{}`")
 DEF_ERR(5042, "riu.toml `[dependencies].{}` `git` and `rev` must be used together (`rev` = full commit)")
+DEF_ERR(5043, "git checkout for package `{}` at `{}` has local modifications")
+DEF_ERR(5044, "riu.toml `[dependencies].{}` `rev` must be a full 40-character commit hash")
 
 // ── E6xxx 内置 / 调用 ─────────────────────────────────────────────────
 DEF_ERR(6001, "module `{}` not found in package `{}`")

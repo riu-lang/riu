@@ -1,0 +1,8 @@
+name="toml_dep_rev_format"
+version="1.0.0"
+
+[dependencies]
+foo = { git = "https://example.com/foo.git", rev = "main" }
+
+[[executable]]
+entry="main.ut"

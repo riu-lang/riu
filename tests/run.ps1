@@ -130,6 +130,30 @@ function Invoke-Capture([string]$File, [string[]]$CmdArgs, [string]$WorkDir) {
     }
 }
 
+function Invoke-Prebuild {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Dir,
+        [Parameter(Mandatory)]
+        [string]$RiuExe
+    )
+    $pre = Join-Path $Dir 'prebuild.ps1'
+    if (-not (Test-Path -LiteralPath $pre)) { return '' }
+    $env:RiuExe = $RiuExe
+    $pwsh = $null
+    $cmd = Get-Command pwsh -ErrorAction SilentlyContinue
+    if ($cmd) { $pwsh = $cmd.Source } else {
+        $cmd = Get-Command powershell -ErrorAction SilentlyContinue
+        if ($cmd) { $pwsh = $cmd.Source }
+    }
+    if (-not $pwsh) { return 'prebuild.ps1 present but pwsh/powershell not found' }
+    $preR = Invoke-Capture $pwsh @('-NoProfile', '-File', $pre) $Dir
+    if ($preR.ExitCode -ne 0) {
+        return "prebuild failed`n$($preR.Stderr)$($preR.Stdout)"
+    }
+    return ''
+}
+
 function Invoke-OneCase {
     param(
         [Parameter(Mandatory)]
@@ -143,24 +167,7 @@ function Invoke-OneCase {
         if ($Case.Kind -eq 'project') {
             $buildDir = Join-Path $Case.Dir 'build'
             if (Test-Path -LiteralPath $buildDir) { Remove-Item -LiteralPath $buildDir -Recurse -Force }
-            $pre = Join-Path $Case.Dir 'prebuild.ps1'
-            if (Test-Path -LiteralPath $pre) {
-                $env:RiuExe = $RiuExe
-                $pwsh = $null
-                $cmd = Get-Command pwsh -ErrorAction SilentlyContinue
-                if ($cmd) { $pwsh = $cmd.Source } else {
-                    $cmd = Get-Command powershell -ErrorAction SilentlyContinue
-                    if ($cmd) { $pwsh = $cmd.Source }
-                }
-                if (-not $pwsh) {
-                    $err = "prebuild.ps1 present but pwsh/powershell not found"
-                } else {
-                    $preR = Invoke-Capture $pwsh @('-NoProfile', '-File', $pre) $Case.Dir
-                    if ($preR.ExitCode -ne 0) {
-                        $err = "prebuild failed`n$($preR.Stderr)$($preR.Stdout)"
-                    }
-                }
-            }
+            $err = Invoke-Prebuild $Case.Dir $RiuExe
             if ($err -eq '') {
                 $runExesFile = Join-Path $Case.Dir 'run_exes.txt'
                 $expectFiles = Join-Path $Case.Dir 'expect_files.txt'
@@ -226,22 +233,25 @@ function Invoke-OneCase {
         } elseif ($Case.Kind -eq 'fail') {
             $buildDir = Join-Path $Case.Dir 'build'
             if (Test-Path -LiteralPath $buildDir) { Remove-Item -LiteralPath $buildDir -Recurse -Force }
-            $r = Invoke-Capture $RiuExe @('build', $Case.Name) $Case.Dir
-            $combined = (Strip-Cr "$($r.Stderr)$($r.Stdout)")
-            if ($r.ExitCode -eq 0) {
-                $err = "expected compile failure, got exit 0`n$combined"
-            } else {
-                $needles = Get-Content -LiteralPath (Join-Path $Case.Dir 'expected_fail.txt')
-                $missing = @()
-                foreach ($line in $needles) {
-                    $t = $line.Trim()
-                    if ($t.Length -eq 0 -or $t.StartsWith('#')) { continue }
-                    if ($combined.IndexOf($t) -lt 0) { $missing += $t }
-                }
-                if ($missing.Count -gt 0) {
-                    $err = "stderr missing:`n$($missing -join "`n")`n--- actual ---`n$combined"
+            $err = Invoke-Prebuild $Case.Dir $RiuExe
+            if ($err -eq '') {
+                $r = Invoke-Capture $RiuExe @('build', $Case.Name) $Case.Dir
+                $combined = (Strip-Cr "$($r.Stderr)$($r.Stdout)")
+                if ($r.ExitCode -eq 0) {
+                    $err = "expected compile failure, got exit 0`n$combined"
                 } else {
-                    $ok = $true
+                    $needles = Get-Content -LiteralPath (Join-Path $Case.Dir 'expected_fail.txt')
+                    $missing = @()
+                    foreach ($line in $needles) {
+                        $t = $line.Trim()
+                        if ($t.Length -eq 0 -or $t.StartsWith('#')) { continue }
+                        if ($combined.IndexOf($t) -lt 0) { $missing += $t }
+                    }
+                    if ($missing.Count -gt 0) {
+                        $err = "stderr missing:`n$($missing -join "`n")`n--- actual ---`n$combined"
+                    } else {
+                        $ok = $true
+                    }
                 }
             }
             if (Test-Path -LiteralPath $buildDir) {
@@ -274,6 +284,10 @@ function Invoke-OneCase {
         $ok = $false
         $err = $_.Exception.Message
     }
+    $tomlIn = Join-Path $Case.Dir 'riu.toml.in'
+    if (Test-Path -LiteralPath $tomlIn) {
+        Copy-Item -LiteralPath $tomlIn -Destination (Join-Path $Case.Dir 'riu.toml') -Force
+    }
     return [pscustomobject]@{
         Name = $Case.Name
         Kind = $Case.Kind
@@ -305,7 +319,7 @@ function Invoke-CasesParallel {
     )
 
     $iss = [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
-    foreach ($fn in @('Strip-Cr', 'Invoke-Capture', 'Invoke-OneCase')) {
+    foreach ($fn in @('Strip-Cr', 'Invoke-Capture', 'Invoke-Prebuild', 'Invoke-OneCase')) {
         $def = (Get-Command $fn).Definition
         [void]$iss.Commands.Add(
             (New-Object System.Management.Automation.Runspaces.SessionStateFunctionEntry $fn, $def)

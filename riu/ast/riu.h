@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <stdexcept>
 
 class RdBuilder;
 class SpecRegistry;
@@ -98,8 +99,22 @@ struct ResolvedDep {
 // 读 `tomlPath`。缺字段 / 旧 schema / 非法前缀等抛 RiuError（E5002–E5008、E5021+、E5034+）。
 [[nodiscard]] ProjectConfig parseRiuToml(const string& tomlPath);
 
-// `{ path }` 与 `{ sdk }`：递归读 toml，校验键=对方 name、是库、同名不同源。
-// locateSdk(`id`) → `sdk/<id>/`；空指针则跳过 sdk 边。git 边本阶段跳过。
+// git clone / fetch / checkout 非零：透传 git 的输出与退出码，不是 RiuError。
+class GitCommandFailed : public std::runtime_error {
+    int _exitCode = 1;
+    string _output;
+
+public:
+    GitCommandFailed(int exitCode, string output)
+        : std::runtime_error(output.empty() ? string("git command failed") : output),
+          _exitCode(exitCode == 0 ? 1 : exitCode), _output(std::move(output)) {}
+    [[nodiscard]] int exitCode() const { return _exitCode; }
+    [[nodiscard]] const string& output() const { return _output; }
+};
+
+// `{ path }` / `{ sdk }` / `{ git, rev }`：递归读 toml，校验键=对方 name、是库、同名不同源。
+// locateSdk(`id`) → `sdk/<id>/`；空指针则跳过 sdk 边。
+// git 检出到 `<rootDir>/build/dependences/<name>/`；失败抛 GitCommandFailed。
 using SdkPackageLocator = string (*)(const string& id);
 [[nodiscard]] vector<ResolvedDep> resolvePathDepGraph(const string& rootDir, const ProjectConfig& rootCfg,
                                                       SdkPackageLocator locateSdk = nullptr);

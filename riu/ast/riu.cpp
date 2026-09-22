@@ -4,6 +4,7 @@
 #include "riu.h"
 
 #include <algorithm>
+#include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -14,6 +15,7 @@
 
 #include <toml.hpp>
 
+#include "git_dep.h"
 #include "mod_decl.h"
 #include "rd_builder.h"
 
@@ -242,6 +244,14 @@ vector<Dependency> parseDependencies(const toml::value& data) {
             if (d.git.empty() || d.rev.empty()) {
                 throw RiuError(1, ErrorCode::E5042, depName);
             }
+            if (d.rev.size() != 40) {
+                throw RiuError(1, ErrorCode::E5044, depName);
+            }
+            for (char c : d.rev) {
+                if (!std::isxdigit(static_cast<unsigned char>(c))) {
+                    throw RiuError(1, ErrorCode::E5044, depName);
+                }
+            }
         }
         out.push_back(std::move(d));
     }
@@ -414,16 +424,6 @@ string canonDir(const std::filesystem::path& p) {
     return c.lexically_normal().generic_string();
 }
 
-bool sameDir(const string& a, const string& b) {
-    namespace fs = std::filesystem;
-    std::error_code ec;
-    if (fs::exists(a) && fs::exists(b)) {
-        bool eq = fs::equivalent(a, b, ec);
-        if (!ec) return eq;
-    }
-    return canonDir(a) == canonDir(b);
-}
-
 bool pathIsUnder(const string& child, const string& root) {
     namespace fs = std::filesystem;
     std::error_code ec;
@@ -446,23 +446,45 @@ vector<ResolvedDep> resolvePathDepGraph(const string& rootDir, const ProjectConf
                                         SdkPackageLocator locateSdk) {
     namespace fs = std::filesystem;
     vector<ResolvedDep> out;
-    std::map<string, string> nameToRoot;
+    std::map<string, string> nameToSource;
     std::set<string> visiting;
+    const string rootCanon = canonDir(rootDir);
+
+    auto gitIdentity = [](const Dependency& dep) {
+        string rev = dep.rev;
+        for (char& c : rev)
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return dep.git + "@" + rev;
+    };
 
     auto walk = [&](auto&& self, const string& fromRoot, const ProjectConfig& cfg) -> void {
         for (const auto& dep : cfg.dependencies) {
-            if (dep.kind == DepSourceKind::Git) continue;
             fs::path target;
-            if (dep.kind == DepSourceKind::Sdk) {
+            string identity;
+            if (dep.kind == DepSourceKind::Git) {
+                identity = gitIdentity(dep);
+            } else if (dep.kind == DepSourceKind::Sdk) {
                 if (!locateSdk) continue;
                 string found = locateSdk(dep.sdk);
                 if (found.empty()) {
                     throw RiuError(1, ErrorCode::E5001, string("sdk/") + dep.sdk);
                 }
                 target = found;
+                identity = string("sdk:") + dep.sdk;
             } else {
                 fs::path raw(dep.path);
                 target = raw.is_absolute() ? raw : (fs::path(fromRoot) / raw);
+                identity = canonDir(target);
+            }
+            auto seen = nameToSource.find(dep.name);
+            if (seen != nameToSource.end()) {
+                if (seen->second != identity) {
+                    throw RiuError(1, ErrorCode::E5041, dep.name, seen->second, identity);
+                }
+                continue;
+            }
+            if (dep.kind == DepSourceKind::Git) {
+                target = checkoutGitDep(rootCanon, dep.name, dep.git, dep.rev);
             }
             fs::path toml = target / "riu.toml";
             if (!fs::exists(toml) || !fs::is_regular_file(toml)) {
@@ -482,16 +504,9 @@ vector<ResolvedDep> resolvePathDepGraph(const string& rootDir, const ProjectConf
                 throw RiuError(1, ErrorCode::E5038, dep.name).withFile(toml.string());
             }
             string canon = canonDir(target);
-            auto seen = nameToRoot.find(dep.name);
-            if (seen != nameToRoot.end()) {
-                if (!sameDir(seen->second, canon)) {
-                    throw RiuError(1, ErrorCode::E5041, dep.name, seen->second, canon);
-                }
-                continue;
-            }
             if (visiting.contains(canon)) continue;
             visiting.insert(canon);
-            nameToRoot[dep.name] = canon;
+            nameToSource[dep.name] = identity;
             self(self, canon, depCfg);
             visiting.erase(canon);
             ResolvedDep node;
@@ -504,7 +519,7 @@ vector<ResolvedDep> resolvePathDepGraph(const string& rootDir, const ProjectConf
             out.push_back(std::move(node));
         }
     };
-    walk(walk, canonDir(rootDir), rootCfg);
+    walk(walk, rootCanon, rootCfg);
     return out;
 }
 
