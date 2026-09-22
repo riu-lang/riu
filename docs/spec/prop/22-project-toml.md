@@ -111,7 +111,7 @@ entry="helper.ut"
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
 | `name` | 字符串 | 否 | 输出文件名（无扩展名）。缺省 = 顶层项目 `name` |
-| `type` | 字符串 | 否 | `"static"`（缺省）或 `"dynamic"`。`"dynamic"` 本提案定义形态，首切仍可报「尚未支持」 |
+| `type` | 字符串 | 否 | `"static"`（缺省）或 `"dynamic"` |
 | `lib_mod` | 字符串 | ✅ | 本库拥有的模块根，点分路径 `a.b.c` |
 | `external_links` | 内联表数组 | 否 | 同 executable |
 
@@ -308,3 +308,4 @@ external_links=[
 
 - 2026-09-22（`notes/0.23`）：切片 1 — 新 schema 解析、迁仓库 toml、`//`/`./` 链接与 `dll` 复制；诊断 `toml_*`。
 - 2026-09-22（`notes/0.23`）：切片 2 — 无参 `riu build` 先库后全部 exe；回归 `toml_multi_exe`。
+- 2026-09-22（`notes/0.23`）：切片 3 — `type="dynamic"` 产出 `.dll` + 导入库；回归 `toml_dyn_lib`。

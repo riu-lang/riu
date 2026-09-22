@@ -20,6 +20,7 @@
 #include "types.h"
 
 #include <lld/Common/Driver.h>
+#include <llvm/IR/GlobalValue.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
@@ -183,6 +184,31 @@ static bool isTestDllFresh(const std::string& dllPath, const std::string& testOb
         return true;
     } catch (...) {
         return false;
+    }
+}
+
+// lld-link 拒绝 /EXPORT 名里的 `(` / `,` 等（riu mangle 带形参表），只标合法标识符。
+static bool isValidCoffExportName(llvm::StringRef name) {
+    if (name.empty() || name.starts_with("llvm.")) return false;
+    for (unsigned char c : name) {
+        bool ok = (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_' || c == '.' ||
+                  c == '$' || c == '?';
+        if (!ok) return false;
+    }
+    return true;
+}
+
+// 动态库：已定义的 External 且名字可作 COFF 导出的符号标 dllexport。
+static void markDefinedSymbolsDllExport(llvm::Module* mod) {
+    for (auto& f : *mod) {
+        if (f.isDeclaration() || !f.hasExternalLinkage()) continue;
+        if (!isValidCoffExportName(f.getName())) continue;
+        f.setDLLStorageClass(llvm::GlobalValue::DLLExportStorageClass);
+    }
+    for (auto& g : mod->globals()) {
+        if (g.isDeclaration() || !g.hasExternalLinkage()) continue;
+        if (!isValidCoffExportName(g.getName())) continue;
+        g.setDLLStorageClass(llvm::GlobalValue::DLLExportStorageClass);
     }
 }
 
@@ -715,7 +741,7 @@ int runBuildCommand(const BuildCmdOptions& opts) {
     }
 
     auto codegenTo = [&](FileNode* file, const std::string& moduleName, const std::string& objOut,
-                         const std::string& irOut, bool isSdk = false) -> bool {
+                         const std::string& irOut, bool isSdk = false, bool dllExport = false) -> bool {
         std::cout << "Compile IR... (module: " << moduleName << ")" << '\n';
         auto ctx = std::make_unique<llvm::LLVMContext>();
         auto mod = std::make_unique<llvm::Module>(moduleName, *ctx);
@@ -723,6 +749,7 @@ int runBuildCommand(const BuildCmdOptions& opts) {
         try {
             Compiler compiler(*ctx, builder, mod.get(), file, &riu, isSdk);
             compiler.compile(file);
+            if (dllExport) markDefinedSymbolsDllExport(mod.get());
         } catch (runtime_error& e) {
             // 通过模块名查回源文件路径（Riu::modulePath 维护映射）
             string srcPath = riu.modulePath(moduleName);
@@ -750,7 +777,7 @@ int runBuildCommand(const BuildCmdOptions& opts) {
         return true;
     };
 
-    // ====== lib 模式：按 `[library].lib_mod` 扫源 + 静态库 ======
+    // ====== lib 模式：按 `[library].lib_mod` 扫源 + 静态库 / 动态库 ======
     if (buildLib) {
         namespace fs = std::filesystem;
         fs::path srcDir(riu.sourceRoot());
@@ -859,10 +886,11 @@ int runBuildCommand(const BuildCmdOptions& opts) {
                 isSdkRuntime = isFlatDep && (stem == "base");
             }
 
+            const bool dllExport = riu.library() && riu.library()->type == "dynamic";
             if (!libCaches.isFresh(abs, obj)) {
                 file = riu.ensureFullAst(abs, mn);
                 if (!file) continue;
-                if (!codegenTo(file, mn, obj, ir, isSdkRuntime)) {
+                if (!codegenTo(file, mn, obj, ir, isSdkRuntime, dllExport)) {
                     anyCodegenError = true;
                     continue; // 跳过 cache 更新与 obj 收集；继续下一个模块
                 }
@@ -876,17 +904,27 @@ int runBuildCommand(const BuildCmdOptions& opts) {
             return 1;
         }
 
-        // 链接为静态库
+        // 链接为静态库（/lib 只归档）或动态库（/dll + 导入库）
+        const bool isDynLib = riu.library() && riu.library()->type == "dynamic";
         string libStem = riu.library() ? riu.library()->name : projectName;
         string libPath = joinUnder(projectBuildDir, libStem, ".lib");
-        bool needLib = !fs::exists(libPath);
+        string dllPath = joinUnder(projectBuildDir, libStem, ".dll");
+        bool needLib = isDynLib ? (!fs::exists(dllPath) || !fs::exists(libPath)) : !fs::exists(libPath);
         if (!needLib) {
             try {
-                auto t = fs::last_write_time(libPath);
+                auto t = fs::last_write_time(isDynLib ? dllPath : libPath);
                 for (auto& o : libObjs) {
                     if (fs::last_write_time(o) > t) {
                         needLib = true;
                         break;
+                    }
+                }
+                if (!needLib && isDynLib) {
+                    if (!sdkLibPath.empty() && fs::exists(sdkLibPath) && fs::last_write_time(sdkLibPath) > t) {
+                        needLib = true;
+                    }
+                    if (!riurtLibPath.empty() && fs::exists(riurtLibPath) && fs::last_write_time(riurtLibPath) > t) {
+                        needLib = true;
                     }
                 }
             } catch (...) {
@@ -894,19 +932,47 @@ int runBuildCommand(const BuildCmdOptions& opts) {
             }
         }
         if (needLib) {
-            string outArg = "/out:" + libPath;
-            vector<const char*> args = {"lld-link", "/lib", outArg.c_str()};
-            for (auto& o : libObjs)
-                args.push_back(o.c_str());
-
             std::string outStr, errStr;
             llvm::raw_string_ostream oOS(outStr), eOS(errStr);
-            std::cout << "Static lib: " << libPath << '\n';
             lld::DriverDef dd = {.f = lld::WinLink, .d = &lld::coff::link};
-            lld::Result r = lldMain(args, oOS, eOS, llvm::ArrayRef{dd});
-            if (r.retCode) {
-                llvm::errs() << errStr;
-                return 1;
+            if (isDynLib) {
+                string outArg = "/out:" + dllPath;
+                string implibArg = "/implib:" + libPath;
+                vector<const char*> args = {"lld-link", "/dll", "/noentry", outArg.c_str(), implibArg.c_str()};
+                for (auto& o : libObjs)
+                    args.push_back(o.c_str());
+                if (!isSdkSelfBuild && !sdkLibPath.empty()) args.push_back(sdkLibPath.c_str());
+                if (!riurtLibPath.empty()) args.push_back(riurtLibPath.c_str());
+                std::vector<ExternalLink> libLinks =
+                    riu.library() ? riu.library()->external_links : std::vector<ExternalLink>{};
+                if (!isSdkSelfBuild) {
+                    libLinks.insert(libLinks.end(), sdkLinks.begin(), sdkLinks.end());
+                }
+                std::vector<std::string> projLibArgs;
+                appendExternalLinkArgs(libLinks, riu.projectRoot(), projLibArgs, args);
+
+                std::cout << "Dynamic lib: " << dllPath << '\n';
+                std::cout.flush();
+                lld::Result r = lldMain(args, oOS, eOS, llvm::ArrayRef{dd});
+                if (r.retCode) {
+                    std::cerr << errStr;
+                    return 1;
+                }
+                if (copyRuntimeDlls(libLinks, riu.projectRoot(), fs::path(projectBuildDir)) != 0) {
+                    return 1;
+                }
+            } else {
+                string outArg = "/out:" + libPath;
+                vector<const char*> args = {"lld-link", "/lib", outArg.c_str()};
+                for (auto& o : libObjs)
+                    args.push_back(o.c_str());
+
+                std::cout << "Static lib: " << libPath << '\n';
+                lld::Result r = lldMain(args, oOS, eOS, llvm::ArrayRef{dd});
+                if (r.retCode) {
+                    llvm::errs() << errStr;
+                    return 1;
+                }
             }
             compiled = true;
         }

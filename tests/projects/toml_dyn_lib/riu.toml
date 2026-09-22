@@ -1,0 +1,7 @@
+name="toml_dyn_lib"
+version="1.0.0"
+
+[library]
+name="dynlib"
+type="dynamic"
+lib_mod="dynlib"

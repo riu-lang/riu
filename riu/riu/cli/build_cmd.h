@@ -5,7 +5,7 @@
 //
 // 从 riu/riu/main.cpp 抠出 (P1 Phase 1.b.iii.b):
 // - 项目模式: 加载 riu.toml 产物（[library] / [[executable]]）, 调度 SDK / lib / exe,
-//   走 codegen → obj → LLD 链接 → exe / lib;
+//   走 codegen → obj → LLD 链接 → exe / 静态库 / 动态库;
 // - 包级缓存 (PkgCacheRegistry) 控制增量编译。
 
 #pragma once

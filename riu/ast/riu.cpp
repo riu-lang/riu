@@ -232,9 +232,6 @@ ProjectConfig parseRiuToml(const string& tomlPath) {
             if (L.type != "static" && L.type != "dynamic") {
                 throw RiuError(1, ErrorCode::E5006);
             }
-            if (L.type == "dynamic") {
-                throw RiuError(1, ErrorCode::E5007);
-            }
             if (!lib.contains("lib_mod") || !lib.at("lib_mod").is_string()) {
                 throw RiuError(1, ErrorCode::E5024);
             }
