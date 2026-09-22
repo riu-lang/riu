@@ -557,7 +557,7 @@ int runBuildCommand(const BuildCmdOptions& opts) {
     string projectName;
     string projectBuildDir;
     string buildDir;
-    std::string inputFile;
+    std::vector<std::string> exeInputFiles;
     bool buildLib = false;
     std::vector<const Executable*> exesToBuild;
 
@@ -593,11 +593,15 @@ int runBuildCommand(const BuildCmdOptions& opts) {
                 exesToBuild.push_back(&e);
         }
 
-        if (exesToBuild.size() == 1) {
-            if (!checkEntryPath(riu, exesToBuild[0]->entry, inputFile)) return 1;
-        } else if (exesToBuild.empty() && !buildLib) {
+        if (exesToBuild.empty() && !buildLib) {
             std::cerr << "Error: riu.toml is missing `[library]` or `[[executable]]`\n";
             return 1;
+        }
+        exeInputFiles.reserve(exesToBuild.size());
+        for (const Executable* e : exesToBuild) {
+            std::string in;
+            if (!checkEntryPath(riu, e->entry, in)) return 1;
+            exeInputFiles.push_back(std::move(in));
         }
 
         projectName = riu.projectName();
@@ -874,7 +878,7 @@ int runBuildCommand(const BuildCmdOptions& opts) {
 
         // 链接为静态库
         string libStem = riu.library() ? riu.library()->name : projectName;
-        string libPath = projectBuildDir + "/" + libStem + ".lib";
+        string libPath = joinUnder(projectBuildDir, libStem, ".lib");
         bool needLib = !fs::exists(libPath);
         if (!needLib) {
             try {
@@ -907,7 +911,10 @@ int runBuildCommand(const BuildCmdOptions& opts) {
             compiled = true;
         }
 
-        if (!compiled) std::cout << "no work to do." << '\n';
+        // 还要编 exe 时不在这里报 no work：后面链接可能仍有活
+        if (!compiled && exesToBuild.empty() && !opts.testMode) {
+            std::cout << "no work to do." << '\n';
+        }
 
         // ====== test 模式：构建 test DLL（lib 与 exe 共用 buildTestDlls） ======
         if (opts.testMode) {
@@ -1042,149 +1049,159 @@ int runBuildCommand(const BuildCmdOptions& opts) {
         _exit(testFails > 0 ? 1 : 0);
     }
 
-    // ====== exe 模式：原流程 ======
+    // ====== exe 模式：按 [[executable]] 声明顺序逐个编（不互链、不把其它 entry 的 main 链进来） ======
     if (exesToBuild.empty()) {
         std::cerr << "Error: no executable to build\n";
         return 1;
     }
-    const Executable* exe = exesToBuild[0];
-    if (inputFile.empty() && !checkEntryPath(riu, exe->entry, inputFile)) return 1;
 
-    std::string baseName = llvm::sys::path::stem(inputFile).str();
-    std::string objPath =
-        mirroredOutputBase(riu.projectRoot(), buildDir, std::filesystem::absolute(inputFile).string()) + ".obj";
-    std::filesystem::create_directories(std::filesystem::path(objPath).parent_path());
-
-    FileNode* mainFile = nullptr;
-    try {
-        mainFile = riu.loadMainFile(inputFile, baseName);
-    } catch (runtime_error& e) {
-        reportRuntimeError(inputFile, e);
-        return 1;
-    }
-
-    // 文件级聚合：主模块与各导入模块逐个 codegen，单文件失败不立即退出，继续编译其余文件
-    bool anyCodegenError = false;
-
-    // 包级缓存（每目录一份 <dirname>.cache，含编译器指纹）
     PkgCacheRegistry exeCaches(riu.projectRoot(), buildDir);
 
-    // 主模块。
-    std::string mainAbs = std::filesystem::absolute(inputFile).string();
-    bool needCompile = !exeCaches.isFresh(mainAbs, objPath);
-    if (needCompile) {
-        std::string irPath = mirroredOutputBase(riu.projectRoot(), irDir, mainAbs) + ".ll";
-        if (emitIr) {
-            std::filesystem::create_directories(std::filesystem::path(irPath).parent_path());
-        }
-        if (!codegenTo(mainFile, baseName, objPath, irPath)) {
-            anyCodegenError = true;
-        } else {
-            exeCaches.mark(mainAbs);
-            compiled = true;
-        }
-    }
+    for (size_t ei = 0; ei < exesToBuild.size(); ++ei) {
+        const Executable* exe = exesToBuild[ei];
+        const std::string& inputFile = exeInputFiles[ei];
 
-    // 导入的用户模块
-    std::vector<std::string> modObjPaths;
-    for (auto& modName : riu.loadOrder()) {
-        auto modFile = riu.module(modName);
-        if (!modFile || modFile == riu.sdkFile()) continue;
-        std::string modSrc = riu.modulePath(modName);
-        std::string modBase = mirroredOutputBase(riu.projectRoot(), buildDir, modSrc);
-        std::filesystem::create_directories(std::filesystem::path(modBase).parent_path());
-        std::string modObj = modBase + ".obj";
-        std::string modIr = mirroredOutputBase(riu.projectRoot(), irDir, modSrc) + ".ll";
-        if (emitIr) {
-            std::filesystem::create_directories(std::filesystem::path(modIr).parent_path());
-        }
-        if (!exeCaches.isFresh(modSrc, modObj)) {
-            modFile = riu.ensureFullAst(modSrc, modName);
-            if (!modFile) continue;
-            if (!codegenTo(modFile, modName, modObj, modIr)) {
-                anyCodegenError = true;
-                continue; // 继续尝试下一个模块的 codegen
-            }
-            exeCaches.mark(modSrc);
-            compiled = true;
-        }
-        modObjPaths.push_back(modObj);
-    }
-    exeCaches.flushAll();
+        std::string baseName = llvm::sys::path::stem(inputFile).str();
+        std::string objPath =
+            mirroredOutputBase(riu.projectRoot(), buildDir, std::filesystem::absolute(inputFile).string()) + ".obj";
+        std::filesystem::create_directories(std::filesystem::path(objPath).parent_path());
 
-    // 任一模块（含主模块）codegen 失败：跳过链接，统一非零退出
-    if (anyCodegenError) {
-        std::cout.flush();
-        std::cerr.flush();
-        return 1;
-    }
-
-    // 产出名取 `[[executable]].name`（缺省已补成项目名）
-    std::string exeStem = exe->name;
-    std::string exePath = projectBuildDir + "/" + exeStem + ".exe";
-
-    bool needLink = !std::filesystem::exists(exePath);
-    if (!needLink) {
+        FileNode* mainFile = nullptr;
         try {
-            auto exeTime = std::filesystem::last_write_time(exePath);
-            if (std::filesystem::last_write_time(objPath) > exeTime) {
+            mainFile = riu.loadMainFile(inputFile, baseName);
+        } catch (runtime_error& e) {
+            reportRuntimeError(inputFile, e);
+            return 1;
+        }
+
+        // 文件级聚合：主模块与各导入模块逐个 codegen，单文件失败不立即退出，继续编译其余文件
+        bool anyCodegenError = false;
+
+        // 主模块。
+        std::string mainAbs = std::filesystem::absolute(inputFile).string();
+        bool needCompile = !exeCaches.isFresh(mainAbs, objPath);
+        if (needCompile) {
+            std::string irPath = mirroredOutputBase(riu.projectRoot(), irDir, mainAbs) + ".ll";
+            if (emitIr) {
+                std::filesystem::create_directories(std::filesystem::path(irPath).parent_path());
+            }
+            if (!codegenTo(mainFile, baseName, objPath, irPath)) {
+                anyCodegenError = true;
+            } else {
+                exeCaches.mark(mainAbs);
+                compiled = true;
+            }
+        }
+
+        // 本 exe 的 entry 绝对路径；其它 exe 的 main 不进本产物
+        std::unordered_set<std::string> otherEntryAbs;
+        for (size_t oj = 0; oj < exesToBuild.size(); ++oj) {
+            if (oj == ei) continue;
+            otherEntryAbs.insert(std::filesystem::absolute(exeInputFiles[oj]).string());
+        }
+
+        // 导入的用户模块（跳过其它 [[executable]] 的入口，避免 duplicate main）
+        std::vector<std::string> modObjPaths;
+        for (auto& modName : riu.loadOrder()) {
+            auto modFile = riu.module(modName);
+            if (!modFile || modFile == riu.sdkFile()) continue;
+            std::string modSrc = riu.modulePath(modName);
+            if (otherEntryAbs.contains(modSrc)) continue;
+            std::string modBase = mirroredOutputBase(riu.projectRoot(), buildDir, modSrc);
+            std::filesystem::create_directories(std::filesystem::path(modBase).parent_path());
+            std::string modObj = modBase + ".obj";
+            std::string modIr = mirroredOutputBase(riu.projectRoot(), irDir, modSrc) + ".ll";
+            if (emitIr) {
+                std::filesystem::create_directories(std::filesystem::path(modIr).parent_path());
+            }
+            if (!exeCaches.isFresh(modSrc, modObj)) {
+                modFile = riu.ensureFullAst(modSrc, modName);
+                if (!modFile) continue;
+                if (!codegenTo(modFile, modName, modObj, modIr)) {
+                    anyCodegenError = true;
+                    continue; // 继续尝试下一个模块的 codegen
+                }
+                exeCaches.mark(modSrc);
+                compiled = true;
+            }
+            modObjPaths.push_back(modObj);
+        }
+        exeCaches.flushAll();
+
+        // 任一模块（含主模块）codegen 失败：跳过链接，统一非零退出
+        if (anyCodegenError) {
+            std::cout.flush();
+            std::cerr.flush();
+            return 1;
+        }
+
+        // 产出名取 `[[executable]].name`（缺省已补成项目名）
+        std::string exeStem = exe->name;
+        std::string exePath = joinUnder(projectBuildDir, exeStem, ".exe");
+
+        bool needLink = !std::filesystem::exists(exePath);
+        if (!needLink) {
+            try {
+                auto exeTime = std::filesystem::last_write_time(exePath);
+                if (std::filesystem::last_write_time(objPath) > exeTime) {
+                    needLink = true;
+                }
+                if (!sdkLibPath.empty() && std::filesystem::last_write_time(sdkLibPath) > exeTime) {
+                    needLink = true;
+                }
+                for (auto& mo : modObjPaths) {
+                    if (std::filesystem::last_write_time(mo) > exeTime) {
+                        needLink = true;
+                        break;
+                    }
+                }
+            } catch (const std::exception& e) {
                 needLink = true;
             }
-            if (!sdkLibPath.empty() && std::filesystem::last_write_time(sdkLibPath) > exeTime) {
-                needLink = true;
+        }
+
+        if (needLink) {
+            auto exeOut = "/out:" + exePath;
+
+            std::vector<const char*> args = {"lld-link", objPath.c_str(), exeOut.c_str(), "/subsystem:console",
+                                             "/entry:mainStartup"};
+
+            if (!sdkLibPath.empty()) {
+                args.insert(args.begin() + 2, sdkLibPath.c_str());
             }
             for (auto& mo : modObjPaths) {
-                if (std::filesystem::last_write_time(mo) > exeTime) {
-                    needLink = true;
-                    break;
-                }
+                args.insert(args.begin() + 2, mo.c_str());
             }
-        } catch (const std::exception& e) {
-            needLink = true;
+            if (!riurtLibPath.empty()) args.push_back(riurtLibPath.c_str());
+            std::vector<ExternalLink> exeLinks = exe->external_links;
+            if (!isSdkSelfBuild) {
+                exeLinks.insert(exeLinks.end(), sdkLinks.begin(), sdkLinks.end());
+            }
+            std::vector<std::string> projLibArgs;
+            appendExternalLinkArgs(exeLinks, riu.projectRoot(), projLibArgs, args);
+
+            std::string stdoutStr, stderrStr;
+            llvm::raw_string_ostream stdoutOS(stdoutStr), stderrOS(stderrStr);
+
+            std::cout << "Link obj: " << exePath << '\n';
+            lld::DriverDef driverDef = {.f = lld::WinLink, .d = &lld::coff::link};
+            lld::Result result = lldMain(args, stdoutOS, stderrOS, llvm::ArrayRef{driverDef});
+
+            if (result.retCode) {
+                llvm::errs() << stderrStr;
+                return 1;
+            }
+            compiled = true;
         }
-    }
 
-    if (needLink) {
-        auto exeOut = "/out:" + exePath;
-
-        std::vector<const char*> args = {"lld-link", objPath.c_str(), exeOut.c_str(), "/subsystem:console",
-                                         "/entry:mainStartup"};
-
-        if (!sdkLibPath.empty()) {
-            args.insert(args.begin() + 2, sdkLibPath.c_str());
-        }
-        for (auto& mo : modObjPaths) {
-            args.insert(args.begin() + 2, mo.c_str());
-        }
-        if (!riurtLibPath.empty()) args.push_back(riurtLibPath.c_str());
-        std::vector<ExternalLink> exeLinks = exe->external_links;
-        if (!isSdkSelfBuild) {
-            exeLinks.insert(exeLinks.end(), sdkLinks.begin(), sdkLinks.end());
-        }
-        std::vector<std::string> projLibArgs;
-        appendExternalLinkArgs(exeLinks, riu.projectRoot(), projLibArgs, args);
-
-        std::string stdoutStr, stderrStr;
-        llvm::raw_string_ostream stdoutOS(stdoutStr), stderrOS(stderrStr);
-
-        std::cout << "Link obj: " << exePath << '\n';
-        lld::DriverDef driverDef = {.f = lld::WinLink, .d = &lld::coff::link};
-        lld::Result result = lldMain(args, stdoutOS, stderrOS, llvm::ArrayRef{driverDef});
-
-        if (result.retCode) {
-            llvm::errs() << stderrStr;
-            return 1;
-        }
-        compiled = true;
-    }
-
-    {
-        std::vector<ExternalLink> exeLinks = exe->external_links;
-        if (!isSdkSelfBuild) {
-            exeLinks.insert(exeLinks.end(), sdkLinks.begin(), sdkLinks.end());
-        }
-        if (copyRuntimeDlls(exeLinks, riu.projectRoot(), std::filesystem::path(projectBuildDir)) != 0) {
-            return 1;
+        {
+            std::vector<ExternalLink> exeLinks = exe->external_links;
+            if (!isSdkSelfBuild) {
+                exeLinks.insert(exeLinks.end(), sdkLinks.begin(), sdkLinks.end());
+            }
+            if (copyRuntimeDlls(exeLinks, riu.projectRoot(), std::filesystem::path(projectBuildDir)) != 0) {
+                return 1;
+            }
         }
     }
 

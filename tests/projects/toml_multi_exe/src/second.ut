@@ -1,0 +1,7 @@
+use riu.core.*
+use shared.*
+
+fn main() {
+  println("second")
+  shared_hi()
+}

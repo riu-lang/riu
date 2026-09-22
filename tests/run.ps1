@@ -162,10 +162,35 @@ function Invoke-OneCase {
                 }
             }
             if ($err -eq '') {
-                $r = Invoke-Capture $RiuExe @('build', $Case.Name) $Case.Dir
-                $exe = Join-Path $buildDir "$($Case.Name).exe"
-                if ($r.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $exe)) {
-                    $err = "compile failed`n$($r.Stderr)$($r.Stdout)"
+                $runExesFile = Join-Path $Case.Dir 'run_exes.txt'
+                $expectFiles = Join-Path $Case.Dir 'expect_files.txt'
+                $buildAll = (Test-Path -LiteralPath $runExesFile) -or (Test-Path -LiteralPath $expectFiles)
+                $buildArgs = @('build')
+                if (-not $buildAll) { $buildArgs += $Case.Name }
+                $r = Invoke-Capture $RiuExe $buildArgs $Case.Dir
+                $exeStems = @($Case.Name)
+                if (Test-Path -LiteralPath $runExesFile) {
+                    $exeStems = @(
+                        Get-Content -LiteralPath $runExesFile |
+                            Where-Object { $_.Trim().Length -gt 0 -and -not $_.Trim().StartsWith('#') }
+                    )
+                }
+                $missing = @()
+                foreach ($stem in $exeStems) {
+                    $exe = Join-Path $buildDir "$stem.exe"
+                    if (-not (Test-Path -LiteralPath $exe)) { $missing += "$stem.exe" }
+                }
+                if (Test-Path -LiteralPath $expectFiles) {
+                    Get-Content -LiteralPath $expectFiles | ForEach-Object {
+                        $t = $_.Trim()
+                        if ($t.Length -eq 0 -or $t.StartsWith('#')) { return }
+                        $p = Join-Path $buildDir $t
+                        if (-not (Test-Path -LiteralPath $p)) { $missing += $t }
+                    }
+                }
+                if ($r.ExitCode -ne 0 -or $missing.Count -gt 0) {
+                    $miss = if ($missing.Count -gt 0) { "missing: $($missing -join ', ')`n" } else { '' }
+                    $err = "compile failed`n$miss$($r.Stderr)$($r.Stdout)"
                 } else {
                     $exeArgs = @()
                     $runArgsFile = Join-Path $Case.Dir 'run_args.txt'
@@ -175,14 +200,23 @@ function Invoke-OneCase {
                                 Where-Object { $_.Trim().Length -gt 0 -and -not $_.Trim().StartsWith('#') }
                         )
                     }
-                    $run = Invoke-Capture $exe $exeArgs $Case.Dir
-                    $expected = [IO.File]::ReadAllText((Join-Path $Case.Dir 'expected.txt'))
-                    if ($run.ExitCode -ne 0) {
-                        $err = "run failed exit $($run.ExitCode)`n$($run.Stderr)$($run.Stdout)"
-                    } elseif ($run.Stdout -ne $expected) {
-                        $err = "output mismatch`n--- expected ---`n$expected`n--- actual ---`n$($run.Stdout)"
-                    } else {
-                        $ok = $true
+                    $stdout = ''
+                    foreach ($stem in $exeStems) {
+                        $exe = Join-Path $buildDir "$stem.exe"
+                        $run = Invoke-Capture $exe $exeArgs $Case.Dir
+                        if ($run.ExitCode -ne 0) {
+                            $err = "run failed $stem.exe exit $($run.ExitCode)`n$($run.Stderr)$($run.Stdout)"
+                            break
+                        }
+                        $stdout += $run.Stdout
+                    }
+                    if ($err -eq '') {
+                        $expected = [IO.File]::ReadAllText((Join-Path $Case.Dir 'expected.txt'))
+                        if ($stdout -ne $expected) {
+                            $err = "output mismatch`n--- expected ---`n$expected`n--- actual ---`n$stdout"
+                        } else {
+                            $ok = $true
+                        }
                     }
                 }
                 if (Test-Path -LiteralPath $buildDir) {

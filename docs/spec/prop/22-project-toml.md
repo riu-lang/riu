@@ -307,3 +307,4 @@ external_links=[
 ## 落地
 
 - 2026-09-22（`notes/0.23`）：切片 1 — 新 schema 解析、迁仓库 toml、`//`/`./` 链接与 `dll` 复制；诊断 `toml_*`。
+- 2026-09-22（`notes/0.23`）：切片 2 — 无参 `riu build` 先库后全部 exe；回归 `toml_multi_exe`。

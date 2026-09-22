@@ -1,0 +1,14 @@
+name="toml_multi_exe"
+version="1.0.0"
+
+[library]
+name="auxlib"
+lib_mod="auxlib"
+
+[[executable]]
+name="first"
+entry="first.ut"
+
+[[executable]]
+name="second"
+entry="second.ut"

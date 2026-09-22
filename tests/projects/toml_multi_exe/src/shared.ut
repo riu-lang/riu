@@ -1,0 +1,5 @@
+use riu.core.*
+
+fn shared_hi() {
+  println("shared")
+}

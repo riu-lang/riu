@@ -1,0 +1,2 @@
+; 本库不链进 exe（#22：同 toml 产物不互链）
+fn aux_unused() i32 = 1

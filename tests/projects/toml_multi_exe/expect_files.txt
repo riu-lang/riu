@@ -1,0 +1,3 @@
+auxlib.lib
+first.exe
+second.exe
