@@ -34,7 +34,7 @@
 | 复合 move / 局部 move（C 档） | local / composite move | §8.3a.4.4 / §7.4.6.6 | `Heap<T>?` 左值赋值搬移；含 Heap 复合可空 slot 按值搬移 |
 | 生命传染 | Heap-life propagation | §9.5a.1.4 | 含 Heap 子项的复合按 Heap 生命计；`Array<Heap<T>>` 不走 retain |
 | 借用 | borrow | §3.2.3 / §8.6 | `T&`，非空指针，不参与 RC |
-| FFI 指针 | FFI pointer | §3.3 / §9.7 | `Ptr`，等价 C `void*`；C 返回的是不透明 handle |
+| FFI 指针 | FFI pointer | §3.3 / §9.7 | `Ptr<T=()>`；裸 `Ptr` ≡ `Ptr<()>` ≡ C `void*`；`T` 是编译期标签 |
 | C-layout | C layout | §7.5.3.8 / §6.6.2 | 可进 `extern` 的 struct：声明序 + 标量（无 bool 字段）/`Ptr`/嵌套 C-layout/`[T*N]`；`#Packed` / `#Align` 不改资格 |
 | overlay | overlay | §7.5.3.5 / §12.7.3a | 等 size 的 C-layout 结构体之间换视图（C union 展开） |
 | 名义类型 | nominal type | §3.4.1 | 用户 struct 按声明源判等 |

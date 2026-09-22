@@ -380,7 +380,7 @@ for-in（E3160；§5.5.4）：
 | E6018 | `Cannot determine type argument for {}` |
 | E6019 | `Cannot determine LLVM type for '{}'` |
 
-`E6011` 亦用于泛型 enum 类型位与构造 `E:<T>::V` 的实参个数（§3.10.1.4 / §3.10.7.1）；消息模板仍写 `struct`。
+`E6011` 亦用于泛型 enum 类型位与构造 `E:<T>::V` 的实参个数（§3.10.1.4 / §3.10.7.1）；消息模板仍写 `struct`。有默认的尾部形参少写时先按 §3.2.6 补齐，补不齐才 E6011。
 
 builtin 调用 / 类型实参数量（E6020..E6029）：
 

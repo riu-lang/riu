@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| 状态 | 实施中 |
+| 状态 | 已落地 |
 | 开 | 2026-09-21 |
 | 旧档 | §9.7.2.1 / CHANGELOG 2026-07-06：`Ptr` 即 `void*`，不引入 `Ptr<T>`。`genericDef` / `typeParam` 无默认实参。相关：[#19](19-ffi-layout.md)；Win32 生成把 C 指针收成透明 `type X = Ptr` |
 
@@ -199,11 +199,14 @@ Win32 生成（语言之后）：`void*` 仍 `Ptr`；`DWORD*` → `Ptr<u32>`；`
 
 - 2026-09-21（`notes/0.23`）：切片 1：`typeParam` `= type`；AST 默认槽；`.ud` v6；E2041 / E2042（声明期）。使用点补齐仍是切片 2。
 - 2026-09-21（`notes/0.23`）：切片 2：`fillGenericNamedTypeArity` 尾部补齐；类型位 + turbofish；调用点先推断再填默认。
-- 2026-09-21（`notes/0.23`）：切片 3：`#Builtin struct Ptr<T=()>`；`kindForBuiltinWrapper` / `hasGenericArgs`；intern 一律带 1 个 `genericArgs`；裸 `Ptr` ≡ `Ptr<()>`。
+- 2026-09-21（`notes/0.23`）：切片 3：`#Builtin struct Ptr<T=()>`；intern 一律带 1 个 `genericArgs`；裸 `Ptr` ≡ `Ptr<()>`。
+- 2026-09-21（`notes/0.23`）：切片 4：`ptr_of` → `Ptr<payload>`；`ptr_cast`；extern 隐式只进 `Ptr<()>`。
+- 2026-09-22（`notes/0.23`）：切片 5：Win32 生成 `void*` 仍 `Ptr`；`DWORD*` → `Ptr<u32>`；`HANDLE` 族幽灵别名（SDK，不进 spec）。
+- 2026-09-22（`notes/0.23`）：切片 6：回写 §3 / §6.6 / §8.7.4 / §9.7.2 / 附录 C；提案标已落地。
 
-## 实施入口（下次从这里动手）
+## 实施入口
 
-切片 3 已落地。下次切片 4：`ptr_of` → `Ptr<payload>`；`ptr_cast`；extern 隐式只进 `Ptr<()>`。改 frontend + SDK → `./build.ps1 riu riu-check`。
+全部完成。C 字符串 / `Pointer` 别名 / 按 `T` 算术另条。
 
 ### 切片 1：bnf / rd / AST / `.ud`
 
