@@ -364,8 +364,19 @@ for-in（E3160；§5.5.4）：
 | E5031 | `riu.toml \`external_links\` must be an array of inline tables` |
 | E5032 | `riu.toml \`external_links\` item is missing required field \`path\`` |
 | E5033 | `riu.toml \`[library].lib_mod\` must be a non-empty dotted module path` |
+| E5034 | `riu.toml \`[dependencies].{}\` mixes multiple sources (\`sdk\` / \`path\` / \`git\`)` |
+| E5035 | `riu.toml \`[dependencies].{}\` is missing a source (\`sdk\`, \`path\`, or \`git\`)` |
+| E5036 | `riu.toml \`[dependencies]\` cannot declare \`sdk = "core"\` (core is implicit)` |
+| E5037 | `riu.toml \`[dependencies]\` key \`{}\` does not match package name \`{}\`` |
+| E5038 | `riu.toml \`[dependencies].{}\` is not a library project` |
+| E5039 | `riu.toml \`[dependencies]\` does not accept \`dir\` (v1 requires \`riu.toml\` at the source root)` |
+| E5040 | `riu.toml \`[dependencies].{}\` has unknown field \`{}\`` |
+| E5041 | `package \`{}\` is provided by different sources: \`{}\` and \`{}\`` |
+| E5042 | `riu.toml \`[dependencies].{}\` \`git\` and \`rev\` must be used together (\`rev\` = full commit)` |
+| E5043 | `git checkout for package \`{}\` at \`{}\` has local modifications` |
+| E5044 | `riu.toml \`[dependencies].{}\` \`rev\` must be a full 40-character commit hash` |
 
-> E5018：有 `pkg` 时包外访问未列出项、`to` 名单不含调用方、或有 `as` 却写源名（§10.2.4.3 / §10.2.4.7）。E5019：`to` 目标不在当前项目源树或已加载依赖（含 SDK）。E5020：`name.* to` / `name.* as`、同一子模块多行、空 `to` 列表等非法行（§10.2.4.2.3）。E5005–E5008 旧文案（`[lib]` / 顶层 `entry` 互斥等）作废。E5007 码已分配；`type="dynamic"` 落地后不再发出。E5021：旧顶层 `entry` / `[lib]` / `[link]`。E5028：空名、`.` / `..`、路径分隔符、或 Windows 设备名。
+> E5018：有 `pkg` 时包外访问未列出项、`to` 名单不含调用方、或有 `as` 却写源名（§10.2.4.3 / §10.2.4.7）。E5019：`to` 目标不在当前项目源树或已加载依赖（含 SDK）。E5020：`name.* to` / `name.* as`、同一子模块多行、空 `to` 列表等非法行（§10.2.4.2.3）。E5005–E5008 旧文案（`[lib]` / 顶层 `entry` 互斥等）作废。E5007 码已分配；`type="dynamic"` 落地后不再发出。E5021：旧顶层 `entry` / `[lib]` / `[link]`。E5028：空名、`.` / `..`、路径分隔符、或 Windows 设备名。E5034–E5044：`[dependencies]`（§10.1.1.12）。clone / fetch / checkout 失败随 git 报错，不另占诊断码。
 
 ### D.3.6 E6xxx — 内置 / 调用
 

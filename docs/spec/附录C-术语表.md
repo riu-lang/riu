@@ -123,6 +123,9 @@
 | 入口 | entry | §10.1.1.4 | `[[executable]]` 的 `entry` 字段，相对源根 |
 | `lib_mod` | library module root | §10.1.1.5 | `[library]` 拥有的模块根，点分路径 |
 | `external_links` | external links | §10.1.1.6 | 产物上的系统库 / 本树库声明（`//` / `./`） |
+| `[dependencies]` | dependencies | §10.1.1.12 | 项目级依赖段；一条恰好 `sdk` / `path` / `git` 一种 |
+| `dependences/` | git checkout dir | §10.1.1.13 | 调用方 `build/dependences/<name>/`：git 源码 only |
+| `build/deps/` | dependency artifacts | §10.1.1.13 | 调用方 `build/deps/<name>/`：依赖 `.lib` / obj / `.ud` |
 | 源根 | source root | §10.1.3 | `<projectRoot>/src/`，模块解析起点 |
 | `pkg` 文件 | pkg file | §10.2.4 | 包目录的再导出清单；有 `pkg` 时同时是包外可见性边界 |
 | 文件模块 | file module | §10.1.3 / §10.2.2 | 由单个 `.ut`（U Text）文件构成的模块 |
@@ -132,7 +135,8 @@
 | 导出名 | exported name | §10.2.4.7 | `pkg` 行给出的名字；有 `as` 则只用别名 |
 | 定向开放 | directed export | §10.2.4 | `pkg` 行 `to`：只对名单内的包 / 模块可见 |
 | `_` 前缀私有 | underscore-private | §10.3.2 | 仅当前模块可见（恰好 `_` 除外，见丢弃槽） |
-| `riu.core` | riu core SDK | §10.4 | 内置 SDK 模块名 |
+| `riu.core` | riu core SDK | §10.4.1.1 | 隐式 SDK 包（`sdk/core/`，始终加载） |
+| `stdlib` | riu stdlib | §10.4.1.1 | 显式 SDK 包（`sdk/stdlib/`，`{ sdk = "stdlib" }`） |
 | `base.ut` | SDK base | §10.4 | 内置类型 / 内置函数声明源 |
 | 构建注解 | build annotation | §11 | `#Name` 形态 |
 | `#Builtin` | compiler-internal annotation | §11.2 | 编译器合成实现 |

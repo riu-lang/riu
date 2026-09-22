@@ -206,7 +206,7 @@ struct Bad {
 
 ### §12.7.1 `ToString`
 
-§12.7.1.1 `sdk/riu/src/riu/core/base.ut` 内置 spec：
+§12.7.1.1 `sdk/core/src/riu/core/base.ut` 内置 spec：
 
 ```riu
 #Spec
@@ -628,7 +628,7 @@ struct Ord {
 
 ### §12.10.6 SDK 内置 spec
 
-§12.10.6.1 `sdk/riu/src/riu/core/base.ut` 中 5 个内置 spec（`ToString` / `ToJson` / `Eq` / `Ord` / `Number`）的方法体策略如下：
+§12.10.6.1 `sdk/core/src/riu/core/base.ut` 中 5 个内置 spec（`ToString` / `ToJson` / `Eq` / `Ord` / `Number`）的方法体策略如下：
 
 - `Ord.lt` / `Ord.le` / `Ord.gt` / `Ord.ge` 由 `Ord.cmp` 默认体推导；
 - `Eq.ne` 由 `Eq.eq` 默认体推导；

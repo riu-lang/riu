@@ -139,6 +139,7 @@ riu build <name>           # 只编产出名为 <name> 的那条（exe 或库）
 | `[[executable]].name` | 输出文件名（无扩展名）；缺省 = 项目 `name` |
 | `[library].lib_mod` | 库拥有的模块根 |
 | `external_links` | 写在产物上：`//kernel32` 系统库，`./lib/foo` 本树文件；不写库后缀 |
+| `[dependencies]` | `sdk` / `path` / `git` 恰好一种。`stdlib = { sdk = "stdlib" }` 才有 `riu.io` / `riu.time`；core 隐式 |
 
 最小示例：
 
@@ -148,6 +149,13 @@ version="1.0.0"
 
 [[executable]]
 entry="main.ut"
+```
+
+用文件 / 时间 API 时加上：
+
+```toml
+[dependencies]
+stdlib = { sdk = "stdlib" }
 ```
 
 ### 命令行参数

@@ -15,6 +15,13 @@
 
 ---
 
+## 2026-09-22 —— 三方依赖 sdk / path / git 与 SDK 拆分（#9）
+
+- **修改 §10.1.1.9–13 / §10.1.2.1**：新增 `[dependencies]`（`sdk` / `path` / `git` 恰好一种；`rev` 完整 commit）。产物：git 源码 `build/dependences/<name>/`，编译产物 `build/deps/<name>/`；sdk 新鲜则直接链工具链侧。链接并入图中全部库及传递 `external_links`。SDK 自构建认 `name=="core"` / `"stdlib"`。
+- **修改 §10.4.1.1 / §10.4.1.3.1 / §10.4.1.4 / §10.4.1.7 / §10.4.5**：SDK 拆成 `sdk/core/`（隐式 `riu.core.lib`）与 `sdk/stdlib/`（显式 `{ sdk = "stdlib" }` 才加载 `riu.lib`）。删 §10.4.5.2「v1 不解析」。`use` 见图不限直接边。
+- **附录 C / D**：`[dependencies]` / `dependences/` / `build/deps/` / `stdlib`；E5034–E5044。git clone/fetch/checkout 失败随 git，不另占码。
+- **冲突 / 兼容**：破坏。`use riu.io` / `riu.time` / `riu.platform.*` 须 toml 声明 `stdlib = { sdk = "stdlib" }`（或传递带进图）。只 `println` 的 hello-world 不必改。禁止 `{ sdk = "core" }`。
+
 ## 2026-09-22 —— `riu.toml` 多产物全部落地（#22）
 
 - **修改 §10.1.1 / §10.1.2.1 / §10.1.3.2 / §10.4.1.1**：顶层只留 `name` / `version`；`[library]`（最多一份，`lib_mod` + `type` static/dynamic）与 `[[executable]]`（零到多条）。链接收到产物 `external_links`（`//` 系统库 / `./` 本树，配置不写后缀；`dll` 只复制）。SDK 的链接声明传到用户 exe。`riu build` 无参先库后全部 exe；写出则按产出名命中。删除旧顶层 `entry` / `[lib]` / `[link]`。

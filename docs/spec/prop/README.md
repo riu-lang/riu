@@ -27,7 +27,7 @@
 | 6 | 条件编译 + 用户注解 | 提议 | [6-cond-compile.md](6-cond-compile.md) |
 | 7 | 代码生成代码（派生） | 提议 | [7-codegen.md](7-codegen.md) |
 | 8 | 异步 / 并发 | 提议 | [8-async.md](8-async.md) |
-| 9 | 包管理：sdk / path / git | 待实施 | [9-pkg.md](9-pkg.md) |
+| 9 | 包管理：sdk / path / git | 已落地 | [9-pkg.md](9-pkg.md) |
 | 10 | 多目标 | 提议 | [10-multi-target.md](10-multi-target.md) |
 | 11 | YAML AST / 深拷会话 / 进程内并行 SemaPass | 关闭 | [11-yaml-ast.md](11-yaml-ast.md) |
 | 12 | SDK：正则 / `Command` / JSON | 提议 | [12-sdk-surface.md](12-sdk-surface.md) |

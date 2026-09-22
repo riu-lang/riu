@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| 状态 | 待实施 |
+| 状态 | 已落地 |
 | 开 | 2026-09-13 |
 | 旧档 | 无。本地 `pkg` / `.ud` 已落地。[#22](22-project-toml.md) 把三方 / 跨项目依赖留给本提案；库形态未定 |
 
@@ -238,11 +238,14 @@ git：已存在且 HEAD 即为该 `rev` 则跳过网络。检出当不可变；�
 
 ## 规范要点
 
-待实施后写入 §10.1.1（`[dependencies]`、产物路径）与 §10.4（SDK 拆分、core 隐式、stdlib 显式）。草案即上文。
+已回写 §10.1.1（`[dependencies]`、产物路径）与 §10.4（SDK 拆分、core 隐式、stdlib 显式）。草案即上文。
 
 - 语法：TOML。不是 `riu.bnf`。
 - 语义：依赖 = 钉死源码的库项目；三种来源；调用方 `build/dependences/` 只放 git 源码，`build/deps/` 放依赖编译产物（sdk 新鲜则可直接链工具链侧）；`use` 见图不限直接边。git 失败随 git。v1 无 `dir`。增量按源 mtime。
 
 ## 落地
 
-- （未开始）
+- 2026-09-22（`notes/0.23`）：阶段 1 — `[dependencies]` 解析；path 图；产物写入调用方 `build/deps/<name>/`；core 隐式。回归 `toml_dep_*` / `dep_path*`。
+- 2026-09-22（`notes/0.23`）：阶段 2 — SDK 拆成 `sdk/core` + `sdk/stdlib`；stdlib 显式；去掉 `extraSdkPackages`。
+- 2026-09-22（`notes/0.23`）：阶段 3 — `{ git, rev }` 检出到 `build/dependences/<name>/`；失败随 git；同源冲突 / dirty checkout。回归 `dep_git*`。
+- 2026-09-22（`notes/0.23`）：阶段 4 — 回写 §10.1.1 / §10.4.5 / 附录 C/D / 用户文档；提案标已落地。
