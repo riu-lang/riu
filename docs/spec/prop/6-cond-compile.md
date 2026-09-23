@@ -102,7 +102,7 @@ const-eval 已有：字面量、`#Cval` 名、算术 / 比较 / `&&` `||`、`#Co
 2. **`<` 歧义**：注解槽不 parse `type`，`<` 不是泛型。比较照常。泛型静态仍是 `Type:<T>::x`。不新增 `Type<T>::x`。
 3. **`#If` 附着**：语句（`AnnoType::Code`）+ 声明（struct / spec / fn / extern / let / enum / 字段）。**不在形参**。无 `#Else` / `#Elif`。无尾随 `{ }`。假则丢掉目标。
 4. **`Type` 字段**：定义仍 `value Type`（名义类型，不是改成 `String`）。实参是无插值字符串，内容按 `type` 再解析：`#Impl("Iter<i32>")`。裸 ident `#Impl(Eq)` 当类型名（无 `<` `>` `&` `?` `,`）。现有 `#Impl(Iter<i32>)` 迁成带引号。不要写 `Eq::type_info`。
-5. **缺省实参**：不特判元注解。字段默认值是普通 struct 能力，见前置 [#23](23-field-default.md)（默认必须 **const**）。`repeatable bool = false` 这类等 #23 落地。
+5. **缺省实参**：不特判元注解。字段默认值是普通 struct 能力，见前置 [#23](23-field-default.md)（已落地；默认必须 **const**）。
 6. **`on` / 不定长**：字段类型 `Array<AnnoType>`。实参 `[a, b]` / `[]`。不做切片。
 7. **内置声明**：先在 SDK 写 `#Anno struct If` / `Impl` / `CName` / `Align` 等给用户看；编译器行为仍走现白名单，不读这些 struct。诊断可以引用 SDK 声明（「见 `If`」）。以后再迁到按声明驱动。档位 `#Mut` `#Cval` `#Builtin` 等仍不做成 struct。
 8. **`Platform`**：留给 [#10](10-multi-target.md)。包 / 依赖条件同样跨平台，现在不做。

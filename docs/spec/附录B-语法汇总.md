@@ -143,7 +143,8 @@ structDecl     ::= buildAnno*                              ; 顶行可含 #Spec 
                        ( fn LineEnd | LineEnd )*
                    '}'
 
-filedDecl      ::= buildAnno* ID type LineEnd
+filedDecl      ::= buildAnno* ID type ('=' expr)? LineEnd
+                   ; 可选 const 默认（E3162）；仅实例字段，见 §7.1.1.6
 
 staticFieldDecl ::= buildAnno* ID type '=' expr LineEnd
                     ; 必须含 #Static，可叠 #Mut；v1 必须 init（E3150）
@@ -153,7 +154,7 @@ staticFieldDecl ::= buildAnno* ID type '=' expr LineEnd
 约束（语义层）：
 
 - `#Spec` 形态下 body 内只允许 `fn` 签名（无 body），不允许 `filedDecl` / `fnClean`（§12.1.1.1 / §11.4.1）。
-- 非 spec 形态可含字段（实例 `filedDecl` + `aliasDecl` + 静态 `staticFieldDecl`）、`fnClean`（析构 `fn ~()`，居于字段之后、其它 `fn` 之前）、实例方法 / 静态工厂（`#Static fn`）；构造函数形态已删除（§7.3.1.1），构造唯一通道为 `#Static fn` + `Self { ... }` 字段字面量。
+- 非 spec 形态可含字段（实例 `filedDecl` + `aliasDecl` + 静态 `staticFieldDecl`）、`fnClean`（析构 `fn ~()`，居于字段之后、其它 `fn` 之前）、实例方法 / 静态工厂（`#Static fn`）；构造函数形态已删除（§7.3.1.1），构造唯一通道为 `#Static fn` + `Self { ... }` 字段字面量。实例字段可选 `= expr` 须 const（E3162）；字面量省略规则见 §7.3.2.2。
 - `#Impl(D)` 接受单参数糖 `(ID genericDef?)`，可重复出现，宣告该 struct 实现 D。
 
 ## B.5b 枚举（v0.x）

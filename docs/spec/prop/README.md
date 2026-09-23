@@ -41,4 +41,4 @@
 | 20 | `_` 丢弃名 | 已落地 | [20-discard.md](20-discard.md) |
 | 21 | `Ptr<T=()>` / 默认类型实参 | 已落地 | [21-ptr-generic.md](21-ptr-generic.md) |
 | 22 | 项目配置（`riu.toml` 多产物） | 已落地 | [22-project-toml.md](22-project-toml.md) |
-| 23 | 结构体字段默认值 | 实施中 | [23-field-default.md](23-field-default.md) |
+| 23 | 结构体字段默认值 | 已落地 | [23-field-default.md](23-field-default.md) |

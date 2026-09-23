@@ -106,7 +106,7 @@
 | RC leak 检测 | RC leak counter | §8.8.4 | `_rc_block_count` / `rc_leak_count()` |
 | retain-then-release | retain-then-release | §7.4.4 / §8.3.3.1 | 赋值的 RC 序，自赋值安全 |
 | 字段级派生 | field-level derive | §7.4 | 按字段 retain / release |
-| DAA | definite assignment analysis | §7.3.3 | 字段定性赋值分析（v1 退化为 `Self { ... }` 全字段覆盖规则） |
+| DAA | definite assignment analysis | §7.3.3 | 字段定性赋值分析（v1 退化为 `Self { ... }`：无默认有名字段必须写出，有默认可省略代入） |
 | same_ref | same_ref | §8.7.5.2 / §10 | 地址相等 builtin |
 | ptr_of | ptr_of | §8.7.4.4 / §9.7.2.4 | 显式转 `Ptr` builtin |
 | c_string / from_c_chars | C string copy | §9.7.2.8 | UTF-8+NUL 拷贝；不 wrap `Ptr` |

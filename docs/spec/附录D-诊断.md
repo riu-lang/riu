@@ -278,6 +278,12 @@ for-in（E3160；§5.5.4）：
 
 `{}` 为禁止位置（`struct` / `enum` / `#Spec` / `type alias` / `function` / `global` / `static field` / `type parameter` / `import alias` / `module` / `package`）。合法位置的 `_` 不报此码；`s._` / 裸 `_` 走 **E3040** / **E3030**。
 
+字段默认（E3162；§7.1.1.6）：
+
+| 码 | 模板 |
+|---|---|
+| E3162 | `` Field '{}' default is not a constant expression (literals, `#Cval` names, arithmetic, struct literals, or empty `Array<T>`) `` |
+
 构造模型重构（E3120..E3129；引入自 [draft/DRAFT-static-fn.md](draft/DRAFT-static-fn.md)，落地章节 §7.10）：
 
 | 码     | 模板 |
@@ -287,11 +293,11 @@ for-in（E3160；§5.5.4）：
 | E3122 | `` `{}::{}` LHS is neither an enum nor a struct in scope (DRAFT-static-fn) `` |
 | E3123 | `` `Self` type only allowed inside a `structImpl` body (DRAFT-static-fn) `` |
 | E3124 | `` `Self {{ ... }}` field literal only allowed inside a `#Static fn` body (DRAFT-static-fn) `` |
-| E3125 | `` `Self {{ ... }}` for struct `{}` is missing field `.{}` (all fields must be listed; DRAFT-static-fn) `` |
+| E3125 | `` `Self {{ ... }}` for struct `{}` is missing field `.{}` (fields without a default must be listed) `` |
 | E3126 | `` struct `{}` has no field `.{}` (DRAFT-static-fn) `` |
 | E3127 | `` duplicate field `.{}` in `Self {{ ... }}` literal (DRAFT-static-fn) `` |
 | E3128 | `` `$` (current instance) cannot be used inside a `#Static fn` body (DRAFT-static-fn) `` |
-| E3129 | `` positional struct literal `{}{{ expr }}` requires exactly one named instance field; struct `{}` has {} `` |
+| E3129 | `` positional struct literal `{}{{ expr }}` requires exactly one named instance field without a default; struct `{}` has {} `` |
 
 ### D.3.4 E4xxx — 所有权 / 借用
 
