@@ -1,0 +1,11 @@
+; 字段默认必须是常量
+
+fn side() i32 = 1
+
+struct P {
+  x i32 = side()  ; check: E3162
+}
+
+fn main() i32 {
+  ret 0
+}

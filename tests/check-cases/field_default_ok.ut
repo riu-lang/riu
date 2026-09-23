@@ -1,0 +1,70 @@
+; #23：有默认的实例字段可省略；写出的覆盖默认
+
+struct Point {
+  x i32 = 0
+  y i32 = 1 + 2
+}
+
+struct Holder {
+  n i32
+  flag bool = true
+}
+
+struct Lock {
+  #Val
+  a i32 = 1
+  #Frozen
+  b i32 = 2
+}
+
+struct Bag {
+  items Array<i32> = []
+}
+
+struct Box<T> {
+  n i32 = 7
+  xs Array<T> = []
+
+  #Static
+  fn make() Self {
+    ret Self { }
+  }
+}
+
+#Cval
+let ZERO i32 = 5
+
+struct FromCval {
+  x i32 = ZERO
+}
+
+fn origin() Point = Point { }
+
+fn onX(n i32) Point {
+  ret Point {
+    .x = n
+  }
+}
+
+fn shorthand(n i32) Holder = Holder{ n }
+
+fn locked() Lock {
+  ret Lock {
+    .a = 8
+  }
+}
+
+fn useBox() i32 {
+  let b = Box:<i32>::make()
+  ret b.n
+}
+
+fn main() i32 {
+  let p = origin()
+  let q = onX(4)
+  let h = shorthand(8)
+  let L = locked()
+  let _bag = Bag { }
+  let f = FromCval { }
+  ret p.y + q.x + h.n + L.a + L.b + f.x + useBox()
+}

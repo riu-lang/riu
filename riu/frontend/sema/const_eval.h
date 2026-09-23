@@ -13,6 +13,10 @@
 #include <vector>
 
 class FileNode;
+class StructFieldNode;
+
+// 空数组字面量 `[]`（允许一层括号）。字段默认 `Array<T> = []` 当作零句柄常量。
+bool isEmptyArrayLiteral(ExprNode* expr);
 
 // DRAFT-const-eval Phase 1 —— sema 期常量求值器骨架（0 LLVM 依赖）。
 //
@@ -74,6 +78,10 @@ public:
     // 接入后由 caller 据失败点抛错码。
     std::optional<ConstantValue> eval(ExprNode* expr);
 
+    // #23：省略字段的嵌入常量。已缓存 constValue 则直接用；否则对 init 求一次。
+    // 空 Array<T> 为零句柄（Kind::Null + 字段类型）。环状默认 → nullopt。
+    std::optional<ConstantValue> omittedFieldConst(StructFieldNode* field);
+
 private:
     std::map<string, ConstantValue> _env;
     FileNode* _file = nullptr;
@@ -92,6 +100,9 @@ private:
     std::optional<ConstantValue> evalCall(ExprCallNode* call);
     // DRAFT-const-eval Phase 5: struct 字面量.
     std::optional<ConstantValue> evalStructLit(ExprStructLitNode* node);
+
+    // 正在求值的字段默认，挡住 A.b = B{} / B.a = A{} 这种环。
+    std::set<const StructFieldNode*> _defaultStack;
 };
 
 #endif // RIU_LANG_CONST_EVAL_H

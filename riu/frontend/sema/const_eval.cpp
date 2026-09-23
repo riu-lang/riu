@@ -57,6 +57,20 @@ std::optional<ConstantValue> zeroConst(const TypeInfo& t) {
     return std::nullopt;
 }
 
+// 零句柄（空 Array / 嵌进结构常量的 null）。Kind::Null，类型留给调用方。
+ConstantValue zeroHandleConst(const TypeInfo& t) {
+    ConstantValue v;
+    v.kind = ConstantValue::Kind::Null;
+    v.type = t;
+    return v;
+}
+
+struct DefaultEvalGuard {
+    std::set<const StructFieldNode*>& stack;
+    const StructFieldNode* field;
+    ~DefaultEvalGuard() { stack.erase(field); }
+};
+
 // 按 type 把 bits 解释为有符号 i64（符号扩展）。
 i64 signExtend(u64 bits, const TypeInfo& t) {
     int w = intBitWidth(t);
@@ -85,6 +99,13 @@ std::optional<TypeInfo> unifyArith(const TypeInfo& a, const TypeInfo& b) {
 }
 
 } // namespace
+
+bool isEmptyArrayLiteral(ExprNode* expr) {
+    while (auto* paren = dynamic_cast<ExprParenNode*>(expr))
+        expr = paren->expr();
+    auto* arr = dynamic_cast<ExprArrayNode*>(expr);
+    return arr && arr->elements().empty();
+}
 
 void ConstEvaluator::setNamedConst(const string& name, ConstantValue value) {
     _env[name] = std::move(value);
@@ -499,10 +520,25 @@ std::optional<ConstantValue> ConstEvaluator::evalCall(ExprCallNode* call) {
     return result;
 }
 
+std::optional<ConstantValue> ConstEvaluator::omittedFieldConst(StructFieldNode* f) {
+    if (!f || f->isStatic()) return std::nullopt;
+    if (const auto* cv = f->constValue()) return *cv;
+    if (f->isDiscard()) return zeroConst(f->getType());
+    if (!f->init()) return std::nullopt;
+    if (_defaultStack.contains(f)) return std::nullopt;
+    if (isEmptyArrayLiteral(f->init()) && f->getType().isArrayGeneric()) {
+        return zeroHandleConst(f->getType());
+    }
+    _defaultStack.insert(f);
+    DefaultEvalGuard guard{_defaultStack, f};
+    inferFlexibleIntForType(f->init(), f->getType());
+    return eval(f->init());
+}
+
 // DRAFT-const-eval Phase 5: struct 字面量求值.
 // - 找到 StructDeclNode (本文件 / sdk 兜底); 失败 nullopt (sema 应已拦截)
-// - 按声明序填字段 -> ConstantValue::Struct; sema 已保证字段全列 / 无重复 / 无未知,
-//   这里再做一次字段名 → 索引映射 (保险)
+// - 按声明序填字段 -> ConstantValue::Struct
+// - 写出的字段覆盖默认；省略的有默认字段用 omittedFieldConst；无默认且非 `_` → nullopt
 // - 任一字段子表达式 const 求值失败 -> 整体 nullopt
 std::optional<ConstantValue> ConstEvaluator::evalStructLit(ExprStructLitNode* node) {
     if (!node || !_file) return std::nullopt;
@@ -540,9 +576,7 @@ std::optional<ConstantValue> ConstEvaluator::evalStructLit(ExprStructLitNode* no
         vals[static_cast<size_t>(soleIdx)] = std::move(*v);
         for (size_t i = 0; i < declFields.size(); ++i) {
             if (std::cmp_equal(i, soleIdx)) continue;
-            auto* f = declFields[i];
-            if (!f || f->isStatic() || !f->isDiscard()) return std::nullopt;
-            auto z = zeroConst(f->getType());
+            auto z = omittedFieldConst(declFields[i]);
             if (!z) return std::nullopt;
             vals[i] = std::move(*z);
         }
@@ -558,14 +592,10 @@ std::optional<ConstantValue> ConstEvaluator::evalStructLit(ExprStructLitNode* no
         filled[static_cast<size_t>(idx)] = true;
     }
     for (size_t i = 0; i < declFields.size(); ++i) {
-        auto* f = declFields[i];
-        if (f && f->isDiscard()) {
-            auto z = zeroConst(f->getType());
-            if (!z) return std::nullopt;
-            vals[i] = std::move(*z);
-            continue;
-        }
-        if (!filled[i]) return std::nullopt;
+        if (filled[i]) continue;
+        auto z = omittedFieldConst(declFields[i]);
+        if (!z) return std::nullopt;
+        vals[i] = std::move(*z);
     }
     return ConstantValue::makeStruct(std::move(vals), sTy);
 }

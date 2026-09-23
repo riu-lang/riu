@@ -1,0 +1,15 @@
+; 全部字段都有默认时，位置简写仍是 E3129
+
+struct All {
+  x i32 = 1
+  y i32 = 2
+
+  #Static
+  fn make() All {
+    ret Self{ 1 }  ; check: E3129
+  }
+}
+
+fn main() i32 {
+  ret 0
+}

@@ -1,0 +1,13 @@
+use riu.core.*
+use geom.*
+
+fn main() {
+  let p = Point { }
+  println(p.x)
+  println(p.y)
+  let q = Point {
+    .x = 9
+  }
+  println(q.x)
+  println(q.y)
+}

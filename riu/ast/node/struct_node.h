@@ -4,6 +4,7 @@
 #ifndef RIU_LANG_STRUCT_NODE_H
 #define RIU_LANG_STRUCT_NODE_H
 
+#include "constant_value.h"
 #include "fn_node.h"
 #include "node.h"
 #include "spec_node.h"
@@ -12,6 +13,9 @@
 class StructFieldNode : public Node {
     Token _name;
     TypeNode* _type;
+    // #23：实例字段 `= expr`。声明处 const-eval 一次，结果进 _constValue。
+    ExprNode* _init = nullptr;
+    std::optional<ConstantValue> _constValue;
     bool _isPrivate;
     // P1-4 DRAFT-const-mut §6.1：字段三档 (default var / #Val 浅 / #Frozen 深)。
     // 互斥；同时出现 → ast_builder 抛 E3105。
@@ -50,6 +54,13 @@ public:
     [[nodiscard]] bool isInline() const { return _isInline; }
     [[nodiscard]] uint32_t alignN() const { return _alignN; }
     [[nodiscard]] bool isDiscard() const { return isDiscardName(_name.getText()); }
+
+    void setInit(ExprNode* init) { _init = init; }
+    [[nodiscard]] ExprNode* init() const { return _init; }
+    // 有 `= expr` 即算默认（`_` / `#Static` 不计；见 namedInstanceFieldCount）。
+    [[nodiscard]] bool hasDefault() const { return _init != nullptr; }
+    void setConstValue(ConstantValue v) { _constValue = std::move(v); }
+    [[nodiscard]] const ConstantValue* constValue() const { return _constValue.has_value() ? &*_constValue : nullptr; }
 };
 
 class StructDeclNode : public ScopeNode, public Named, public Annotated {
@@ -95,10 +106,11 @@ public:
         auto it = _fieldIndices.find(name);
         return it != _fieldIndices.end() ? static_cast<int>(it->second) : -1;
     }
+    // E3129：只计无默认的有名实例字段（`_` / `#Static` / 有 `= expr` 的不计）。
     [[nodiscard]] size_t namedInstanceFieldCount() const {
         size_t n = 0;
         for (auto* f : _fields) {
-            if (!f || f->isStatic() || f->isDiscard()) continue;
+            if (!f || f->isStatic() || f->isDiscard() || f->hasDefault()) continue;
             ++n;
         }
         return n;
@@ -107,7 +119,7 @@ public:
         int found = -1;
         for (size_t i = 0; i < _fields.size(); ++i) {
             auto* f = _fields[i];
-            if (!f || f->isStatic() || f->isDiscard()) continue;
+            if (!f || f->isStatic() || f->isDiscard() || f->hasDefault()) continue;
             if (found >= 0) return -1;
             found = static_cast<int>(i);
         }

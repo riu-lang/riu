@@ -310,6 +310,10 @@ bool specNeedsSkeleton(SpecDeclNode* s) {
 bool structNeedsSkeleton(StructDeclNode* d, StructImplNode* impl) {
     if (!d) return false;
     if (!d->staticFields().empty()) return true;
+    // #23：字段默认在原文里。二进制字段表没有 init，靠 skeleton 再 parse。
+    for (auto* f : d->fields()) {
+        if (f && f->hasDefault()) return true;
+    }
     if (!d->isGeneric() || !impl) return false;
     for (auto m : impl->methods()) {
         if (fnHasRealBody(m)) return true;

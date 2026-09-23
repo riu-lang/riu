@@ -387,7 +387,8 @@ void Compiler::compileGlobalConsts() {
 }
 
 // DRAFT-const-eval Phase 5: ConstantValue -> llvm::Constant 递归翻译.
-// 支持 Int / Float / Bool / Struct (含嵌套); Null 不在常量初始化器场景出现.
+// 支持 Int / Float / Bool / Struct (含嵌套). 顶层 Null 不在常量初始化器场景出现.
+// 结构字段里的 Null（空 Array 零句柄 / null）按元素类型零初始化.
 // expectedTy 用于驱动 Int/Bool 的位宽以及 Struct 字段类型校验.
 llvm::Constant* Compiler::buildLLVMConstantFromValue(const ConstantValue& v, llvm::Type* expectedTy) {
     switch (v.kind) {
@@ -407,7 +408,13 @@ llvm::Constant* Compiler::buildLLVMConstantFromValue(const ConstantValue& v, llv
         vector<llvm::Constant*> elems;
         elems.reserve(v.structFields.size());
         for (size_t i = 0; i < v.structFields.size(); ++i) {
-            auto* c = buildLLVMConstantFromValue(v.structFields[i], st->getElementType(i));
+            auto* elTy = st->getElementType(i);
+            llvm::Constant* c = nullptr;
+            if (v.structFields[i].isNull()) {
+                c = elTy ? llvm::Constant::getNullValue(elTy) : nullptr;
+            } else {
+                c = buildLLVMConstantFromValue(v.structFields[i], elTy);
+            }
             if (!c) return nullptr;
             elems.push_back(c);
         }

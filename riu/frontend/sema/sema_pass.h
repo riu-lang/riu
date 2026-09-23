@@ -14,6 +14,7 @@
 #include <optional>
 #include <vector>
 
+class ConstEvaluator;
 class ExprNode;
 class StatementNode;
 class StatementBlockNode;
@@ -78,6 +79,8 @@ private:
     // 类型参数当不透明 TypeParam：依赖 T 具体化的 getType 诊断吞掉；
     // 形态检查（#NoCopy / 未定义符号 / arity）仍报。
     std::set<std::string> _currentTypeParams;
+    // #23：正在补默认的字段，挡住 `n P = P { }` 这种环。
+    std::set<const StructFieldNode*> _ensuringDefaults;
     // 2.5：登记 / 去重走 generic 实例表；当前替换在 subst 栈顶（不再另持一份 map）。
     generic::StructTable _structInstances;
     generic::FnTable _fnInstances;
@@ -201,6 +204,11 @@ public:
     void checkFnHeaderTypes(FnNode* fn);
     // #21：默认类型实参尾部连续（E2041）与不得引用更右 / 成环（E2042）。
     void validateTypeParamDefaults(const vector<string>& names, const vector<TypeNode*>& defaults, int line, int col);
+    // #23：实例字段默认在声明处 const-eval（E3162），写入 StructFieldNode::constValue。
+    // 须在全局 #Cval 注入求值器之后，字段默认才能引用这些名字。
+    void evalFieldDefaults(ConstEvaluator& ev);
+    // 导入 struct 的 .ud skeleton 再 parse 后没有 constValue。使用点补一次并缓存。
+    void ensureFieldDefaultConsts(StructDeclNode* decl);
     // 源码写出的具体 `S<Concrete>`：复查该泛型 struct 方法体（形参 / 返回 / 字段 / let）。
     void noteConcreteGenericType(const TypeInfo& t);
     // 调用点 typeArgs 已知后复查泛型 fn 体（ret / 赋值）。

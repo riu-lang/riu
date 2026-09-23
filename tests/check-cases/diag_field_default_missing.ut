@@ -1,0 +1,17 @@
+; 无默认的有名字段仍须写出
+
+struct P {
+  x i32 = 0
+  y i32
+
+  #Static
+  fn make() P {
+    ret Self {  ; check: E3125
+      .x = 1
+    }
+  }
+}
+
+fn main() i32 {
+  ret 0
+}

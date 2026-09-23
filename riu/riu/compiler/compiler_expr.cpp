@@ -345,12 +345,13 @@ llvm::Value* Compiler::compileStructLitExpr(ExprStructLitNode* node) {
         throwSemaGap(line, col);
     }
     auto alloca = createTypedAlloca(llvmStructType, litTy, structName + ".lit");
-    // 零初始化, 与 ctor 入口保持一致, 避免遗漏字段 (实际上 sema 已强制全列)
+    // 先整块清零：`_`、空 Array、null、数值 0 的默认不必再 store。
     auto& dl = _module->getDataLayout();
     auto sizeBytes = dl.getTypeAllocSize(llvmStructType).getFixedValue();
     _builder.CreateMemSetInline(alloca, llvm::MaybeAlign(1), _builder.getInt8(0), _builder.getInt64(sizeBytes));
     std::unique_ptr<FieldInitNode> positionalInit;
     vector<FieldInitNode*> fieldInits = structLitNode->fields();
+    vector<bool> written(decl->fields().size(), false);
     if (auto* pos = structLitNode->positional()) {
         const int soleIdx = decl->soleNamedInstanceLayoutIndex();
         if (soleIdx < 0) {
@@ -363,6 +364,7 @@ llvm::Value* Compiler::compileStructLitExpr(ExprStructLitNode* node) {
     for (auto& fi : fieldInits) {
         string fname = fi->name().getText();
         int idx = decl->fieldIndex(fname);
+        if (idx >= 0 && static_cast<size_t>(idx) < written.size()) written[static_cast<size_t>(idx)] = true;
         string gepName = structName;
         gepName += '.';
         gepName += fname;
@@ -453,6 +455,26 @@ llvm::Value* Compiler::compileStructLitExpr(ExprStructLitNode* node) {
             _builder.CreateStore(_builder.getInt1(false), hasField);
             _builder.CreateStore(llvm::ConstantPointerNull::get(ptrTy), valField);
         }
+    }
+    // #23：省略且有默认的字段。Null（空 Array / null）已由 memset 覆盖。
+    auto* stTy = llvm::dyn_cast<llvm::StructType>(llvmStructType);
+    for (size_t i = 0; i < decl->fields().size(); ++i) {
+        if (written[i]) continue;
+        auto* f = decl->fields()[i];
+        if (!f || f->isStatic() || f->isDiscard() || !f->hasDefault()) continue;
+        const auto* cv = f->constValue();
+        if (!cv) throwSemaGap(line, col);
+        if (cv->isNull()) continue;
+        if (!stTy) throwSemaGap(line, col);
+        unsigned li = llvmFieldIndex(llvmStructType, static_cast<unsigned>(i));
+        if (li >= stTy->getNumElements()) throwSemaGap(line, col);
+        auto* c = buildLLVMConstantFromValue(*cv, stTy->getElementType(li));
+        if (!c) throwSemaGap(line, col);
+        string gepName = structName;
+        gepName += '.';
+        gepName += f->name().getText();
+        auto fieldPtr = structFieldPtr(llvmStructType, alloca, static_cast<unsigned>(i), gepName);
+        _builder.CreateStore(c, fieldPtr);
     }
     return _builder.CreateLoad(llvmStructType, alloca, structName + ".lit.load");
 }

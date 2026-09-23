@@ -582,6 +582,7 @@ void RdBuilder::addStruct(rd::NodeId id) {
     }
 
     auto* structDecl = create<StructDeclNode>(locPos, file, makeTok(id));
+    structDecl->setParentScope(file);
     structDecl->setAnnos(annos.names, annos.args);
     if (_keepSourceText) structDecl->setSourceText(srcSlice(n.pos));
     structDecl->setTypeParams(typeParams);
@@ -665,8 +666,8 @@ void RdBuilder::addStruct(rd::NodeId id) {
         field->setCval(isCval);
         field->setInline(isInline);
         field->setAlignN(fieldAlign);
+        field->setInit(init);
         structDecl->addField(field);
-        (void)init;
     }
 
     _scopeStack.pop_back();

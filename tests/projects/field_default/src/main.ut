@@ -1,0 +1,78 @@
+use riu.core.*
+
+#Cval
+let ZERO i32 = 5
+
+struct Point {
+  x i32 = ZERO
+  y i32 = 1 + 2
+}
+
+struct Holder {
+  n i32
+  flag bool = true
+}
+
+struct Lock {
+  #Val
+  a i32 = 1
+  #Frozen
+  b i32 = 2
+}
+
+struct Bag {
+  items Array<i32> = []
+}
+
+struct Inner {
+  x i32 = 4
+  p Ptr = null
+}
+
+struct Outer {
+  i Inner = Inner { }
+}
+
+struct Box<T> {
+  n i32 = 7
+  xs Array<T> = []
+
+  #Static
+  fn make() Self {
+    ret Self { }
+  }
+}
+
+#Cval
+let origin Point = Point { }
+
+fn main() {
+  let p = Point { }
+  println(p.x)
+  println(p.y)
+  let q = Point {
+    .x = 3
+  }
+  println(q.x)
+  println(q.y)
+  let h = Holder{ 4 }
+  println(h.n)
+  println(h.flag)
+  let bag = Bag { }
+  println(bag.items.len())
+  let L = Lock { }
+  println(L.a)
+  println(L.b)
+  let L2 = Lock {
+    .a = 8
+  }
+  println(L2.a)
+  println(L2.b)
+  let box = Box:<i32>::make()
+  println(box.n)
+  println(box.xs.len())
+  println(origin.x)
+  println(origin.y)
+  let o = Outer { }
+  println(o.i.x)
+}

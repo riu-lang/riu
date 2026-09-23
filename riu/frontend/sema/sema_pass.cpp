@@ -350,6 +350,9 @@ void SemaPass::run() {
         } catch (...) { // NOLINT(bugprone-empty-catch)
         }
     }
+    // #23：字段默认可引用已求值的 #Cval。结构字面量常量在本循环里若先碰到，
+    // 走 ConstEvaluator::omittedFieldConst 对 init 现求；这里再统一缓存。
+    evalFieldDefaults(cvalEv);
     for (auto& gv : _file->getGlobalVars()) {
         if (!gv) continue;
         try {
@@ -500,6 +503,91 @@ void SemaPass::run() {
             }
         }
     }
+}
+
+void SemaPass::evalFieldDefaults(ConstEvaluator& ev) {
+    if (!_file) return;
+    for (auto* sd : _file->getStructDecls()) {
+        if (!sd) continue;
+        auto savedParams = _currentTypeParams;
+        for (const auto& tp : sd->typeParams())
+            _currentTypeParams.insert(tp);
+        for (auto* f : sd->fields()) {
+            if (!f || f->isStatic() || f->isDiscard() || !f->init()) continue;
+            const TypeInfo& ft = f->getType();
+            int line = static_cast<int>(f->name().getLine());
+            int col = static_cast<int>(f->name().getCharPositionInLine()) + 1;
+            const bool emptyArr = isEmptyArrayLiteral(f->init()) && ft.isArrayGeneric();
+            // 依赖 T 的默认不在实例化后再求。空 Array<T> = [] 与 T 无关，是零句柄。
+            if (!emptyArr && typeStillTemplate(ft)) {
+                throw RiuError(line, col, ErrorCode::E3162, f->name().getText());
+            }
+            inferFlexibleIntForType(f->init(), ft);
+            visitExpr(f->init(), &ft);
+            flushIntLiteralRangeChecks();
+            if (!f->constValue()) {
+                auto value = ev.omittedFieldConst(f);
+                if (!value) {
+                    throw RiuError(line, col, ErrorCode::E3162, f->name().getText());
+                }
+                f->setConstValue(std::move(*value));
+            }
+        }
+        _currentTypeParams = std::move(savedParams);
+    }
+}
+
+void SemaPass::ensureFieldDefaultConsts(StructDeclNode* decl) {
+    if (!decl) return;
+    bool need = false;
+    for (auto* f : decl->fields()) {
+        if (f && f->hasDefault() && !f->isDiscard() && !f->isStatic() && !f->constValue() &&
+            !_ensuringDefaults.contains(f)) {
+            need = true;
+            break;
+        }
+    }
+    if (!need) return;
+
+    FileNode* owner = decl->enclosingFile();
+    if (!owner) owner = _file;
+    ConstEvaluator ev;
+    ev.setFile(owner);
+    if (owner) {
+        for (auto& gc : owner->getGlobalConsts()) {
+            if (!gc || !gc->value()) continue;
+            inferFlexibleIntForType(gc->value(), gc->getType());
+            if (auto value = ev.eval(gc->value())) {
+                ev.setNamedConst(gc->name().getText(), std::move(*value));
+            }
+        }
+    }
+
+    auto savedParams = _currentTypeParams;
+    for (const auto& tp : decl->typeParams())
+        _currentTypeParams.insert(tp);
+    for (auto* f : decl->fields()) {
+        if (!f || f->isStatic() || f->isDiscard() || !f->hasDefault() || f->constValue()) continue;
+        if (_ensuringDefaults.contains(f)) continue;
+        const TypeInfo& ft = f->getType();
+        int line = static_cast<int>(f->name().getLine());
+        int col = static_cast<int>(f->name().getCharPositionInLine()) + 1;
+        const bool emptyArr = isEmptyArrayLiteral(f->init()) && ft.isArrayGeneric();
+        if (!emptyArr && typeStillTemplate(ft)) {
+            throw RiuError(line, col, ErrorCode::E3162, f->name().getText());
+        }
+        _ensuringDefaults.insert(f);
+        inferFlexibleIntForType(f->init(), ft);
+        visitExpr(f->init(), &ft);
+        flushIntLiteralRangeChecks();
+        auto value = ev.omittedFieldConst(f);
+        _ensuringDefaults.erase(f);
+        if (!value) {
+            throw RiuError(line, col, ErrorCode::E3162, f->name().getText());
+        }
+        f->setConstValue(std::move(*value));
+    }
+    _currentTypeParams = std::move(savedParams);
 }
 
 void SemaPass::visitSpecDefaults() {

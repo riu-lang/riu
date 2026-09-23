@@ -1834,10 +1834,10 @@ void SemaPass::visitStructLit(ExprStructLitNode& node) {
 
     // Phase 2d 构造模型重构: `Self { ... }` 字段字面量校验.
     //   * 出现位: 仅 `#Static fn` 体内 (E3124, 仅 Self 形态).
-    //   * 完整性: 必须列全所属结构体所有字段 (E3125).
+    //   * 完整性: 无默认的有名字段必须写出 (E3125)；有默认的可省略.
     //   * 已知字段: `.name` 必须是所属结构体的字段 (E3126).
     //   * 唯一: 同名 `.field` 出现两次报 (E3127).
-    //   * 单字段简写 Type{ expr }: 恰好一个实例字段 (E3129).
+    //   * 单字段简写 Type{ expr }: 恰好一个无默认的有名实例字段 (E3129).
     // DRAFT-const-eval Phase 5: TypeName{...} 形态放行至任意 expr 位.
     int line = n->resolveLineNumber();
     int col = n->resolveColumn();
@@ -1863,6 +1863,7 @@ void SemaPass::visitStructLit(ExprStructLitNode& node) {
     if (!decl) {
         throw RiuError(line, col, ErrorCode::E3124);
     }
+    ensureFieldDefaultConsts(decl);
     if (n->positional()) {
         const auto named = decl->namedInstanceFieldCount();
         const int soleIdx = decl->soleNamedInstanceLayoutIndex();
@@ -1926,7 +1927,7 @@ void SemaPass::visitStructLit(ExprStructLitNode& node) {
     }
     writeResolved(n, [&] { return sema::typeOfStructLit(n); });
     for (auto& f : decl->fields()) {
-        if (f->isStatic() || f->isDiscard()) continue;
+        if (!f || f->isStatic() || f->isDiscard() || f->hasDefault()) continue;
         if (!seen.count(f->name().getText())) {
             throw RiuError(line, col, ErrorCode::E3125, structName, f->name().getText());
         }

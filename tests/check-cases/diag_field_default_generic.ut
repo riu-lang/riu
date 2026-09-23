@@ -1,0 +1,9 @@
+; 依赖类型形参的默认不在声明处求值
+
+struct Box<T> {
+  v T = 0  ; check: E3162
+}
+
+fn main() i32 {
+  ret 0
+}
