@@ -40,7 +40,7 @@ fn main() {
 ### 环境要求
 
 - **编译器**: Clang
-- **构建工具**: GN（PATH）；Ninja / cloc 由 `./sync-deps.ps1` 下载到 `bin/`（Python 3 供 GN 脚本；LLVM 用其自带 `llvm/utils/gn`）
+- **构建工具**: GN / Ninja / cloc 由 `./sync-deps.ps1` 同步到 `bin/`；GN 脚本用 `.venv` 的 Python 3.12（`uv` 管理）
 - **系统**: Windows
 - `build/windows/x64/debug/bin`的绝对路径添加到`PATH`，以便调用
 
@@ -62,33 +62,33 @@ git clone --recurse-submodules <repo-url>
 git submodule update --init scripts/ps-sync-deps
 ```
 
-根目录 PowerShell 脚本（无需 `init`）：
+根目录脚本（`sync-deps` 后生成 `*.cmd` / `*.sh`，内部 `uv run`）：
 
-| 脚本 | 作用 |
+| 入口 | 作用 |
 |------|------|
-| `./sync-deps.ps1` | 按 `DEPS.json` 同步 `third_party/` 与 `bin/`（调用 `scripts/ps-sync-deps`） |
-| `./build.ps1` | GN + Ninja 构建入口 |
-| `./count-lines.ps1` | `cloc` 统计（可选 commit，默认 HEAD） |
-| `./lint.ps1` | clang-tidy（默认 git 变动文件；`--all` / 路径参数） |
-| `./format.ps1` | clang-format（默认 git 变动；`--all` / `--check` / 路径参数） |
+| `./sync-deps.ps1` | 缺 `bin/uv.exe` 时经 `DEPS.json` 同步，再 `uv run sync-deps`；同步 `third_party/`、`bin/`（含 gn）、`.venv` |
+| `./build`（`.cmd`/`.sh`） | GN + Ninja 构建 |
+| `./count-lines` | `cloc` 统计（可选 commit，默认 HEAD） |
+| `./lint` | clang-tidy（默认 git 变动；`--all` / 路径） |
+| `./format` | clang-format（默认 git 变动；`--all` / `--check`） |
 
 ### 同步依赖
 
 ```powershell
 ./sync-deps.ps1
-./sync-deps.ps1 -DryRun          # 预览
+./sync-deps.ps1 --dry-run        # 预览（兼容 -DryRun / -n）
 ./sync-deps.ps1 cli11 zlib       # 只同步指定项
 ```
 
-若 `llvm` 源码 commit 有变，下次 `./build.ps1 riu`（或 `./build.ps1 llvm`）会按 stamp 自动重新 gn gen 并编译 LLVM（首次/升级可能很久）。
+若 `llvm` 源码 commit 有变，下次 `./build riu`（或 `./build llvm`）会按 stamp 自动重新 gn gen 并编译 LLVM（首次/升级可能很久）。
 
 ### 代码统计
 
 使用 [cloc](https://github.com/AlDanial/cloc)（`bin/cloc-2.10.exe`，由 `sync-deps` 下载）：
 
 ```powershell
-./count-lines.ps1           # HEAD
-./count-lines.ps1 <commit>
+./count-lines               # HEAD
+./count-lines <commit>
 ```
 
 排除 lock 文件，并用 `riu_lang_def.txt` 识别 riu。
@@ -96,24 +96,24 @@ git submodule update --init scripts/ps-sync-deps
 ### Lint / Format
 
 ```powershell
-./lint.ps1                 # lint git 已变动文件
-./lint.ps1 --all           # target 全量
-./lint.ps1 src/foo.cpp     # 指定文件
-./format.ps1               # 格式化 git 已变动文件
-./format.ps1 --all         # 全仓
-./format.ps1 --check       # 只检查不改，有差异退出码 1
+./lint                     # lint git 已变动文件
+./lint --all               # target 全量
+./lint src/foo.cpp         # 指定文件
+./format                   # 格式化 git 已变动文件
+./format --all             # 全仓
+./format --check           # 只检查不改，有差异退出码 1
 ```
 
 ## 构建
 
 ```powershell
 # 构建 riu 编译器
-./build.ps1 riu
+./build riu
 
 # 可选：附属工具
-./build.ps1 riu-lsp     # LSP 服务器（编辑器插件用）
-./build.ps1 riu-ast     # 词法 / FlatAst 转储工具
-./build.ps1             # 全部默认目标
+./build riu-lsp         # LSP 服务器（编辑器插件用）
+./build riu-ast         # 词法 / FlatAst 转储工具
+./build                 # 全部默认目标
 ```
 
 ## 使用
@@ -186,8 +186,8 @@ stdlib = { sdk = "stdlib" }
 
 | 层级 | 命令 | 用例位置 | 说明 |
 |------|------|---------|------|
-| 项目编译+运行 | `./build.ps1 test` | `tests/projects/` | 每目录一个 `riu.toml` + `expected.txt`；编译产物并比对 stdout |
-| 格式化回归 | `./build.ps1 test` | `tests/projects/` | `expected_format` 文件，比对外格式化输出 |
+| 项目编译+运行 | `./build test` | `tests/projects/` | 每目录一个 `riu.toml` + `expected.txt`；编译产物并比对 stdout |
+| 格式化回归 | `./build test` | `tests/projects/` | `expected_format` 文件，比对外格式化输出 |
 | 诊断回归 | `riu-check test` | `tests/check-cases/` | `diag_*.ut`，行尾 `; check: EXXXX` 注解精确匹配 |
 | 单元/行为测试 | `riu test` | `sdk/core` + `sdk/stdlib` 的 `*.test.ut` | `#Test` 注解，DLL + 多子进程并行 |
 
@@ -195,11 +195,11 @@ stdlib = { sdk = "stdlib" }
 
 ```powershell
 # 项目 / 格式化测试
-./build.ps1 riu
-./build.ps1 test                  # 全部（默认并行，jobs = CPU 核数）
-./build.ps1 test -Jobs 1          # 强制串行
-./build.ps1 test <name>           # 单个（tests/projects/<name>）
-./build.ps1 test -Group format    # 只跑格式化
+./build riu
+./build test                      # 全部（默认并行，jobs = CPU 核数）
+./build test -Jobs 1              # 强制串行
+./build test <name>               # 单个（tests/projects/<name>）
+./build test -Group format        # 只跑格式化
 
 # 诊断回归
 riu-check test tests/check-cases/
@@ -213,7 +213,7 @@ riu test --test-mod riu.core.array  # 只测指定模块
 
 语法以 [`riu/ast/riu.bnf`](riu/ast/riu.bnf)、手写 parser 和 [文档](docs/index.md) 为准，用例需符合这三者。
 
-测试逻辑：`./build.ps1 test` 定义在 [tests/run.ps1](tests/run.ps1)；`riu test` 流程为 `riu build --test` → 并行 spawn `riu-test-runner` 子进程加载 DLL 执行。
+测试逻辑：`./build test` 转发 [tests/run.ps1](tests/run.ps1)；`riu test` 流程为 `riu build --test` → 并行 spawn `riu-test-runner` 子进程加载 DLL 执行。
 
 ## License
 

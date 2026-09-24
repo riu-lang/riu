@@ -1,12 +1,12 @@
 .idea/
 /build/windows/
-/build/__pycache__/
+__pycache__/
 /build/config.txt
 /*.exe
 /third_party/
 .cache/
 /compile_commands.json
-/.xmake/
+/.venv/
 /.vscode/
 /bin/
 .cursor/
@@ -26,3 +26,5 @@
 /tests/projects/ffi/lib/
 /tests/projects/ffi_layout/lib/
 /scripts/win32/
+/*.cmd
+/*.sh

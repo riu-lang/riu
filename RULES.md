@@ -20,7 +20,7 @@
 
 多步任务写入 `CURRENT.md`，阶段更新，完成简单保留；单步小修不写。新 bug 用 `BUGS.md` 模板。进度和 bug 不混。修完可把 BUGS 条删掉，回归路径写进 notes。
 
-继续旧任务：读 CURRENT + BUGS，确认能编过。撞到可能是旧 bug：`git stash` → `./build.ps1` → 跑相关测试。基线也挂 → 记 BUGS.md 后绕过；基线过 → 当前引入，修掉。工作区干净 + CURRENT/BUGS 空 = 上一任务已完结。质量优先，不强制关 CURRENT。
+继续旧任务：读 CURRENT + BUGS，确认能编过。撞到可能是旧 bug：`git stash` → `./build` → 跑相关测试。基线也挂 → 记 BUGS.md 后绕过；基线过 → 当前引入，修掉。工作区干净 + CURRENT/BUGS 空 = 上一任务已完结。质量优先，不强制关 CURRENT。
 
 ## Git
 
@@ -50,19 +50,19 @@
 | 写 `*.ut` | [rules/riu-syntax.md](rules/riu-syntax.md) |
 | 改 `riu/frontend/sema/` 或 `riu/riu/compiler/` | [rules/sema-codegen.md](rules/sema-codegen.md) |
 | 改语言特性 / 语法 / ABI | [rules/spec-writeback.md](rules/spec-writeback.md) |
-| CLI / 脚本参数 | `riu --help`、`riu build --help`、`./build.ps1 --help` 等，不维护手册 md |
+| CLI / 脚本参数 | `riu --help`、`riu build --help`、`./build --help` 等，不维护手册 md |
 
 ## 环境 / 构建
 
-Windows + Clang（无 MSVC 作编译器；仍需 VS 的 Windows SDK / STL）。`build/windows/x64/debug/bin` 在 PATH。`riu-check` 独立 exe，`./build.ps1 riu` 不会编它。`riu` 只有 `build` / `test` / `format`，没有 `riu file.ut`；仓库根没有 `riu.toml`，`riu build` / `riu test` 不能在仓库根跑。
+Windows + Clang（无 MSVC 作编译器；仍需 VS 的 Windows SDK / STL）。`build/windows/x64/debug/bin` 在 PATH。`riu-check` 独立 exe，`./build riu` 不会编它。`riu` 只有 `build` / `test` / `format`，没有 `riu file.ut`；仓库根没有 `riu.toml`，`riu build` / `riu test` 不能在仓库根跑。根目录仅保留 `./sync-deps.ps1`（缺 `uv` 时经 `DEPS.json` 同步）；`build`/`lint`/`format`/`count-lines` 为 `uv run` 的 `.cmd`/`.sh` 壳。
 
 | 改动 | 重编 |
 |------|------|
-| `riu/riu/compiler/` | `./build.ps1 riu` |
-| `riu/frontend/` | `./build.ps1 riu riu-check` |
-| `riu/ast/` | `./build.ps1 riu riu-check riu-ast` |
-| `riu/lsp/` | `./build.ps1 riu-lsp` |
-| `riu/test-runner/` | `./build.ps1 riu-test-runner` |
+| `riu/riu/compiler/` | `./build riu` |
+| `riu/frontend/` | `./build riu riu-check` |
+| `riu/ast/` | `./build riu riu-check riu-ast` |
+| `riu/lsp/` | `./build riu-lsp` |
+| `riu/test-runner/` | `./build riu-test-runner` |
 
 新 `.cpp` / `.h` 写入对应 `BUILD.gn` 的 `sources`，否则 ninja 编不到。`frontend` / `check` / `lsp` / `ast` / `analyzer` 不加 LLVM。
 
@@ -73,13 +73,13 @@ Windows + Clang（无 MSVC 作编译器；仍需 VS 的 Windows SDK / STL）。`
 | 单文件诊断 | 任意 | `riu-check <file.ut>` |
 | 诊断回归 | 仓库根 | `riu-check test tests/check-cases/`（子集 `diag_*` / `**/*`；`*` 不跨目录，递归用 `**`，无 `-r`） |
 | SDK `#Test` | `sdk/core/` 与 `sdk/stdlib/` | `riu test`（`--verbose` / `--test-mod <M>` / `--threads N`） |
-| 项目回归 | 仓库根 | `./build.ps1 test`（`-Jobs 1` 串行） |
+| 项目回归 | 仓库根 | `./build test`（`-Jobs 1` 串行） |
 
 中途：改了什么跑什么。收尾：先按「改动 / 重编」把 exe 编好，再跑上表三套回归。
 
 测试崩溃：DLL 无摘要行 → 在 `sdk/core/` 或 `sdk/stdlib/` 下 `--verbose` → `--test-mod` → `riu build --test -d`。
 
-改完 C++ 立刻 `./format.ps1`；完成修改+测试通过后 `./lint.ps1` **0 warnings** （无打印的warning）。注释中文；`// ====` 分区；未完成 / 待验证写 `// TODO:`。新诊断码：`riu/include/error_code.h` 段内递增；用户能看到才按 spec-writeback 同步附录 D。
+改完 C++ 立刻 `./format`；完成修改+测试通过后 `./lint` **0 warnings** （无打印的warning）。注释中文；`// ====` 分区；未完成 / 待验证写 `// TODO:`。新诊断码：`riu/include/error_code.h` 段内递增；用户能看到才按 spec-writeback 同步附录 D。
 
 ## 加测试
 
@@ -118,5 +118,6 @@ tests/projects/      项目回归；tests/check-cases/ 诊断用例
 build/               GN；plugins/ 编辑器；third_party/ 依赖
 rules/               按需规则（syntax / sema / spec-writeback）
 RULES.md             会话入口；AGENTS.md → RULES.md
-*.ps1                build / sync-deps / lint / format
+sync-deps.ps1        入口；其余 build/lint/format/count-lines 为 .cmd/.sh
+src/riu_lang/        脚本实现（uv run 入口）
 ```

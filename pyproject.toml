@@ -1,0 +1,37 @@
+[project]
+name = "riu-lang"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "yjl", email = "yjl_1567@qq.com" }
+]
+requires-python = ">=3.12"
+dependencies = []
+
+[project.scripts]
+riu-lang = "riu_lang:main"
+sync-deps = "riu_lang.sync_deps:main"
+build = "riu_lang.build:main"
+lint = "riu_lang.lint:main"
+format = "riu_lang.format:main"
+count-lines = "riu_lang.count_lines:main"
+
+[build-system]
+requires = ["uv_build>=0.12.15,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-root = "src"
+
+[[tool.uv.index]]
+name = "aliyun"
+url = "https://mirrors.aliyun.com/pypi/simple/"
+default = true
+
+[dependency-groups]
+dev = [
+    "cython>=3.2.5",
+    "pytest>=8",
+]
+
