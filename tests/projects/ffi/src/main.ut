@@ -1,5 +1,5 @@
 ; examples/ffi — riu → C：标量、POD struct copy、ptr_of 传入、Ptr handle 回传 C。
-; 先 ./prebuild.ps1（clang-cl → lib/ffi_demo.lib），再 riu build。
+; 先 prebuild.py（clang-cl → lib/ffi_demo.lib），再 riu build。
 
 struct Point {
   x i32

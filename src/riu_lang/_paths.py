@@ -40,5 +40,10 @@ def venv_python(root: Path) -> Path:
     return py
 
 
+def gn_script_executable(root: Path) -> Path:
+    """GN --script-executable（须为可执行文件，不能用 .cmd）。"""
+    return venv_python(root)
+
+
 def gn_path(path: Path | str) -> str:
     return Path(path).as_posix()

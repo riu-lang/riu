@@ -21,6 +21,6 @@ riu build
 | [wc](wc/) | 行 / 词 / UTF-8 字节（ASCII 空白分词） |
 | [freq](freq/) | 词频（`Map<String, i32>`，按次数降序） |
 | [wln](wln/) | 创建软链 / 硬链 / junction（`riu.io.symlink` 等） |
-| [ffi](ffi/) | riu 调 C / C 读 riu 对象（先 `./prebuild.ps1`） |
+| [ffi](ffi/) | riu 调 C / C 读 riu 对象（先 `uv run python prebuild.py`） |
 
 逐步说明见 [docs/第一个程序.md](../docs/第一个程序.md)。

@@ -219,7 +219,7 @@ Win32 生成（语言之后）：`void*` 仍 `Ptr`；`DWORD*` → `Ptr<u32>`；`
 | `riu/ast/mod_decl.h` `kFormatVersion` | 现 **v5**；默认类型进二进制 → **v6**（否则旧 `.ud` 错位）。`mod_decl.cpp` 读写与 typeParams 平行 |
 | 附录 D 新码 | 段内递增：E2040 之后 **E2041** 默认不在尾部连续；**E2042** 默认引用更右形参 / 成环。`error_code.h` |
 
-rd dump：`tests/rd-cases/` 加 `generic_default.ut` + `.rd.txt`（`struct Foo<T=i32>` / `fn f<T=()>` / `T : Eq = i32`）。`./tests/rd-cases/run.ps1`。
+rd dump：`tests/rd-cases/` 加 `generic_default.ut` + `.rd.txt`（`struct Foo<T=i32>` / `fn f<T=()>` / `T : Eq = i32`）。`uv run rd-cases`。
 
 声明期 Sema：扫一遍形参，一旦出现无默认的、其左侧已有默认 → E2041。默认 `type` 解析时只允许更左形参入 `subst`。
 

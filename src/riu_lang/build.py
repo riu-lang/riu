@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 import sys
 from datetime import date
 from pathlib import Path
 
 from riu_lang._console import info, log, ok
-from riu_lang._paths import find_tool, gn_path, project_root, venv_python
+from riu_lang._paths import find_tool, gn_path, gn_script_executable, project_root
 from riu_lang.pack import pack
 
 
@@ -61,6 +60,17 @@ def _write_args_gn(out_dir: Path, llvm_dir: Path, version_str: str, is_debug: bo
     return False
 
 
+def _script_exe_stale(out_dir: Path, script_exe: str) -> bool:
+    stamp = out_dir / ".gn_script_executable"
+    if not stamp.is_file():
+        return True
+    return stamp.read_text(encoding="utf-8").strip() != script_exe
+
+
+def _write_script_exe_stamp(out_dir: Path, script_exe: str) -> None:
+    (out_dir / ".gn_script_executable").write_text(script_exe + "\n", encoding="utf-8")
+
+
 def _build_sdk_packages(root: Path, riu_exe: Path) -> None:
     if not riu_exe.is_file():
         return
@@ -78,12 +88,10 @@ def _run_tests(root: Path, out_dir: Path, ninja: Path, forward: list[str], targe
         subprocess.run([str(ninja), "-C", str(out_dir), "riu"], check=True)
     riu_exe = out_dir / "bin" / "riu.exe"
     _build_sdk_packages(root, riu_exe)
-    runner = root / "tests" / "run.ps1"
-    pwsh = shutil.which("pwsh") or shutil.which("powershell")
-    if not pwsh:
-        raise SystemExit("pwsh/powershell not found (required for tests/run.ps1)")
-    cmd = [pwsh, str(runner), "-RiuExe", str(riu_exe), *forward]
-    return subprocess.run(cmd, cwd=root).returncode
+    from riu_lang.test_projects import main as run_test_projects
+
+    test_argv = ["--riu", str(riu_exe), *forward]
+    return run_test_projects(test_argv)
 
 
 def show_help() -> None:
@@ -99,7 +107,7 @@ def show_help() -> None:
   -GenOnly / --gen-only  只 gn gen，不 ninja
   -h / --help            帮助
 
-test 参数（转发到 tests/run.ps1）:
+test 参数（转发到 test-projects）:
   -Jobs / --jobs / -j N  并行用例数（默认 CPU 核数；1 = 串行）
   -Group project|format  只跑一类
   <name>                 只跑指定用例目录
@@ -145,14 +153,13 @@ def main(argv: list[str] | None = None) -> int:
     llvm_dir = out_dir / "llvm"
     version = _riu_version(root)
     version_str = f"v{version}-{date.today().isoformat()}"
+    script_exe = gn_path(gn_script_executable(root))
     args_changed = _write_args_gn(out_dir, llvm_dir, version_str, mode == "debug")
 
     gn = find_tool(root, "gn")
     ninja = find_tool(root, "ninja")
-    python = venv_python(root)
-    script_exe = gn_path(python)
     build_ninja = out_dir / "build.ninja"
-    need_gen = args_changed or not build_ninja.is_file()
+    need_gen = args_changed or not build_ninja.is_file() or _script_exe_stale(out_dir, script_exe)
 
     if need_gen:
         info(f"\n=== gn gen {out_dir} ===")
@@ -161,6 +168,7 @@ def main(argv: list[str] | None = None) -> int:
             cwd=root,
             check=True,
         )
+        _write_script_exe_stamp(out_dir, script_exe)
     else:
         log(f"gn: {out_dir} (up to date)", dim=True)
 

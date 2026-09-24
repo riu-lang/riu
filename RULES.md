@@ -73,7 +73,7 @@ Windows + Clang（无 MSVC 作编译器；仍需 VS 的 Windows SDK / STL）。`
 | 单文件诊断 | 任意 | `riu-check <file.ut>` |
 | 诊断回归 | 仓库根 | `riu-check test tests/check-cases/`（子集 `diag_*` / `**/*`；`*` 不跨目录，递归用 `**`，无 `-r`） |
 | SDK `#Test` | `sdk/core/` 与 `sdk/stdlib/` | `riu test`（`--verbose` / `--test-mod <M>` / `--threads N`） |
-| 项目回归 | 仓库根 | `./build test`（`-Jobs 1` 串行） |
+| 项目回归 | 仓库根 | `./build test`（`-Jobs 1` 串行）；`uv run rd-cases` |
 
 中途：改了什么跑什么。收尾：先按「改动 / 重编」把 exe 编好，再跑上表三套回归。
 
@@ -118,6 +118,6 @@ tests/projects/      项目回归；tests/check-cases/ 诊断用例
 build/               GN；plugins/ 编辑器；third_party/ 依赖
 rules/               按需规则（syntax / sema / spec-writeback）
 RULES.md             会话入口；AGENTS.md → RULES.md
-sync-deps.ps1        入口；其余 build/lint/format/count-lines 为 .cmd/.sh
-src/riu_lang/        脚本实现（uv run 入口）
+sync-deps.ps1        唯一 ps1 入口
+src/riu_lang/        脚本实现（uv run：build/lint/format/test-projects/rd-cases 等）
 ```

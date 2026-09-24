@@ -4,7 +4,7 @@ riu → C：标量、C-layout struct 按值、`ptr_of` 传入、`Ptr` 当不透�
 D2：C 通过 riurt 头读 **riu 仍持有** 的 `Rc` / `Nullable` / `String`（不 free、不从 `Ptr` 重建 riu 类型）。
 
 ```powershell
-./prebuild.ps1   # clang-cl 编 c/ffi_demo.c → lib/ffi_demo.lib
+uv run python prebuild.py   # clang-cl 编 c/ffi_demo.c → lib/ffi_demo.lib
 riu build
 ./build/ffi.exe
 ```

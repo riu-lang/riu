@@ -16,6 +16,8 @@ build = "riu_lang.build:main"
 lint = "riu_lang.lint:main"
 format = "riu_lang.format:main"
 count-lines = "riu_lang.count_lines:main"
+test-projects = "riu_lang.test_projects:main"
+rd-cases = "riu_lang.rd_cases:main"
 
 [build-system]
 requires = ["uv_build>=0.12.15,<0.13.0"]
