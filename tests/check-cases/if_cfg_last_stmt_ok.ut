@@ -1,0 +1,6 @@
+; #6：块末无分号的 `#If` 假分支也不进 Sema（抽出尾表达式时保留前缀）
+
+fn main() {
+  #If(false)
+  no_such_fn()
+}

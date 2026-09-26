@@ -284,6 +284,7 @@ public:
     void eraseSymbol(const string& name);
 
     void registerFnSymbol(const string& name, FnSymbolInfo info);
+    void clearFnSymbolsNamed(const string& name);
 
     void setParentScope(ScopeNode* scope);
 
@@ -305,6 +306,7 @@ public:
 
     // 块 / struct 内 `type Name = T`（文件顶层仍走 FileNode::_aliasMap）
     void addLocalAlias(AliasDeclNode* alias);
+    void eraseLocalAlias(const string& name);
     [[nodiscard]] AliasDeclNode* localAlias(const string& name) const;
     [[nodiscard]] const map<string, AliasDeclNode*>& localAliases() const { return _localAliases; }
     void copyLocalAliasesFrom(const ScopeNode* from);

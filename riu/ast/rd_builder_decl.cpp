@@ -137,6 +137,7 @@ void RdBuilder::fillFnBody(FnNode* fn, rd::NodeId body) {
             auto* resultExpr = blk->resultExpr();
             auto* retStmt = create<StatementRetNode>(body, fn, resultExpr);
             retStmt->setLocation(resultExpr->resolveLineNumber(), resultExpr->resolveColumn());
+            retStmt->setPrefixAnnos(blk->resultPrefixAnnos());
             fn->addStatement(retStmt);
         }
         return;
@@ -601,6 +602,7 @@ void RdBuilder::addStruct(rd::NodeId id) {
         bool isStatic = false, isMut = false, isCval = false, isInline = false;
         bool isVal = false, isFrozen = false;
         uint32_t fieldAlign = 0;
+        vector<AnnoCall> fieldAnnos;
         while (fi < fn.children_count && at(child(f, fi)).kind == rd::NodeKind::Anno) {
             auto a = child(f, fi);
             string an = string(at(a).value);
@@ -626,9 +628,12 @@ void RdBuilder::addStruct(rd::NodeId id) {
                 uint64_t n = layout::parseAlignArg(arg);
                 if (n == 0) throw RiuError(line, col, ErrorCode::E2038, arg.empty() ? string("?") : arg);
                 fieldAlign = static_cast<uint32_t>(n);
+            } else if (an == "If") {
+                if (!hasArg) throw RiuError(line, col, ErrorCode::E3108, an);
+                fieldAnnos.push_back(buildAnnoCall(a));
             } else
                 throw RiuError(line, col, ErrorCode::E3108, an);
-            if (an != "Align" && hasArg) throw RiuError(line, col, ErrorCode::E3108, an);
+            if (an != "Align" && an != "If" && hasArg) throw RiuError(line, col, ErrorCode::E3108, an);
             ++fi;
         }
         TypeNode* ty =
@@ -653,10 +658,12 @@ void RdBuilder::addStruct(rd::NodeId id) {
             sf.isPrivate = !sf.name.getText().empty() && sf.name.getText()[0] == '_';
             sf.isCval = isCval;
             sf.isInline = isInline;
+            sf.annoCalls = std::move(fieldAnnos);
             structDecl->addStaticField(sf);
             continue;
         }
         auto* field = create<StructFieldNode>(f, structDecl, makeTok(f), ty);
+        field->setAnnoCalls(std::move(fieldAnnos));
         field->setVal(isVal);
         field->setFrozen(isFrozen);
         field->setStatic(isStatic);

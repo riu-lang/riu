@@ -23,6 +23,7 @@ static_library("riu_frontend") {
   ]
   sources = [
     "pass/pass.cpp",
+    "pass/cfg_strip_pass.cpp",
     "sema/call_resolve.cpp",
     "sema/const_eval.cpp",
     "sema/name_resolver.cpp",

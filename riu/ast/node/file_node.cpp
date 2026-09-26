@@ -4,6 +4,8 @@
 #include "file_node.h"
 #include "builtin_methods.h"
 
+#include <set>
+
 FileNode::FileNode(string moduleName) : ScopeNode(nullptr), _moduleName(std::move(moduleName)) {
     // 注册基本类型为 struct 占位符，并预声明方法符号
     const initializer_list<string> TYPES = {"bool", "i8",  "i16", "i32", "i64",   "u8",   "u16",
@@ -784,5 +786,216 @@ void FileNode::collectFnOverloads(const string& name, vector<FnSymbolInfo*>& out
         for (auto* fn : fromParent) {
             if (!hasSemanticDup(fn)) addIfNew(fn);
         }
+    }
+}
+
+namespace {
+
+bool nameStartsWithDot(const string& key, const string& prefix) {
+    return key.size() > prefix.size() && key.starts_with(prefix) && key[prefix.size()] == '.';
+}
+
+FnSymbolInfo fnSymFromNode(FnNode* fn, const string& moduleName, const string& symbolName, bool withRecv,
+                           const string& recvName) {
+    auto* h = fn->header();
+    vector<TypeInfo> params;
+    if (withRecv) params.emplace_back(recvName);
+    for (auto* p : h->params())
+        params.push_back(p->type() ? p->type()->getType() : TypeInfo());
+    TypeInfo ret = h->retType() ? h->retType()->getType() : TypeInfo();
+    FnSymbolInfo info{symbolName, moduleName, std::move(params), std::move(ret)};
+    info.isNoReturn = h->hasAnno("NoReturn");
+    info.isConst = h->hasAnno("Const");
+    info.fallibleErrType = h->resolvedFallibleErr();
+    return info;
+}
+
+void erasePrefixedSymbols(FileNode* file, const string& prefix) {
+    vector<string> keys;
+    for (auto& [k, _] : file->localSymbols()) {
+        if (nameStartsWithDot(k, prefix)) keys.push_back(k);
+    }
+    for (const auto& k : keys) {
+        file->eraseSymbol(k);
+        file->clearFnSymbolsNamed(k);
+    }
+}
+
+} // namespace
+
+void FileNode::retainFunctions(vector<FnNode*> keep) {
+    std::set<string> keepNames;
+    for (auto* f : keep) {
+        if (f && f->header()) keepNames.insert(f->header()->name().getText());
+    }
+    std::set<string> droppedNames;
+    for (auto* f : _functions) {
+        if (!f || !f->header()) continue;
+        string n = f->header()->name().getText();
+        if (!keepNames.contains(n)) droppedNames.insert(n);
+    }
+    _functions = std::move(keep);
+    _fnsByName.clear();
+    for (auto* f : _functions) {
+        if (!f || !f->header()) continue;
+        _fnsByName[f->header()->name().getText()].push_back(f);
+    }
+    for (const auto& n : droppedNames) {
+        vector<unique_ptr<FnSymbolInfo>> externs;
+        auto it = _fnSymbols.find(n);
+        if (it != _fnSymbols.end()) {
+            for (auto& p : it->second) {
+                if (p && p->isExternal) externs.push_back(std::move(p));
+            }
+        }
+        clearFnSymbolsNamed(n);
+        for (auto& e : externs)
+            _fnSymbols[n].push_back(std::move(e));
+        if (_fnsByName[n].empty() && (!_fnSymbols.contains(n) || _fnSymbols[n].empty())) {
+            _fnsByName.erase(n);
+            eraseSymbol(n);
+        }
+    }
+    for (auto& [n, fns] : _fnsByName) {
+        vector<unique_ptr<FnSymbolInfo>> externs;
+        auto it = _fnSymbols.find(n);
+        if (it != _fnSymbols.end()) {
+            for (auto& p : it->second) {
+                if (p && p->isExternal) externs.push_back(std::move(p));
+            }
+        }
+        clearFnSymbolsNamed(n);
+        for (auto& e : externs)
+            _fnSymbols[n].push_back(std::move(e));
+        for (auto* f : fns)
+            registerFnSymbol(n, fnSymFromNode(f, _moduleName, n, false, {}));
+        if (!fns.empty()) {
+            auto* h = fns[0]->header();
+            TypeInfo ret = h->retType() ? h->retType()->getType() : TypeInfo();
+            SymbolInfo fnSym(SymbolKind::Function, n, ret);
+            fnSym.moduleName = _moduleName;
+            registerSymbol(n, std::move(fnSym));
+        }
+    }
+}
+
+void FileNode::retainStructDecls(vector<StructDeclNode*> keep) {
+    std::set<string> keepNames;
+    for (auto* s : keep) {
+        if (s) keepNames.insert(s->name().getText());
+    }
+    std::set<string> dropped;
+    for (auto* s : _structDecls) {
+        if (!s) continue;
+        string n = s->name().getText();
+        if (!keepNames.contains(n)) dropped.insert(n);
+    }
+    _structDecls = std::move(keep);
+    _structMap.clear();
+    for (auto* s : _structDecls) {
+        if (!s) continue;
+        string n = s->name().getText();
+        if (!_structMap.contains(n)) _structMap[n] = s;
+    }
+    for (const auto& n : dropped) {
+        eraseSymbol(n);
+        erasePrefixedSymbols(this, n);
+        _structMap.erase(n);
+        _implMap.erase(n);
+        vector<StructImplNode*> implKeep;
+        for (auto* impl : _structImpls) {
+            if (impl && impl->structName() == n) continue;
+            implKeep.push_back(impl);
+        }
+        _structImpls = std::move(implKeep);
+    }
+}
+
+void FileNode::retainStructImpls(vector<StructImplNode*> keep) {
+    _structImpls = std::move(keep);
+    _implMap.clear();
+    for (auto* impl : _structImpls) {
+        if (!impl) continue;
+        const string& n = impl->structName();
+        if (!_implMap.contains(n)) _implMap[n] = impl;
+    }
+}
+
+void FileNode::retainSpecDecls(vector<SpecDeclNode*> keep) {
+    std::set<string> keepNames;
+    for (auto* s : keep) {
+        if (s) keepNames.insert(s->name().getText());
+    }
+    for (auto* s : _specDecls) {
+        if (!s) continue;
+        string n = s->name().getText();
+        if (!keepNames.contains(n)) eraseSymbol(n);
+    }
+    _specDecls = std::move(keep);
+}
+
+void FileNode::retainGlobalConsts(vector<GlobalConstNode*> keep) {
+    std::set<string> keepNames;
+    for (auto* g : keep) {
+        if (g) keepNames.insert(g->name().getText());
+    }
+    for (auto* g : _globalConsts) {
+        if (!g) continue;
+        string n = g->name().getText();
+        if (!keepNames.contains(n)) eraseSymbol(n);
+    }
+    _globalConsts = std::move(keep);
+}
+
+void FileNode::retainGlobalVars(vector<GlobalVarNode*> keep) {
+    std::set<string> keepNames;
+    for (auto* g : keep) {
+        if (g) keepNames.insert(g->name().getText());
+    }
+    for (auto* g : _globalVars) {
+        if (!g) continue;
+        string n = g->name().getText();
+        if (!keepNames.contains(n)) eraseSymbol(n);
+    }
+    _globalVars = std::move(keep);
+}
+
+void FileNode::unbindImplMethodSymbols(StructImplNode* impl) {
+    if (!impl) return;
+    const string& sname = impl->structName();
+    for (auto* m : impl->methods()) {
+        if (!m || !m->header()) continue;
+        string full = sname + "." + m->header()->name().getText();
+        clearFnSymbolsNamed(full);
+        eraseSymbol(full);
+    }
+    string dtor = sname + ".~" + sname;
+    clearFnSymbolsNamed(dtor);
+    eraseSymbol(dtor);
+}
+
+void FileNode::rebindImplMethodSymbols(StructImplNode* impl) {
+    if (!impl) return;
+    const string& sname = impl->structName();
+    for (auto* m : impl->methods()) {
+        if (!m || !m->header()) continue;
+        string methodName = m->header()->name().getText();
+        string full = sname;
+        full += '.';
+        full += methodName;
+        TypeInfo ret = m->header()->retType() ? m->header()->retType()->getType() : TypeInfo();
+        SymbolInfo methodSym(SymbolKind::Function, methodName, ret);
+        methodSym.moduleName = _moduleName;
+        registerSymbol(full, std::move(methodSym));
+        registerFnSymbol(full, fnSymFromNode(m, _moduleName, full, true, sname));
+    }
+    if (impl->destructor()) {
+        string dtor = sname + ".~" + sname;
+        vector<TypeInfo> paramTypes;
+        paramTypes.emplace_back(sname);
+        SymbolInfo destructorSym(SymbolKind::Function, "~" + sname, TypeInfo());
+        destructorSym.moduleName = _moduleName;
+        registerSymbol(dtor, std::move(destructorSym));
+        registerFnSymbol(dtor, FnSymbolInfo{dtor, _moduleName, paramTypes, TypeInfo()});
     }
 }

@@ -6,6 +6,7 @@
 #include "pass/pass.h"
 
 #include "analyzer/fn_checkers.h"
+#include "pass/cfg_strip_pass.h"
 #include "sema/sema_pass.h"
 #include "types.h"
 
@@ -37,6 +38,7 @@ void PassManager::run(FileNode* file, Riu* riu) {
 }
 
 void addAnalysisPasses(PassManager& pm) {
+    pm.addPass(std::make_unique<CfgStripPass>());
     pm.addPass(std::make_unique<SemaAnalysisPass>());
     pm.addPass(std::make_unique<FnCheckersPass>());
 }

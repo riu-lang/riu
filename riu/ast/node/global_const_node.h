@@ -8,7 +8,7 @@
 #include "node.h"
 #include "type_node.h"
 
-class GlobalConstNode : public Node, public Named, public Typed {
+class GlobalConstNode : public Node, public Named, public Typed, public Annotated {
     TypeNode* _type;
     ExprNode* _value;
     bool _isPrivate;

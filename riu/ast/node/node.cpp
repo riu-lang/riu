@@ -37,6 +37,10 @@ void ScopeNode::registerFnSymbol(const string& name, FnSymbolInfo info) {
     _fnSymbols[name].push_back(std::make_unique<FnSymbolInfo>(std::move(info)));
 }
 
+void ScopeNode::clearFnSymbolsNamed(const string& name) {
+    _fnSymbols.erase(name);
+}
+
 void ScopeNode::setParentScope(ScopeNode* scope) {
     _parentScope = scope;
 }
@@ -150,6 +154,10 @@ ScopeNode* ScopeNode::parentScope() const {
 void ScopeNode::addLocalAlias(AliasDeclNode* alias) {
     if (!alias) return;
     _localAliases[alias->name().getText()] = alias;
+}
+
+void ScopeNode::eraseLocalAlias(const string& name) {
+    _localAliases.erase(name);
 }
 
 AliasDeclNode* ScopeNode::localAlias(const string& name) const {

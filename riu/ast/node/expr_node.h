@@ -241,13 +241,13 @@ protected:
 
 public:
     ExprDotNode(Node* parent, ExprNode* baseExpr, Token member)
-        : ExprNode(parent), _baseExpr(baseExpr), _member(std::move(member)) {}
+        : ExprNode(parent), _baseExpr(baseExpr), _member(member) {}
 
     ExprDotNode(Node* parent, ExprNode* baseExpr, Token member, bool safe)
-        : ExprNode(parent), _baseExpr(baseExpr), _member(std::move(member)), _safe(safe) {}
+        : ExprNode(parent), _baseExpr(baseExpr), _member(member), _safe(safe) {}
 
     ExprDotNode(Node* parent, ExprNode* baseExpr, Token member, bool safe, string specQualifier)
-        : ExprNode(parent), _baseExpr(baseExpr), _member(std::move(member)), _safe(safe),
+        : ExprNode(parent), _baseExpr(baseExpr), _member(member), _safe(safe),
           _specQualifier(std::move(specQualifier)) {}
 
     [[nodiscard]] ExprNode* baseExpr() const;
@@ -300,13 +300,23 @@ class StatementBlockNode : public ScopeNode {
     vector<StatementNode*> _statements;
     ExprNode* _resultExpr;
     bool _hasResult;
+    // 尾表达式从无 `;` 的 ExprStmt 抽出时，原语句的 `#If` 等前缀挂这里。
+    vector<AnnoCall> _resultPrefixAnnos;
 
 public:
     StatementBlockNode(Node* parent, vector<StatementNode*> statements, ExprNode* resultExpr, bool hasResult);
 
+    void setStatements(vector<StatementNode*> statements) { _statements = std::move(statements); }
     [[nodiscard]] const vector<StatementNode*>& statements() const;
     [[nodiscard]] ExprNode* resultExpr() const;
     [[nodiscard]] bool hasResult() const;
+    void setResultPrefixAnnos(vector<AnnoCall> annos) { _resultPrefixAnnos = std::move(annos); }
+    [[nodiscard]] const vector<AnnoCall>& resultPrefixAnnos() const { return _resultPrefixAnnos; }
+    void clearResult() {
+        _resultExpr = nullptr;
+        _hasResult = false;
+        _resultPrefixAnnos.clear();
+    }
     void accept(AstVisitor& v);
 };
 
@@ -410,8 +420,7 @@ class ExprGetRefNode : public ExprNode {
     vector<Token> _subs;
 
 public:
-    ExprGetRefNode(Node* parent, Token obj, vector<Token> subs)
-        : ExprNode(parent), _obj(std::move(obj)), _subs(std::move(subs)) {}
+    ExprGetRefNode(Node* parent, Token obj, vector<Token> subs) : ExprNode(parent), _obj(obj), _subs(std::move(subs)) {}
 
     [[nodiscard]] Token obj() const { return _obj; }
     [[nodiscard]] const vector<Token>& subs() const { return _subs; }
@@ -536,6 +545,7 @@ public:
     void setFallibleErrType(TypeNode* t) { _fallibleErrType = t; }
     [[nodiscard]] TypeNode* fallibleErrTypeNode() const { return _fallibleErrType; }
     [[nodiscard]] ExprNode* bodyExpr() const { return _bodyExpr; }
+    void setBodyStmts(vector<StatementNode*> stmts) { _bodyStmts = std::move(stmts); }
     [[nodiscard]] const vector<StatementNode*>& bodyStmts() const { return _bodyStmts; }
 
     // 形参 name 由 lambdaParam 强制带 ID
@@ -586,7 +596,7 @@ class ExprPathCallNode : public ExprNode {
 
 public:
     ExprPathCallNode(Node* parent, Token enumName, Token variantName)
-        : ExprNode(parent), _lhsPath(enumName), _enumName(std::move(enumName)), _variantName(std::move(variantName)) {}
+        : ExprNode(parent), _lhsPath(enumName), _enumName(enumName), _variantName(variantName) {}
 
     void addArg(ExprNode* a) { _args.push_back(a); }
     void setLhsTypeArgs(vector<TypeNode*> a) { _lhsTypeArgs = std::move(a); }
@@ -622,7 +632,7 @@ class FieldInitNode : public Node {
     ExprNode* _value;
 
 public:
-    FieldInitNode(Node* parent, Token name, ExprNode* value) : Node(parent), _name(std::move(name)), _value(value) {}
+    FieldInitNode(Node* parent, Token name, ExprNode* value) : Node(parent), _name(name), _value(value) {}
 
     [[nodiscard]] const Token& name() const { return _name; }
     [[nodiscard]] ExprNode* value() const { return _value; }
@@ -644,7 +654,7 @@ class ExprStructLitNode : public ExprNode {
 
 public:
     ExprStructLitNode(Node* parent, Token selfTok, string structName, bool isSelfForm = true)
-        : ExprNode(parent), _selfTok(std::move(selfTok)), _structName(std::move(structName)), _isSelfForm(isSelfForm) {}
+        : ExprNode(parent), _selfTok(selfTok), _structName(std::move(structName)), _isSelfForm(isSelfForm) {}
 
     void addField(FieldInitNode* f) { _fields.push_back(f); }
     void setTypePath(TypePath p) { _typePath = std::move(p); }
@@ -676,8 +686,8 @@ public:
         : Node(parent), _isElse(true), _enumName(elseTok), _variantName(elseTok) {}
     // enum 模式
     EnumPatternNode(Node* parent, Token enumName, Token variantName, vector<Token> binds)
-        : Node(parent), _isElse(false), _enumPath(enumName), _enumName(std::move(enumName)),
-          _variantName(std::move(variantName)), _binds(std::move(binds)) {}
+        : Node(parent), _isElse(false), _enumPath(enumName), _enumName(enumName), _variantName(variantName),
+          _binds(std::move(binds)) {}
 
     void setEnumPath(TypePath p) {
         _enumPath = std::move(p);
@@ -747,7 +757,7 @@ class CatchArmNode : public ScopeNode {
 
 public:
     CatchArmNode(Node* parent, Token errName, TypeInfo errType, StatementBlockNode* body)
-        : ScopeNode(parent), _errName(std::move(errName)), _errType(std::move(errType)), _body(body) {}
+        : ScopeNode(parent), _errName(errName), _errType(std::move(errType)), _body(body) {}
 
     [[nodiscard]] const Token& errName() const { return _errName; }
     [[nodiscard]] string errType() const { return _errType.getFullName(); }

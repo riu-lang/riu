@@ -1,0 +1,19 @@
+use riu.core.*
+
+#Cval let SHOW bool = true
+
+#If(SHOW)
+fn greet() {
+  println("shown")
+}
+
+#If(!SHOW)
+fn greet() {
+  println("hidden")
+}
+
+fn main() {
+  greet()
+  #If(false)
+  println("nope")
+}

@@ -58,6 +58,16 @@ public:
     void addAliasDecl(AliasDeclNode* aliasDecl);
     void addEnumDecl(EnumDeclNode* enumDecl);
 
+    // CfgStrip：假 `#If` 摘掉后重写表并同步符号。
+    void retainFunctions(vector<FnNode*> keep);
+    void retainStructDecls(vector<StructDeclNode*> keep);
+    void retainStructImpls(vector<StructImplNode*> keep);
+    void retainSpecDecls(vector<SpecDeclNode*> keep);
+    void retainGlobalConsts(vector<GlobalConstNode*> keep);
+    void retainGlobalVars(vector<GlobalVarNode*> keep);
+    void unbindImplMethodSymbols(StructImplNode* impl);
+    void rebindImplMethodSymbols(StructImplNode* impl);
+
     [[nodiscard]] const vector<FnNode*>& getFunctions() const;
     [[nodiscard]] const vector<StructDeclNode*>& getStructDecls() const { return _structDecls; }
     [[nodiscard]] const vector<StructImplNode*>& getStructImpls() const { return _structImpls; }

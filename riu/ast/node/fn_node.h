@@ -84,6 +84,7 @@ public:
     explicit FnNode(Node* parent, FnHeaderNode* header);
 
     void addStatement(StatementNode* stmt);
+    void setBody(vector<StatementNode*> body) { _body = std::move(body); }
 
     [[nodiscard]] const vector<StatementNode*>& body() const;
     [[nodiscard]] FnHeaderNode* header() const;

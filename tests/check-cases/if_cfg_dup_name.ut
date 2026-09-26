@@ -1,0 +1,11 @@
+; #6：同名 fn 一真一假，只留真分支
+
+#If(true)
+fn foo() i32 = 1
+
+#If(false)
+fn foo() i32 = missing
+
+fn main() {
+  ret
+}

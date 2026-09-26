@@ -1,0 +1,9 @@
+; #6：假分支类型错不进 Sema
+
+fn main() {
+  #If(true)
+  let x i32 = 1
+  #If(false)
+  let y bool = 1
+  ret
+}

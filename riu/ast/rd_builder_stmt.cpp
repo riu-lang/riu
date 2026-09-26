@@ -62,17 +62,20 @@ StatementBlockNode* RdBuilder::buildBlock(rd::NodeId id, ScopeNode* parentScope,
     }
     ExprNode* resultExpr = nullptr;
     bool hasResult = false;
+    vector<AnnoCall> resultPrefix;
     if (extractResult && !statements.empty()) {
         if (auto* exprStmt = dynamic_cast<StatementExprNode*>(statements.back())) {
             if (!exprStmt->hasSemicolon()) {
                 resultExpr = exprStmt->expr();
                 hasResult = true;
+                resultPrefix = exprStmt->prefixAnnos();
                 statements.pop_back();
             }
         }
     }
     _scopeStack.pop_back();
     auto* filled = create<StatementBlockNode>(id, parentScope, std::move(statements), resultExpr, hasResult);
+    filled->setResultPrefixAnnos(std::move(resultPrefix));
     filled->setParentScope(parentScope);
     for (auto& [name, sym] : block->localSymbols())
         filled->registerSymbol(name, *sym);
@@ -185,6 +188,7 @@ StatementNode* RdBuilder::buildLet(rd::NodeId id, bool global) {
             }
             auto* globalVar = create<GlobalVarNode>(id, file, nameTok, type, expr, true);
             if (_keepSourceText) globalVar->setSourceText(srcSlice(n.pos));
+            globalVar->setAnnoCalls(std::move(prefixAnnos));
             file->addGlobalVar(globalVar);
             return nullptr;
         }
@@ -194,6 +198,7 @@ StatementNode* RdBuilder::buildLet(rd::NodeId id, bool global) {
             inferFlexibleIntForType(expr, type->getType());
             auto* globalConst = create<GlobalConstNode>(id, file, nameTok, type, expr, flags.isInline);
             if (_keepSourceText) globalConst->setSourceText(srcSlice(n.pos));
+            globalConst->setAnnoCalls(std::move(prefixAnnos));
             file->addGlobalConst(globalConst);
             return nullptr;
         }
@@ -206,6 +211,7 @@ StatementNode* RdBuilder::buildLet(rd::NodeId id, bool global) {
         }
         auto* globalVar = create<GlobalVarNode>(id, file, nameTok, type, expr);
         if (_keepSourceText) globalVar->setSourceText(srcSlice(n.pos));
+        globalVar->setAnnoCalls(std::move(prefixAnnos));
         file->addGlobalVar(globalVar);
         return nullptr;
     }

@@ -32,9 +32,15 @@ std::string_view compareOpText(ExprCompareNode::Op op) {
     return {};
 }
 
+string unwrapQuotedAnnoText(string t) {
+    if (t.size() >= 3 && t.front() == 'r' && t[1] == '"') t = t.substr(1);
+    if (t.size() >= 2 && t.front() == '"' && t.back() == '"') return t.substr(1, t.size() - 2);
+    return t;
+}
+
 string literalAnnoText(LiteralNode* ln) {
     if (!ln) return {};
-    if (auto* s = dynamic_cast<LiteralStringNode*>(ln)) return s->getValue().getText();
+    if (auto* s = dynamic_cast<LiteralStringNode*>(ln)) return unwrapQuotedAnnoText(s->getValue().getText());
     if (auto* i = dynamic_cast<LiteralIntNode*>(ln)) return i->getValue().getText();
     if (auto* f = dynamic_cast<LiteralFloatNode*>(ln)) return f->getValue().getText();
     if (auto* b = dynamic_cast<LiteralBoolNode*>(ln)) return b->getValue().getText();
@@ -79,7 +85,7 @@ string annoArgText(const AnnoArg& arg) {
         string fromExpr = exprAnnoText(arg.expr);
         if (!fromExpr.empty()) return fromExpr;
     }
-    return arg.text;
+    return unwrapQuotedAnnoText(arg.text);
 }
 
 string annoCallFirstArgText(const AnnoCall& call) {

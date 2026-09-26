@@ -1,0 +1,13 @@
+; #6：`#If` 条件可引用文件内 `#Cval`
+
+#Cval let FLAG bool = true
+
+#If(FLAG)
+fn kept() i32 = 1
+
+#If(!FLAG)
+fn dropped() i32 = missing
+
+fn main() {
+  ret
+}

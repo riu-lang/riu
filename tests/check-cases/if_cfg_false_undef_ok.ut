@@ -1,0 +1,7 @@
+; #6：假分支未定义名不报 E3030
+
+fn main() {
+  #If(false)
+  no_such_fn()
+  ret
+}

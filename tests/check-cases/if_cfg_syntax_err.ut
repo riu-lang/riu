@@ -1,0 +1,6 @@
+; #6：假分支句法错仍在 parse 期报
+
+#If(false)
+fn f(let i32) i32 {  ; check: E1002
+  ret 0
+}

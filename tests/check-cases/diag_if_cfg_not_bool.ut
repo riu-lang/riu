@@ -1,0 +1,6 @@
+; #6：`#If` 条件须是 bool 常量
+
+#If(1)  ; check: E3163
+fn main() {
+  ret
+}

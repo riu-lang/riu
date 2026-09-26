@@ -10,7 +10,7 @@
 #include "spec_node.h"
 #include "type_node.h"
 
-class StructFieldNode : public Node {
+class StructFieldNode : public Node, public Annotated {
     Token _name;
     TypeNode* _type;
     // #23：实例字段 `= expr`。声明处 const-eval 一次，结果进 _constValue。
@@ -72,8 +72,9 @@ public:
         ExprNode* init;         // v1 必须非空（E3150）
         bool isMutable = false; // #Mut 叠加
         bool isPrivate = false;
-        bool isCval = false;   // #Cval：编译期常量，不产生 GlobalVariable
-        bool isInline = false; // #Inline：使用处直接内联值
+        bool isCval = false;        // #Cval：编译期常量，不产生 GlobalVariable
+        bool isInline = false;      // #Inline：使用处直接内联值
+        vector<AnnoCall> annoCalls; // 字段前缀注解（#If 等）
     };
 
 private:
@@ -98,6 +99,17 @@ public:
             _fieldIndices[n] = _fields.size();
         }
         _fields.push_back(field);
+    }
+
+    void setFields(vector<StructFieldNode*> fields) {
+        _fields = std::move(fields);
+        _fieldIndices.clear();
+        for (size_t i = 0; i < _fields.size(); ++i) {
+            auto* f = _fields[i];
+            if (!f) continue;
+            const string n = f->name().getText();
+            if (!isDiscardName(n)) _fieldIndices[n] = i;
+        }
     }
 
     [[nodiscard]] const vector<StructFieldNode*>& fields() const { return _fields; }
@@ -142,7 +154,8 @@ public:
     [[nodiscard]] const string& sourceText() const { return _sourceText; }
 
     // DRAFT-static-vars Phase 4: 静态字段
-    void addStaticField(StaticFieldEntry sf) { _staticFields.push_back(sf); }
+    void addStaticField(const StaticFieldEntry& sf) { _staticFields.push_back(sf); }
+    void setStaticFields(vector<StaticFieldEntry> fields) { _staticFields = std::move(fields); }
     [[nodiscard]] const vector<StaticFieldEntry>& staticFields() const { return _staticFields; }
     [[nodiscard]] const StaticFieldEntry* staticField(const string& name) const {
         for (auto& sf : _staticFields) {
@@ -163,6 +176,7 @@ public:
         : ScopeNode(parent), Named(structName), _structName(structName.getText()) {}
 
     void addMethod(FnNode* method) { _methods.push_back(method); }
+    void setMethods(vector<FnNode*> methods) { _methods = std::move(methods); }
 
     void setDestructor(FnNode* destructor) { _destructor = destructor; }
 

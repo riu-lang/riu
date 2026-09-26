@@ -56,7 +56,7 @@ inline const set<string>& nonFnAllowedAnnos() {
 // 用于 extern 块内 fnHeader：允许 `Builtin` 与 `#NoReturn`（DRAFT-错误.md §8.3）。
 // 可失败签名 `T ! E` 在 extern 上仍被推迟（[#7]），不在白名单。
 inline const set<string>& externFnAllowedAnnos() {
-    static const set<string> s = {"Builtin", "NoReturn", "CName"};
+    static const set<string> s = {"Builtin", "NoReturn", "CName", "If"};
     return s;
 }
 

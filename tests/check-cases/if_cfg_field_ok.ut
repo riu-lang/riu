@@ -1,0 +1,11 @@
+; #6：假分支字段不进 Sema
+
+struct S {
+  a i32
+  #If(false)
+  bad NoSuchType
+}
+
+fn main() {
+  ret
+}

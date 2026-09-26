@@ -26,7 +26,7 @@
 // 避免 AST 节点反向依赖 sema 层。
 #include "constant_value.h"
 
-class GlobalVarNode : public Node, public Named, public Typed {
+class GlobalVarNode : public Node, public Named, public Typed, public Annotated {
     TypeNode* _type;
     ExprNode* _value;
     bool _isPrivate;

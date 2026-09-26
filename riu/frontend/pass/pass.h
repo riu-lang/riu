@@ -28,7 +28,7 @@ private:
     std::vector<std::unique_ptr<Pass>> _passes;
 };
 
-// 分析表：Sema → borrow / const-mut / #NoReturn。
+// 分析表：CfgStrip → Sema → borrow / const-mut / #NoReturn。
 // 新分析 = 新 .cpp + 这里一行 addPass。codegen 由 Compiler 再挂，不进本表。
 void addAnalysisPasses(PassManager& pm);
 
