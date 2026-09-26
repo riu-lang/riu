@@ -1,6 +1,6 @@
 # RULES
 
-每会话入口（`AGENTS.md` → 本文件）。不要擅自改任务方向；卡住就停下来问。规范没写 = 不允许。不要用 Rust / C++ / Go 语义套 riu。
+每会话入口（`AGENTS.md` → 本文件）。不要擅自改任务方向；卡住就停下来问。**语言**（词法 / 语法 / `riu.core`）：规范没写 = 不允许。**stdlib** 以 `sdk/stdlib` 源码为准，spec 没写 ≠ 不允许。不要用 Rust / C++ / Go 语义套 riu。
 
 `riu/ast/riu.bnf` **只读**。任务看起来要改语法 → 立刻停，列问题给用户。权威：`riu.bnf` + 编译器源码 > docs（冲突时改 docs）。路径 / 测试名 / 命令参数查实际文件，不凭命名猜。
 
@@ -13,10 +13,10 @@
 | `notes/<ver>.md` | 本版落地（加 / 修），一份记录 | 是 |
 | `notes/_模板.md` | 切小版本时复制为 `notes/<ver>.md` | 是 |
 | `MILESTONE.md` | 大版本目标（草稿）v1 / v2 | 是 |
-| `docs/spec/prop/` | 新语法/规范提议（#N，不绑版本） | 是 |
+| `docs/spec/prop/` | 词法 / 语法 / `riu.core` 提议（#N，不绑版本） | 是 |
 | `docs/spec/CHANGELOG.md` | spec 条款 diff | 是 |
 
-落地只追加 `notes/<ver>.md`（`ver` = `build/version.gni` 的 `x.y`）。切版复制 `notes/_模板.md`。新语法/规范复制 `docs/spec/prop/_模板.md`，状态写在提议文件头部（同步 `prop/README.md` 表）。提案不绑实现版本；切片写 notes，全部完成才改 `已落地`。不要再抄进 MILESTONE。不要再改 `docs/spec/draft/`。不要再往 `docs/dev/` 写新 impl-log。改 spec 才写 spec CHANGELOG。不切版就不要改 `build/version.gni`。
+落地只追加 `notes/<ver>.md`（`ver` = `build/version.gni` 的 `x.y`）。切版复制 `notes/_模板.md`。**词法 / 语法 / `riu.core`** 才复制 `docs/spec/prop/_模板.md`，状态写在提议文件头部（同步 `prop/README.md` 表）。提案和 spec **不管 stdlib**（`sdk/stdlib`、net、工具链）：不开提议、不回写 spec。提案不绑实现版本；切片写 notes，全部完成才改 `已落地`。不要再抄进 MILESTONE。不要再改 `docs/spec/draft/`。不要再往 `docs/dev/` 写新 impl-log。改 spec 才写 spec CHANGELOG。不切版就不要改 `build/version.gni`。
 
 多步任务写入 `CURRENT.md`，阶段更新，完成简单保留；单步小修不写。新 bug 用 `BUGS.md` 模板。进度和 bug 不混。修完可把 BUGS 条删掉，回归路径写进 notes。
 
@@ -49,7 +49,7 @@
 |------|------|
 | 写 `*.ut` | [rules/riu-syntax.md](rules/riu-syntax.md) |
 | 改 `riu/frontend/sema/` 或 `riu/riu/compiler/` | [rules/sema-codegen.md](rules/sema-codegen.md) |
-| 改语言特性 / 语法 / ABI | [rules/spec-writeback.md](rules/spec-writeback.md) |
+| 改词法 / 语法 / `riu.core` | [rules/spec-writeback.md](rules/spec-writeback.md) |
 | CLI / 脚本参数 | `riu --help`、`riu build --help`、`./build --help` 等，不维护手册 md |
 
 ## 环境 / 构建

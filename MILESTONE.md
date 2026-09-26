@@ -1,7 +1,7 @@
 # 里程碑规划（草稿）
 
 > **v1.0** = 语言核心稳定 + 规范定稿 + 基础 SDK 可用。不设硬性日期。
-> 小版本落地见 [`notes/`](notes/)。语言面提议见 [`docs/spec/prop/`](docs/spec/prop/)。本文件只写大版本目标。
+> 小版本落地见 [`notes/`](notes/)。词法 / 语法 / `riu.core` 提议见 [`docs/spec/prop/`](docs/spec/prop/)。stdlib 不进提议与 spec。本文件只写大版本目标。
 
 ---
 
@@ -53,7 +53,7 @@
 
 已满足、不再挡退出：spec-default-body / spec-reflect；闭包捕获；模块 `.ud`。
 
-未关闭的语言/SDK 项见 [`docs/spec/prop/`](docs/spec/prop/)（状态以提议文件为准）。
+未关闭的语言 / core 项见 [`docs/spec/prop/`](docs/spec/prop/)（状态以提议文件为准）。stdlib 不在表里。
 
 ---
 
