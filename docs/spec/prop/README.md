@@ -44,3 +44,4 @@
 | 21 | `Ptr<T=()>` / 默认类型实参 | 已落地 | [21-ptr-generic.md](21-ptr-generic.md) |
 | 22 | 项目配置（`riu.toml` 多产物） | 已落地 | [22-project-toml.md](22-project-toml.md) |
 | 23 | 结构体字段默认值 | 已落地 | [23-field-default.md](23-field-default.md) |
+| 24 | spec 方法 `T ! E` | 提议 | [24-spec-fallible.md](24-spec-fallible.md) |
