@@ -34,14 +34,14 @@ namespace {
 //   #Spec            零参；标在 struct 上 — 把声明转为 spec（仅签名）
 //   #Impl(SpecName)  单参；标在 struct 上 — 实现关系，替代旧 `: D1 + D2` 头部槽
 inline const set<string>& knownAnnos() {
-    static const set<string> s = {"Builtin", "Test",    "DraftLike", "NoReturn", "Const",  "Static", "Spec",
-                                  "Impl",    "Reflect", "NoCopy",    "CName",    "Packed", "Align"};
+    static const set<string> s = {"Builtin", "Test",   "DraftLike", "NoReturn", "Const", "Static", "Spec", "Impl",
+                                  "Reflect", "NoCopy", "CName",     "Packed",   "Align", "If",     "Anno"};
     return s;
 }
 
 // 单参注解白名单（spec §11.1.1.1）。其它注解出现 (arg) 形式视为非法（E2005 形式错配）。
 inline const set<string>& argAnnos() {
-    static const set<string> s = {"Impl", "CName", "Align"};
+    static const set<string> s = {"Impl", "CName", "Align", "If", "Anno"};
     return s;
 }
 
@@ -49,7 +49,7 @@ inline const set<string>& argAnnos() {
 // fn 之外的位置（structDecl / extern / globalConst）只接受 #Builtin / #Spec / #Impl，
 // 不接受 #Test（spec §11.3.1.2）
 inline const set<string>& nonFnAllowedAnnos() {
-    static const set<string> s = {"Builtin", "Spec", "Impl", "Reflect", "NoCopy", "Packed", "Align"};
+    static const set<string> s = {"Builtin", "Spec", "Impl", "Reflect", "NoCopy", "Packed", "Align", "If", "Anno"};
     return s;
 }
 

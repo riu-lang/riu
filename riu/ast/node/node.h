@@ -4,6 +4,7 @@
 #ifndef RIU_LANG_NODE_H
 #define RIU_LANG_NODE_H
 
+#include "anno_call.h"
 #include "types.h"
 
 #include <memory>
@@ -242,44 +243,23 @@ public:
 
 class Annotated {
 protected:
-    vector<string> _annos;
-    // 与 _annos 同长的参数槽：buildAnno 可选单参数糖（spec §11.1.1.1）。
-    // 空字符串表示零参注解。当前仅 #Fallible(E) 使用单参形态。
-    vector<string> _annoArgs;
+    vector<AnnoCall> _annoCalls;
 
 public:
     virtual ~Annotated() = default;
 
-    void addAnno(const string& name) {
-        _annos.push_back(name);
-        _annoArgs.emplace_back();
-    }
-    void addAnno(const string& name, const string& arg) {
-        _annos.push_back(name);
-        _annoArgs.push_back(arg);
-    }
-    void setAnnos(vector<string> annos) {
-        _annoArgs.assign(annos.size(), "");
-        _annos = std::move(annos);
-    }
-    void setAnnos(vector<string> annos, vector<string> args) {
-        _annos = std::move(annos);
-        _annoArgs = std::move(args);
-    }
-    [[nodiscard]] const vector<string>& annos() const { return _annos; }
-    [[nodiscard]] const vector<string>& annoArgs() const { return _annoArgs; }
-    [[nodiscard]] bool hasAnno(const string& name) const {
-        for (auto& a : _annos)
-            if (a == name) return true;
-        return false;
-    }
+    void addAnno(const string& name);
+    void addAnno(const string& name, const string& arg);
+    void addAnnoCall(AnnoCall call) { _annoCalls.push_back(std::move(call)); }
+    void setAnnoCalls(vector<AnnoCall> calls) { _annoCalls = std::move(calls); }
+    void setAnnos(vector<string> annos);
+    void setAnnos(vector<string> annos, vector<string> args);
+    [[nodiscard]] const vector<AnnoCall>& annoCalls() const { return _annoCalls; }
+    [[nodiscard]] vector<string> annos() const;
+    [[nodiscard]] vector<string> annoArgs() const;
+    [[nodiscard]] bool hasAnno(const string& name) const;
     // 返回注解的单参数糖（spec §11.1.1.1）。未找到返回 nullopt；找到但零参返回空字符串包装。
-    [[nodiscard]] std::optional<string> getAnnoArg(const string& name) const {
-        for (size_t i = 0; i < _annos.size(); ++i) {
-            if (_annos[i] == name) return _annoArgs[i];
-        }
-        return std::nullopt;
-    }
+    [[nodiscard]] std::optional<string> getAnnoArg(const string& name) const;
 };
 
 using SymbolTable = std::unordered_map<string, unique_ptr<SymbolInfo>>;

@@ -8,6 +8,7 @@
 
 #include "ast/name_lookup.h"
 #include "node/alias_node.h"
+#include "node/anno_call.h"
 #include "node/enum_node.h"
 #include "node/file_node.h"
 #include "node/fn_node.h"
@@ -144,12 +145,11 @@ TypeInfo readType(Reader& r) {
 }
 
 void writeAnnos(Writer& w, const Annotated& a) {
-    const auto& names = a.annos();
-    const auto& args = a.annoArgs();
-    w.u32(static_cast<uint32_t>(names.size()));
-    for (size_t i = 0; i < names.size(); ++i) {
-        w.str(names[i]);
-        w.str(i < args.size() ? args[i] : string());
+    const auto& calls = a.annoCalls();
+    w.u32(static_cast<uint32_t>(calls.size()));
+    for (const auto& c : calls) {
+        w.str(c.name);
+        w.str(annoCallFirstArgText(c));
     }
 }
 

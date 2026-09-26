@@ -80,16 +80,33 @@ StatementBlockNode* RdBuilder::buildBlock(rd::NodeId id, ScopeNode* parentScope,
     return filled;
 }
 
+namespace {
+
+bool isLetFlagAnno(const string& name) {
+    return name == "Mut" || name == "Frozen" || name == "Cval" || name == "Inline";
+}
+
+} // namespace
+
 StatementNode* RdBuilder::buildLet(rd::NodeId id, bool global) {
     auto* scope = currentScope();
     const auto& n = at(id);
-    vector<rd::NodeId> annos;
+    vector<rd::NodeId> letFlagAnnos;
+    vector<AnnoCall> prefixAnnos;
     rd::i32 i = 0;
     while (i < n.children_count && at(child(id, i)).kind == rd::NodeKind::Anno) {
-        annos.push_back(child(id, i));
+        rd::NodeId a = child(id, i);
+        const string name = string(at(a).value);
+        if (isLetFlagAnno(name)) {
+            letFlagAnnos.push_back(a);
+        } else if (!knownAnnos().contains(name)) {
+            throw RiuError(at(a).pos.line, at(a).pos.column + 1, ErrorCode::E3112, name);
+        } else {
+            prefixAnnos.push_back(buildAnnoCall(a));
+        }
         ++i;
     }
-    auto flags = readLetAnnos(annos);
+    auto flags = readLetAnnos(letFlagAnnos);
 
     if (n.kind == rd::NodeKind::LetTuple) {
         vector<Token> names;
@@ -138,6 +155,7 @@ StatementNode* RdBuilder::buildLet(rd::NodeId id, bool global) {
         }
         auto* tup = create<StatementDeclareAssignTupleNode>(id, scope, flags.isMut, flags.isCval, names, type, expr);
         tup->setFrozen(flags.isFrozen);
+        applyPrefixAnnos(tup, std::move(prefixAnnos));
         return static_cast<StatementNode*>(tup);
     }
 
@@ -207,6 +225,7 @@ StatementNode* RdBuilder::buildLet(rd::NodeId id, bool global) {
         }
         auto* decl = create<StatementDeclareNode>(id, scope, flags.isMut, flags.isCval, nameTok, type);
         decl->setFrozen(flags.isFrozen);
+        applyPrefixAnnos(decl, std::move(prefixAnnos));
         return static_cast<StatementNode*>(decl);
     }
     // 无标注时不要在 builder 里 getType：match 绑定等还是空槽，会把空类型写进 let。
@@ -220,6 +239,7 @@ StatementNode* RdBuilder::buildLet(rd::NodeId id, bool global) {
     }
     auto* assign = create<StatementDeclareAssignNode>(id, scope, flags.isMut, flags.isCval, nameTok, type, expr);
     assign->setFrozen(flags.isFrozen);
+    applyPrefixAnnos(assign, std::move(prefixAnnos));
     return static_cast<StatementNode*>(assign);
 }
 
@@ -227,6 +247,14 @@ StatementNode* RdBuilder::buildStmt(rd::NodeId id) {
     if (id == rd::kEmptyNode) return nullptr;
     const auto& n = at(id);
     auto* scope = currentScope();
+    rd::i32 annoSkip = 0;
+    vector<AnnoCall> prefixAnnos;
+    if (n.kind != rd::NodeKind::Let && n.kind != rd::NodeKind::LetTuple) {
+        while (annoSkip < n.children_count && at(child(id, annoSkip)).kind == rd::NodeKind::Anno) {
+            prefixAnnos.push_back(buildAnnoCall(child(id, annoSkip)));
+            ++annoSkip;
+        }
+    }
     switch (n.kind) {
     case rd::NodeKind::Let:
     case rd::NodeKind::LetTuple:
@@ -234,54 +262,74 @@ StatementNode* RdBuilder::buildStmt(rd::NodeId id) {
     case rd::NodeKind::Alias:
         return addAlias(id);
     case rd::NodeKind::Ret: {
-        auto* expr = n.children_count > 0 ? buildExpr(child(id, 0)) : nullptr;
+        auto* expr = annoSkip < n.children_count ? buildExpr(child(id, annoSkip)) : nullptr;
         auto* ret = create<StatementRetNode>(id, scope, expr);
         if (expr) ret->setLocation(expr->resolveLineNumber(), expr->resolveColumn());
+        applyPrefixAnnos(ret, std::move(prefixAnnos));
         return static_cast<StatementNode*>(ret);
     }
-    case rd::NodeKind::RetVoid:
-        return static_cast<StatementNode*>(create<StatementRetVoidNode>(id, scope));
-    case rd::NodeKind::Break:
-        return static_cast<StatementNode*>(create<StatementBreakNode>(id, scope, makeTok(id)));
-    case rd::NodeKind::Continue:
-        return static_cast<StatementNode*>(create<StatementContinueNode>(id, scope, makeTok(id)));
+    case rd::NodeKind::RetVoid: {
+        auto* ret = static_cast<StatementNode*>(create<StatementRetVoidNode>(id, scope));
+        applyPrefixAnnos(ret, std::move(prefixAnnos));
+        return ret;
+    }
+    case rd::NodeKind::Break: {
+        auto* br = static_cast<StatementNode*>(create<StatementBreakNode>(id, scope, makeTok(id)));
+        applyPrefixAnnos(br, std::move(prefixAnnos));
+        return br;
+    }
+    case rd::NodeKind::Continue: {
+        auto* cont = static_cast<StatementNode*>(create<StatementContinueNode>(id, scope, makeTok(id)));
+        applyPrefixAnnos(cont, std::move(prefixAnnos));
+        return cont;
+    }
     case rd::NodeKind::ExprStmt: {
-        auto* expr = n.children_count > 0 ? buildExpr(child(id, 0)) : nullptr;
+        auto* expr = annoSkip < n.children_count ? buildExpr(child(id, annoSkip)) : nullptr;
         bool semi = n.op == rd::Kind::SymbolSemicolon;
-        return static_cast<StatementNode*>(create<StatementExprNode>(id, scope, expr, semi));
+        auto* stmt = static_cast<StatementNode*>(create<StatementExprNode>(id, scope, expr, semi));
+        applyPrefixAnnos(stmt, std::move(prefixAnnos));
+        return stmt;
     }
     case rd::NodeKind::Assign: {
         Token obj;
         vector<Token> subs;
         ExprNode* expr = nullptr;
-        if (n.children_count > 0) {
-            const auto& first = at(child(id, 0));
-            obj = first.kind == rd::NodeKind::This ? Token("$", first.pos.line) : makeTok(child(id, 0));
+        if (annoSkip < n.children_count) {
+            const auto& first = at(child(id, annoSkip));
+            obj = first.kind == rd::NodeKind::This ? Token("$", first.pos.line) : makeTok(child(id, annoSkip));
         }
-        for (rd::i32 i = 1; i + 1 < n.children_count; ++i) {
+        for (rd::i32 i = annoSkip + 1; i + 1 < n.children_count; ++i) {
             Token t = makeTok(child(id, i));
             string text = t.getText();
             if (!text.empty() && text[0] == '.') t = Token(text.substr(1), t.getLine());
             subs.push_back(t);
         }
-        if (n.children_count > 0) expr = buildExpr(child(id, n.children_count - 1));
-        return static_cast<StatementNode*>(
+        if (annoSkip < n.children_count) expr = buildExpr(child(id, n.children_count - 1));
+        auto* stmt = static_cast<StatementNode*>(
             create<StatementAssignNode>(id, scope, obj, subs, expr, assignOpFromKind(n.op)));
+        applyPrefixAnnos(stmt, std::move(prefixAnnos));
+        return stmt;
     }
     case rd::NodeKind::Set: {
-        auto* arr = n.children_count > 0 ? buildExpr(child(id, 0)) : nullptr;
+        auto* arr = annoSkip < n.children_count ? buildExpr(child(id, annoSkip)) : nullptr;
         vector<ExprNode*> idx;
-        for (rd::i32 i = 1; i + 1 < n.children_count; ++i)
+        for (rd::i32 i = annoSkip + 1; i + 1 < n.children_count; ++i)
             idx.push_back(buildExpr(child(id, i)));
-        auto* val = n.children_count > 1 ? buildExpr(child(id, n.children_count - 1)) : nullptr;
-        return static_cast<StatementNode*>(create<StatementSetNode>(id, scope, arr, std::move(idx), val));
+        auto* val = annoSkip + 1 < n.children_count ? buildExpr(child(id, n.children_count - 1)) : nullptr;
+        auto* stmt = static_cast<StatementNode*>(create<StatementSetNode>(id, scope, arr, std::move(idx), val));
+        applyPrefixAnnos(stmt, std::move(prefixAnnos));
+        return stmt;
     }
     case rd::NodeKind::StaticFieldSet: {
-        TypePath path =
-            n.children_count > 0 ? pathFromDotted(at(child(id, 0)).value, at(child(id, 0)).pos) : TypePath();
+        TypePath path = annoSkip < n.children_count
+                            ? pathFromDotted(at(child(id, annoSkip)).value, at(child(id, annoSkip)).pos)
+                            : TypePath();
         Token field = makeTok(id);
-        auto* val = n.children_count > 1 ? buildExpr(child(id, 1)) : nullptr;
-        return static_cast<StatementNode*>(create<StatementStaticFieldSetNode>(id, scope, std::move(path), field, val));
+        auto* val = annoSkip + 1 < n.children_count ? buildExpr(child(id, annoSkip + 1)) : nullptr;
+        auto* stmt =
+            static_cast<StatementNode*>(create<StatementStaticFieldSetNode>(id, scope, std::move(path), field, val));
+        applyPrefixAnnos(stmt, std::move(prefixAnnos));
+        return stmt;
     }
     case rd::NodeKind::Loop: {
         Token label = n.value.empty() ? Token() : makeTok(id);
@@ -289,7 +337,7 @@ StatementNode* RdBuilder::buildStmt(rd::NodeId id) {
         TypeNode* initType = nullptr;
         ExprNode* initExpr = nullptr;
         rd::NodeId body = rd::kEmptyNode;
-        rd::i32 i = 0;
+        rd::i32 i = annoSkip;
         while (i < n.children_count && at(child(id, i)).kind == rd::NodeKind::Ident) {
             initNames.push_back(makeTok(child(id, i)));
             ++i;
@@ -330,16 +378,19 @@ StatementNode* RdBuilder::buildStmt(rd::NodeId id) {
                 filled->registerSymbol(nm, *sym);
             filled->copyLocalAliasesFrom(block);
         }
-        return static_cast<StatementNode*>(
+        auto* loop = static_cast<StatementNode*>(
             create<StatementLoopNode>(id, outer, filled, label, initNames, initType, initExpr));
+        applyPrefixAnnos(loop, std::move(prefixAnnos));
+        return loop;
     }
     case rd::NodeKind::ForIn: {
         Token item = makeTok(id);
         Token label;
-        auto* coll = n.children_count > 0 ? buildExpr(child(id, 0)) : nullptr;
-        rd::NodeId body =
-            (n.children_count > 1 && at(child(id, 1)).kind == rd::NodeKind::Block) ? child(id, 1) : rd::kEmptyNode;
-        if (n.children_count > 2 && at(child(id, n.children_count - 1)).kind == rd::NodeKind::Ident)
+        auto* coll = annoSkip < n.children_count ? buildExpr(child(id, annoSkip)) : nullptr;
+        rd::NodeId body = (annoSkip + 1 < n.children_count && at(child(id, annoSkip + 1)).kind == rd::NodeKind::Block)
+                              ? child(id, annoSkip + 1)
+                              : rd::kEmptyNode;
+        if (n.children_count > annoSkip + 2 && at(child(id, n.children_count - 1)).kind == rd::NodeKind::Ident)
             label = makeTok(child(id, n.children_count - 1));
         auto* outer = scope;
         auto* block = create<StatementBlockNode>(body == rd::kEmptyNode ? id : body, outer, vector<StatementNode*>{},
@@ -362,7 +413,9 @@ StatementNode* RdBuilder::buildStmt(rd::NodeId id) {
                 filled->registerSymbol(nm, *sym);
             filled->copyLocalAliasesFrom(block);
         }
-        return static_cast<StatementNode*>(create<StatementForInNode>(id, outer, filled, item, coll, label));
+        auto* forIn = static_cast<StatementNode*>(create<StatementForInNode>(id, outer, filled, item, coll, label));
+        applyPrefixAnnos(forIn, std::move(prefixAnnos));
+        return forIn;
     }
     case rd::NodeKind::Block:
         return nullptr;

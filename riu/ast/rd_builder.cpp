@@ -439,6 +439,36 @@ SpecRef RdBuilder::specRefFromType(rd::NodeId id) {
     throw RiuError(r.line, r.col, ErrorCode::E3030, string(n.value));
 }
 
+string RdBuilder::annoParenText(rd::NodeId anno) const {
+    const auto& n = at(anno);
+    if (n.op != rd::Kind::ParStart) return {};
+    size_t i = static_cast<size_t>(n.pos.offset);
+    while (i < _src.size() && _src[i] != '(')
+        ++i;
+    if (i >= _src.size()) return {};
+    ++i;
+    int angle = 0;
+    const size_t start = i;
+    while (i < _src.size()) {
+        const char c = _src[i];
+        if (c == '<')
+            ++angle;
+        else if (c == '>' && angle > 0)
+            --angle;
+        else if (c == ')' && angle == 0)
+            break;
+        ++i;
+    }
+    string out;
+    for (size_t j = start; j < i; ++j) {
+        if (out.empty() && (_src[j] == ' ' || _src[j] == '\t')) continue;
+        out.push_back(_src[j]);
+    }
+    while (!out.empty() && (out.back() == ' ' || out.back() == '\t'))
+        out.pop_back();
+    return out;
+}
+
 string RdBuilder::annoArgText(rd::NodeId anno) const {
     const auto& n = at(anno);
     if (n.children_count <= 0) return {};
@@ -464,16 +494,45 @@ string RdBuilder::annoArgText(rd::NodeId anno) const {
     }
 }
 
-RdAnnoList RdBuilder::collectAnnos(rd::NodeId parent, rd::i32 from, rd::i32 to, bool nonFn, bool externFn) {
-    RdAnnoList out;
+AnnoCall RdBuilder::buildAnnoCall(rd::NodeId anno) {
+    const auto& n = at(anno);
+    AnnoCall call;
+    call.name = string(n.value);
+    call.line = n.pos.line;
+    call.col = n.pos.column + 1;
+    rd::i32 i = 0;
+    while (i < n.children_count) {
+        AnnoArg arg;
+        rd::NodeId kid = child(anno, i);
+        if (at(kid).kind == rd::NodeKind::Ident && i + 1 < n.children_count) {
+            arg.field = string(at(kid).value);
+            arg.expr = buildExpr(child(anno, i + 1));
+            i += 2;
+        } else {
+            arg.expr = buildExpr(kid);
+            ++i;
+        }
+        call.args.push_back(std::move(arg));
+    }
+    return call;
+}
+
+void RdBuilder::applyPrefixAnnos(StatementNode* stmt, vector<AnnoCall>&& annos) {
+    if (!stmt || annos.empty()) return;
+    stmt->setPrefixAnnos(std::move(annos));
+}
+
+vector<AnnoCall> RdBuilder::collectAnnos(rd::NodeId parent, rd::i32 from, rd::i32 to, bool nonFn, bool externFn) {
+    vector<AnnoCall> out;
     const auto& n = at(parent);
     if (to < 0) to = n.children_count;
     for (rd::i32 i = from; i < to; ++i) {
         rd::NodeId a = child(parent, i);
         if (at(a).kind != rd::NodeKind::Anno) break;
-        string name = string(at(a).value);
-        int line = at(a).pos.line;
-        int col = at(a).pos.column + 1;
+        AnnoCall call = buildAnnoCall(a);
+        const string& name = call.name;
+        int line = call.line;
+        int col = call.col;
         if (name == "Fallible") {
             throw RiuError(line, col, ErrorCode::E2005, name)
                 .withHint("removed; declare failure with `T ! E` in the function signature instead");
@@ -485,8 +544,7 @@ RdAnnoList RdBuilder::collectAnnos(rd::NodeId parent, rd::i32 from, rd::i32 to, 
         if (needArg != hasArg) throw RiuError(line, col, ErrorCode::E2005, name);
         if (nonFn && !nonFnAllowedAnnos().contains(name)) throw RiuError(line, col, ErrorCode::E2011, name);
         if (externFn && !externFnAllowedAnnos().contains(name)) throw RiuError(line, col, ErrorCode::E2011, name);
-        out.names.push_back(std::move(name));
-        out.args.push_back(annoArgText(a));
+        out.push_back(std::move(call));
     }
     return out;
 }
@@ -533,7 +591,27 @@ SpecRef RdBuilder::specRefFromAnno(rd::NodeId anno) {
     }
     rd::NodeId arg = child(anno, 0);
     if (isTypeKind(at(arg).kind)) return specRefFromType(arg);
-    r.name = string(at(arg).value);
+    // 切片 2 桥接：注解槽走 expr，从源文本括号内再解析 spec。
+    string text = annoParenText(anno);
+    if (text.empty()) text = annoCallFirstArgText(buildAnnoCall(anno));
+    if (text.empty()) text = annoArgText(anno);
+    if (text.size() >= 2 && text.front() == '"' && text.back() == '"') {
+        text = text.substr(1, text.size() - 2);
+    } else {
+        text.erase(std::remove_if(text.begin(), text.end(), [](unsigned char c) { return c == ' ' || c == '\t'; }),
+                   text.end());
+    }
+    TypeInfo ti = TypeInfo::fromFullName(text);
+    if (ti.empty()) {
+        r.name = text;
+        return r;
+    }
+    r.name = ti.name;
+    for (const auto& arg : ti.genericArgs) {
+        if (!arg) continue;
+        validateOwnedTypeArgs("spec type arg", {*arg}, r.line, r.col);
+        r.typeArgs.push_back(*arg);
+    }
     return r;
 }
 

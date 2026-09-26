@@ -68,9 +68,8 @@ FnHeaderNode* RdBuilder::buildFnHeader(rd::NodeId id, FileNode* file, const vect
                          static_cast<int>(headerPos.column) + 1);
     auto* header = create<FnHeaderNode>(headerPos, file, nameTok, retType);
 
-    RdAnnoList al;
-    al.names.reserve(annos.size());
-    al.args.reserve(annos.size());
+    vector<AnnoCall> calls;
+    calls.reserve(annos.size());
     for (rd::NodeId a : annos) {
         string name = string(at(a).value);
         int line = at(a).pos.line;
@@ -88,10 +87,9 @@ FnHeaderNode* RdBuilder::buildFnHeader(rd::NodeId id, FileNode* file, const vect
         }
         const bool hasArg = at(a).op == rd::Kind::ParStart;
         if (argAnnos().contains(name) != hasArg) throw RiuError(line, col, ErrorCode::E2005, name);
-        al.names.push_back(std::move(name));
-        al.args.push_back(annoArgText(a));
+        calls.push_back(buildAnnoCall(a));
     }
-    header->setAnnos(std::move(al.names), std::move(al.args));
+    header->setAnnoCalls(std::move(calls));
 
     if (generic != rd::kEmptyNode) {
         vector<string> typeParams;
@@ -230,7 +228,7 @@ void RdBuilder::addExtern(rd::NodeId id) {
             annos.push_back(child(fnId, j));
             ++j;
         }
-        RdAnnoList headerAnnos;
+        vector<AnnoCall> headerAnnos;
         for (rd::NodeId a : annos) {
             string name = string(at(a).value);
             int line = at(a).pos.line;
@@ -239,12 +237,11 @@ void RdBuilder::addExtern(rd::NodeId id) {
             if (!externFnAllowedAnnos().contains(name)) throw RiuError(line, col, ErrorCode::E2011, name);
             const bool hasArg = at(a).op == rd::Kind::ParStart;
             if (argAnnos().contains(name) != hasArg) throw RiuError(line, col, ErrorCode::E2005, name);
-            headerAnnos.names.push_back(std::move(name));
-            headerAnnos.args.push_back(annoArgText(a));
+            headerAnnos.push_back(buildAnnoCall(a));
         }
         bool externNoReturn = false;
-        for (const auto& name : headerAnnos.names)
-            if (name == "NoReturn") externNoReturn = true;
+        for (const auto& call : headerAnnos)
+            if (call.name == "NoReturn") externNoReturn = true;
 
         if (j < fn.children_count && at(child(fnId, j)).kind == rd::NodeKind::Generic) ++j;
         vector<TypeInfo> paramTypes;
@@ -300,9 +297,9 @@ void RdBuilder::addExtern(rd::NodeId id) {
         fnFnSym.isExternal = true;
         fnFnSym.isNoReturn = externNoReturn;
         fnFnSym.declLine = declLine;
-        for (size_t ai = 0; ai < headerAnnos.names.size(); ++ai) {
-            if (headerAnnos.names[ai] == "CName") {
-                fnFnSym.cName = headerAnnos.args[ai];
+        for (const auto& call : headerAnnos) {
+            if (call.name == "CName") {
+                fnFnSym.cName = annoCallFirstArgText(call);
                 break;
             }
         }
@@ -396,7 +393,7 @@ void RdBuilder::addStruct(rd::NodeId id) {
 
     bool isSpec = false;
     vector<SpecRef> implRefs;
-    RdAnnoList annos;
+    vector<AnnoCall> annos;
     bool seenPacked = false;
     bool seenAlign = false;
     rd::Pos locPos = n.pos;
@@ -404,11 +401,12 @@ void RdBuilder::addStruct(rd::NodeId id) {
     rd::i32 i = 0;
     while (i < n.children_count && at(child(id, i)).kind == rd::NodeKind::Anno) {
         rd::NodeId a = child(id, i);
-        string name = string(at(a).value);
-        int line = at(a).pos.line;
-        int col = at(a).pos.column + 1;
+        AnnoCall call = buildAnnoCall(a);
+        const string& name = call.name;
+        int line = call.line;
+        int col = call.col;
         if (!knownAnnos().contains(name)) throw RiuError(line, col, ErrorCode::E2005, name);
-        string arg = annoArgText(a);
+        string arg = annoCallFirstArgText(call);
         const bool hasArg = at(a).op == rd::Kind::ParStart;
         if (argAnnos().contains(name) != hasArg) throw RiuError(line, col, ErrorCode::E2005, name);
         if (name != "DraftLike" && !nonFnAllowedAnnos().contains(name))
@@ -427,23 +425,22 @@ void RdBuilder::addStruct(rd::NodeId id) {
             isSpec = true;
         else if (name == "Impl")
             implRefs.push_back(specRefFromAnno(a));
-        annos.names.push_back(std::move(name));
-        annos.args.push_back(std::move(arg));
+        annos.push_back(std::move(call));
         ++i;
     }
     if (!isSpec) {
-        for (size_t ai = 0; ai < annos.names.size(); ++ai) {
-            if (annos.names[ai] == "DraftLike") {
+        for (size_t ai = 0; ai < annos.size(); ++ai) {
+            if (annos[ai].name == "DraftLike") {
                 throw RiuError(at(child(id, static_cast<rd::i32>(ai))).pos.line,
                                at(child(id, static_cast<rd::i32>(ai))).pos.column + 1, ErrorCode::E1110);
             }
         }
     } else if (seenPacked || seenAlign) {
-        for (size_t ai = 0; ai < annos.names.size(); ++ai) {
-            if (annos.names[ai] == "Packed" || annos.names[ai] == "Align") {
+        for (size_t ai = 0; ai < annos.size(); ++ai) {
+            if (annos[ai].name == "Packed" || annos[ai].name == "Align") {
                 throw RiuError(at(child(id, static_cast<rd::i32>(ai))).pos.line,
                                at(child(id, static_cast<rd::i32>(ai))).pos.column + 1, ErrorCode::E2011,
-                               annos.names[ai]);
+                               annos[ai].name);
             }
         }
     }
@@ -492,7 +489,7 @@ void RdBuilder::addStruct(rd::NodeId id) {
                            std::string("destructor in #Spec body"));
         }
         auto* draft = create<SpecDeclNode>(locPos, file, makeTok(id));
-        draft->setAnnos(annos.names, annos.args);
+        draft->setAnnoCalls(std::move(annos));
         draft->setTypeParams(typeParams);
         draft->setTypeParamDefaults(std::move(typeParamDefaults));
         if (_keepSourceText) draft->setSourceText(srcSlice(n.pos));
@@ -583,7 +580,7 @@ void RdBuilder::addStruct(rd::NodeId id) {
 
     auto* structDecl = create<StructDeclNode>(locPos, file, makeTok(id));
     structDecl->setParentScope(file);
-    structDecl->setAnnos(annos.names, annos.args);
+    structDecl->setAnnoCalls(annos);
     if (_keepSourceText) structDecl->setSourceText(srcSlice(n.pos));
     structDecl->setTypeParams(typeParams);
     structDecl->setTypeParamDefaults(std::move(typeParamDefaults));
@@ -684,7 +681,7 @@ void RdBuilder::addStruct(rd::NodeId id) {
     if (fns.empty() && clean == rd::kEmptyNode && implRefs.empty()) return;
 
     auto* structImpl = create<StructImplNode>(locPos, file, makeTok(id));
-    structImpl->setAnnos(annos.names, annos.args);
+    structImpl->setAnnoCalls(std::move(annos));
     structImpl->setTypeParams(typeParams);
     structImpl->setSpecRefs(std::move(implRefs));
     structImpl->setParentScope(file);

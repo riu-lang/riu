@@ -9,6 +9,7 @@
 #include "ast/rd/flat.h"
 #include "ast/rd/parser.h"
 #include "ast/rd/token.h"
+#include "node/anno_call.h"
 #include "node/expr_node.h"
 #include "node/file_node.h"
 #include "riu.h"
@@ -28,11 +29,6 @@ class FnHeaderNode;
 class FnNode;
 class LambdaExprNode;
 class StructImplNode;
-
-struct RdAnnoList {
-    vector<string> names;
-    vector<string> args;
-};
 
 struct RdLetFlags {
     bool isMut = false;
@@ -102,9 +98,12 @@ class RdBuilder {
                                 int errorLine);
     void expandPackageWildcard(FileNode* file, const string& pkgModName, int line);
 
-    [[nodiscard]] RdAnnoList collectAnnos(rd::NodeId parent, rd::i32 from, rd::i32 to, bool nonFn, bool externFn);
+    [[nodiscard]] vector<AnnoCall> collectAnnos(rd::NodeId parent, rd::i32 from, rd::i32 to, bool nonFn, bool externFn);
+    [[nodiscard]] AnnoCall buildAnnoCall(rd::NodeId anno);
     [[nodiscard]] RdLetFlags readLetAnnos(const vector<rd::NodeId>& annos);
     [[nodiscard]] string annoArgText(rd::NodeId anno) const;
+    [[nodiscard]] string annoParenText(rd::NodeId anno) const;
+    void applyPrefixAnnos(StatementNode* stmt, vector<AnnoCall>&& annos);
     SpecRef specRefFromType(rd::NodeId id);
     SpecRef specRefFromAnno(rd::NodeId anno);
 

@@ -6,13 +6,19 @@
 
 #include <utility>
 
+#include "anno_call.h"
 #include "expr_node.h"
 #include "type_node.h"
 
 class StatementNode : public Node {
+    vector<AnnoCall> _prefixAnnos;
+
 public:
     explicit StatementNode(Node* parent) : Node(parent) {}
     virtual void accept(AstVisitor& v) = 0;
+
+    void setPrefixAnnos(vector<AnnoCall> annos) { _prefixAnnos = std::move(annos); }
+    [[nodiscard]] const vector<AnnoCall>& prefixAnnos() const { return _prefixAnnos; }
 };
 
 class StatementExprNode : public StatementNode {

@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "ast/node/alias_node.h"
+#include "ast/node/anno_call.h"
 #include "ast/node/ast_visitor.h"
 #include "ast/node/enum_node.h"
 #include "ast/node/expr_node.h"
@@ -142,6 +143,9 @@ private:
     Doc genericDefDoc(const std::vector<std::string>& names, const std::vector<std::vector<SpecRef>>& bounds,
                       const std::vector<TypeNode*>& defaults = {});
     Doc annoDoc(const std::string& name, const std::string& arg);
+    Doc annoArgDoc(const AnnoArg& arg, bool singlePositional);
+    Doc annoCallDoc(const AnnoCall& call);
+    Doc annoCallsDoc(const vector<AnnoCall>& calls);
     Doc headerAnnosDoc(const FnHeaderNode& h);
     Doc fnHeaderDoc(FnHeaderNode* h);
     Doc fnParamsDoc(FnHeaderNode* h);
@@ -285,7 +289,8 @@ Doc Printer::formatStmt(StatementNode* n) {
     } restore{.slot = _doc, .prev = _doc};
     _doc = text("");
     n->accept(*this);
-    return _doc;
+    if (n->prefixAnnos().empty()) return _doc;
+    return concat({annoCallsDoc(n->prefixAnnos()), _doc});
 }
 
 Doc Printer::rawNode(const Node& n) {
@@ -440,15 +445,38 @@ Doc Printer::annoDoc(const std::string& name, const std::string& arg) {
     return concat({text("#"), text(name), text("(\""), text(arg), text("\")")});
 }
 
-Doc Printer::headerAnnosDoc(const FnHeaderNode& h) {
+Doc Printer::annoArgDoc(const AnnoArg& arg, bool singlePositional) {
+    Doc val = arg.expr ? formatExpr(arg.expr) : text(arg.text);
+    if (arg.field && !(singlePositional && *arg.field == "value")) return concat({text(*arg.field), text("="), val});
+    return val;
+}
+
+Doc Printer::annoCallDoc(const AnnoCall& call) {
+    if (call.args.empty()) return concat({text("#"), text(call.name)});
     std::vector<Doc> parts;
-    const auto& names = h.annos();
-    const auto& args = h.annoArgs();
-    for (std::size_t i = 0; i < names.size(); ++i) {
-        parts.push_back(annoDoc(names[i], i < args.size() ? args[i] : std::string()));
+    parts.push_back(text("#"));
+    parts.push_back(text(call.name));
+    parts.push_back(text("("));
+    for (std::size_t i = 0; i < call.args.size(); ++i) {
+        if (i > 0) parts.push_back(text(", "));
+        parts.push_back(annoArgDoc(call.args[i], call.args.size() == 1));
+    }
+    parts.push_back(text(")"));
+    return concat(std::move(parts));
+}
+
+Doc Printer::annoCallsDoc(const vector<AnnoCall>& calls) {
+    if (calls.empty()) return text("");
+    std::vector<Doc> parts;
+    for (const auto& c : calls) {
+        parts.push_back(annoCallDoc(c));
         parts.push_back(hardline());
     }
-    return parts.empty() ? text("") : concat(std::move(parts));
+    return concat(std::move(parts));
+}
+
+Doc Printer::headerAnnosDoc(const FnHeaderNode& h) {
+    return annoCallsDoc(h.annoCalls());
 }
 
 Doc Printer::fnParamsDoc(FnHeaderNode* h) {

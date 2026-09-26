@@ -2,7 +2,9 @@
 // MPL-2.0
 
 #include "node.h"
+
 #include "alias_node.h"
+#include "anno_call.h"
 #include "file_node.h"
 
 string Node::getLocation() const {
@@ -203,4 +205,73 @@ int Node::resolveColumn() const {
 
 SourceLocation Node::resolveLocation() const {
     return {resolveLineNumber(), resolveColumn()};
+}
+
+void Annotated::addAnno(const string& name) {
+    AnnoCall call;
+    call.name = name;
+    _annoCalls.push_back(std::move(call));
+}
+
+void Annotated::addAnno(const string& name, const string& arg) {
+    AnnoCall call;
+    call.name = name;
+    if (!arg.empty()) {
+        AnnoArg a;
+        a.text = arg;
+        call.args.push_back(std::move(a));
+    }
+    _annoCalls.push_back(std::move(call));
+}
+
+void Annotated::setAnnos(vector<string> annos) {
+    vector<string> empty;
+    setAnnos(std::move(annos), empty);
+}
+
+void Annotated::setAnnos(vector<string> annos, vector<string> args) {
+    _annoCalls.clear();
+    for (size_t i = 0; i < annos.size(); ++i) {
+        AnnoCall call;
+        call.name = std::move(annos[i]);
+        if (i < args.size() && !args[i].empty()) {
+            AnnoArg a;
+            a.text = args[i];
+            call.args.push_back(std::move(a));
+        }
+        _annoCalls.push_back(std::move(call));
+    }
+}
+
+vector<string> Annotated::annos() const {
+    vector<string> names;
+    names.reserve(_annoCalls.size());
+    for (const auto& c : _annoCalls)
+        names.push_back(c.name);
+    return names;
+}
+
+vector<string> Annotated::annoArgs() const {
+    vector<string> args;
+    args.reserve(_annoCalls.size());
+    for (const auto& c : _annoCalls)
+        args.push_back(annoCallFirstArgText(c));
+    return args;
+}
+
+bool Annotated::hasAnno(const string& name) const {
+    for (const auto& c : _annoCalls) {
+        if (c.name == name) return true;
+    }
+    return false;
+}
+
+std::optional<string> Annotated::getAnnoArg(const string& name) const {
+    for (const auto& c : _annoCalls) {
+        if (c.name == name) {
+            if (c.args.empty()) return string{};
+            return annoArgText(c.args[0]);
+        }
+    }
+    return std::nullopt;
 }

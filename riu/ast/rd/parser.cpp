@@ -1364,6 +1364,27 @@ NodeId Parser::parseStatement() {
 
 // ==== 顶层 ====
 
+bool Parser::looksLikeBalancedTypeAnnoValue() const {
+    if (!at(Kind::ID)) return false;
+    const std::string_view src = scanner_.src();
+    size_t i = static_cast<size_t>(tok_.pos.offset);
+    int angle = 0;
+    bool saw_lt = false;
+    while (i < src.size()) {
+        const char c = src[i];
+        if (c == '<') {
+            ++angle;
+            saw_lt = true;
+        } else if (c == '>' && angle > 0) {
+            --angle;
+        } else if ((c == ',' || c == ')') && angle == 0) {
+            break;
+        }
+        ++i;
+    }
+    return saw_lt && angle == 0;
+}
+
 NodeId Parser::parseAnno() {
     const Pos start = tok_.pos;
     next(); // #
@@ -1385,6 +1406,8 @@ NodeId Parser::parseAnno() {
                 eat(Kind::SymbolEq);
                 kids.push_back(ast_.add(NodeKind::Ident, field_pos, field));
                 appendIf(kids, parseExpr());
+            } else if (looksLikeBalancedTypeAnnoValue()) {
+                appendIf(kids, parseType());
             } else {
                 appendIf(kids, parseExpr());
             }

@@ -35,6 +35,7 @@ static_library("riu_ast") {
     "rd_builder_decl.cpp",
     "rd_builder_expr.cpp",
     "rd_builder_stmt.cpp",
+    "node/anno_call.cpp",
     "node/ast_visitor.cpp",
     "node/expr_node.cpp",
     "node/file_node.cpp",
