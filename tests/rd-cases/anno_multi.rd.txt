@@ -1,0 +1,9 @@
+Program
+  Struct "Foo"
+    Anno "Anno" op=ParStart
+      Ident "repeatable"
+      BoolLit "true"
+      Ident "on"
+      Array
+    Field "x"
+      TypePath "i32"

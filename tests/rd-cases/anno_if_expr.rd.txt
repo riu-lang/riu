@@ -1,0 +1,14 @@
+Program
+  Struct "A"
+    Anno "If" op=ParStart
+      Infix op=SymbolEqEq
+        Ident "COUNT"
+        IntLit "1"
+  Fn "f"
+    Anno "If" op=ParStart
+      Infix op=SymbolAndAnd
+        Infix op=SymbolMt
+          Ident "n"
+          IntLit "1"
+        Ident "FLAG"
+    Block

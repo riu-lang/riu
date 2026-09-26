@@ -1,0 +1,7 @@
+#If(COUNT==1)
+struct A {
+}
+
+#If(n > 1 && FLAG)
+fn f() {
+}

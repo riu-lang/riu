@@ -56,6 +56,7 @@ private:
     [[nodiscard]] NodeId parseItem();
     [[nodiscard]] NodeId parseUse();
     [[nodiscard]] NodeId parseAnno();
+    [[nodiscard]] NodeId withPrefixAnnos(std::vector<NodeId> annos, NodeId stmt);
     [[nodiscard]] NodeId parseFn(std::vector<NodeId> annos);
     [[nodiscard]] NodeId parseFnClean();
     [[nodiscard]] NodeId parseExtern(std::vector<NodeId> annos);

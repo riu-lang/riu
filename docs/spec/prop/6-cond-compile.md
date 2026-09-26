@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| 状态 | 提议 |
+| 状态 | 实施中 |
 | 开 | 2026-09-13 |
 | 旧档 | `DRAFT-spec-unify.md` [#1.P] / 未落地的 `DRAFT-anno-struct.md`。反射 `#Reflect` 命名参数挂 [#4](4-reflect.md) |
 

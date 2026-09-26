@@ -1,0 +1,9 @@
+#Align(8)
+struct S {
+  x i32
+}
+
+struct T {
+  #Align(4)
+  y i32
+}

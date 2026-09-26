@@ -1,0 +1,9 @@
+Program
+  Fn "f"
+    Block
+      ExprStmt
+        Anno "If" op=ParStart
+          BoolLit "true"
+        Call
+          Ident "print"
+          StringLit

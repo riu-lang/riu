@@ -1,0 +1,11 @@
+Program
+  Struct "I"
+    Anno "Impl" op=ParStart
+      StringLit "Iter<i32>"
+    Field "x"
+      TypePath "i32"
+  Struct "E"
+    Anno "Impl" op=ParStart
+      Ident "Eq"
+    Field "y"
+      TypePath "i32"

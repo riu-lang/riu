@@ -1,0 +1,4 @@
+fn f() {
+  #If(true)
+  print("")
+}

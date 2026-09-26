@@ -1,0 +1,9 @@
+#Impl("Iter<i32>")
+struct I {
+  x i32
+}
+
+#Impl(Eq)
+struct E {
+  y i32
+}

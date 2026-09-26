@@ -1,0 +1,4 @@
+#Anno(repeatable=true, on=[])
+struct Foo {
+  x i32
+}

@@ -177,11 +177,7 @@ externDelc ::=
     ;
 
 letGlobal ::=
-    letAnno* Let ID type? (SymbolEq expr)? LineEnd
-    ;
-
-letAnno ::=
-    SymbolHash ID LineEnd?
+    buildAnno* Let ID type? (SymbolEq expr)? LineEnd
     ;
 
 aliasDecl ::=
@@ -191,16 +187,15 @@ aliasDecl ::=
 ; --- 注解 ---
 
 buildAnno ::=
-    SymbolHash ID (ParStart annoArg ParEnd)? LineEnd
+    SymbolHash ID (ParStart (annoArg (SymbolComma annoArg)*)? ParEnd)? LineEnd
     ;
 
 annoArg ::=
-      ID genericDef?
-    | INT
-    | FLOAT
-    | STR_LINE_RAW
-    | STR_TPL_OPEN STR_TPL_TEXT* STR_TPL_CLOSE      ; 无插值 "..."
-    | type
+    ID SymbolEq annoVal | annoVal
+    ;
+
+annoVal ::=
+    expr
     ;
 
 ; --- 字面量 ---
@@ -434,8 +429,8 @@ enumPattern ::=
 ; --- 语句 ---
 
 statement ::=
-      letAnno* Let ID type? (SymbolEq expr)? LineEnd?         # statementLet
-    | letAnno* Let ParStart ID (SymbolComma ID)+ ParEnd type? SymbolEq expr LineEnd?
+      buildAnno* Let ID type? (SymbolEq expr)? LineEnd?         # statementLet
+    | buildAnno* Let ParStart ID (SymbolComma ID)+ ParEnd type? SymbolEq expr LineEnd?
                                                               # statementLetTuple
     | expr GetStart expr (SymbolComma expr)* GetEnd SymbolEq expr LineEnd?
                                                               # statementSet

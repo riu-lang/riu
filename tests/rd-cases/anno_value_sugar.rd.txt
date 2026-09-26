@@ -1,0 +1,11 @@
+Program
+  Struct "S"
+    Anno "Align" op=ParStart
+      IntLit "8"
+    Field "x"
+      TypePath "i32"
+  Struct "T"
+    Field "y"
+      Anno "Align" op=ParStart
+        IntLit "4"
+      TypePath "i32"

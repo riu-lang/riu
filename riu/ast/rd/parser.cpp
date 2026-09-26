@@ -1184,34 +1184,40 @@ NodeId Parser::parseForIn() {
     return ast_.add(NodeKind::ForIn, start, name, kids);
 }
 
+NodeId Parser::withPrefixAnnos(std::vector<NodeId> annos, NodeId stmt) {
+    if (annos.empty() || stmt == kEmptyNode) return stmt;
+    const Node& n = ast_.at(stmt);
+    const Pos start = ast_.at(annos[0]).pos;
+    std::vector<NodeId> kids = std::move(annos);
+    for (i32 i = 0; i < n.children_count; ++i)
+        appendIf(kids, ast_.child(stmt, i));
+    Pos span = spanPos(start, n.pos);
+    span.line = start.line;
+    span.column = start.column;
+    return ast_.add(n.kind, span, n.value, kids, n.op);
+}
+
 NodeId Parser::parseStatement() {
     std::vector<NodeId> annos;
-    if (at(Kind::SymbolHash)) {
-        const Mark m = mark();
-        while (at(Kind::SymbolHash)) {
-            appendIf(annos, parseAnno());
-            skipLineEnds();
-        }
-        if (!at(Kind::Let)) {
-            rewind(m);
-            annos.clear();
-        }
+    while (at(Kind::SymbolHash)) {
+        appendIf(annos, parseAnno());
+        skipLineEnds();
     }
     if (at(Kind::Let)) return parseLet(std::move(annos), false);
-    if (at(Kind::TypeKw)) return parseAlias();
+    if (at(Kind::TypeKw)) return withPrefixAnnos(std::move(annos), parseAlias());
     if (at(Kind::Ret)) {
         const Pos p = tok_.pos;
         next();
         if (eat(Kind::SymbolSemicolon)) {
             eat(Kind::LineEnd);
-            return ast_.add(NodeKind::RetVoid, p);
+            return withPrefixAnnos(std::move(annos), ast_.add(NodeKind::RetVoid, p));
         }
         NodeId e = parseExpr();
         eat(Kind::SymbolSemicolon);
         eat(Kind::LineEnd);
         std::vector<NodeId> kids;
         appendIf(kids, e);
-        return ast_.add(NodeKind::Ret, p, {}, kids);
+        return withPrefixAnnos(std::move(annos), ast_.add(NodeKind::Ret, p, {}, kids));
     }
     if (at(Kind::Break) || at(Kind::Continue)) {
         const bool brk = at(Kind::Break);
@@ -1224,10 +1230,12 @@ NodeId Parser::parseStatement() {
         }
         eat(Kind::SymbolSemicolon);
         eat(Kind::LineEnd);
-        return ast_.add(brk ? NodeKind::Break : NodeKind::Continue, p, lab);
+        return withPrefixAnnos(std::move(annos), ast_.add(brk ? NodeKind::Break : NodeKind::Continue, p, lab));
     }
-    if (at(Kind::Loop) || (at(Kind::ID) && peekIs(Kind::SymbolColon) && la(2).kind == Kind::Loop)) return parseLoop();
-    if (at(Kind::For) || (at(Kind::ID) && peekIs(Kind::SymbolColon) && la(2).kind == Kind::For)) return parseForIn();
+    if (at(Kind::Loop) || (at(Kind::ID) && peekIs(Kind::SymbolColon) && la(2).kind == Kind::Loop))
+        return withPrefixAnnos(std::move(annos), parseLoop());
+    if (at(Kind::For) || (at(Kind::ID) && peekIs(Kind::SymbolColon) && la(2).kind == Kind::For))
+        return withPrefixAnnos(std::move(annos), parseForIn());
 
     if (at(Kind::ID)) {
         int i = 1;
@@ -1245,7 +1253,8 @@ NodeId Parser::parseStatement() {
             NodeId v = parseExpr();
             eat(Kind::SymbolSemicolon);
             eat(Kind::LineEnd);
-            return ast_.add(NodeKind::StaticFieldSet, ast_.at(path).pos, field, std::vector<NodeId>{path, v});
+            return withPrefixAnnos(std::move(annos), ast_.add(NodeKind::StaticFieldSet, ast_.at(path).pos, field,
+                                                              std::vector<NodeId>{path, v}));
         }
         i = 1;
         bool assign = false;
@@ -1287,7 +1296,7 @@ NodeId Parser::parseStatement() {
             appendIf(kids, parseExpr());
             eat(Kind::SymbolSemicolon);
             eat(Kind::LineEnd);
-            return ast_.add(NodeKind::Assign, start, {}, kids, op);
+            return withPrefixAnnos(std::move(annos), ast_.add(NodeKind::Assign, start, {}, kids, op));
         }
     }
     if (at(Kind::SymbolThis)) {
@@ -1329,7 +1338,7 @@ NodeId Parser::parseStatement() {
             appendIf(kids, parseExpr());
             eat(Kind::SymbolSemicolon);
             eat(Kind::LineEnd);
-            return ast_.add(NodeKind::Assign, start, {}, kids, op);
+            return withPrefixAnnos(std::move(annos), ast_.add(NodeKind::Assign, start, {}, kids, op));
         }
     }
 
@@ -1345,12 +1354,12 @@ NodeId Parser::parseStatement() {
         for (i32 i = 0; i < g.children_count; ++i)
             appendIf(kids, ast_.child(e, i));
         appendIf(kids, v);
-        return ast_.add(NodeKind::Set, ast_.at(e).pos, {}, kids);
+        return withPrefixAnnos(std::move(annos), ast_.add(NodeKind::Set, ast_.at(e).pos, {}, kids));
     }
     const bool semi = eat(Kind::SymbolSemicolon);
     eat(Kind::LineEnd);
-    return ast_.add(NodeKind::ExprStmt, ast_.at(e).pos, {}, std::vector<NodeId>{e},
-                    semi ? Kind::SymbolSemicolon : Kind::Invalid);
+    return withPrefixAnnos(std::move(annos), ast_.add(NodeKind::ExprStmt, ast_.at(e).pos, {}, std::vector<NodeId>{e},
+                                                      semi ? Kind::SymbolSemicolon : Kind::Invalid));
 }
 
 // ==== 顶层 ====
@@ -1367,16 +1376,21 @@ NodeId Parser::parseAnno() {
     std::vector<NodeId> kids;
     const bool has_arg = eat(Kind::ParStart);
     if (has_arg) {
-        if (at(Kind::INT) || at(Kind::FLOAT) || at(Kind::STR_LINE_RAW) || at(Kind::STR_TPL_OPEN) ||
-            at(Kind::CODE_POINT)) {
-            if (at(Kind::STR_TPL_OPEN))
-                kids.push_back(parseStringTpl());
-            else {
-                NodeId lit = parseLiteral();
-                appendIf(kids, lit);
+        skipLineEnds();
+        while (!at(Kind::ParEnd) && !at(Kind::Eof)) {
+            if (at(Kind::ID) && peekIs(Kind::SymbolEq)) {
+                const Pos field_pos = tok_.pos;
+                const std::string_view field = tok_.text;
+                next();
+                eat(Kind::SymbolEq);
+                kids.push_back(ast_.add(NodeKind::Ident, field_pos, field));
+                appendIf(kids, parseExpr());
+            } else {
+                appendIf(kids, parseExpr());
             }
-        } else {
-            appendIf(kids, parseType());
+            skipLineEnds();
+            if (!eat(Kind::SymbolComma)) break;
+            skipLineEnds();
         }
         eat(Kind::ParEnd);
     }
