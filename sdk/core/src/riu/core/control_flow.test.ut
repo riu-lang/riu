@@ -432,7 +432,7 @@ fn test_for_in_continue() {
 ; ==================== for-in Indexed ====================
 
 #NoCopy
-#Impl(Indexed<i32>)
+#Impl("Indexed<i32>")
 struct ForInBuf {
   data Array<i32>
 
@@ -453,7 +453,7 @@ struct ForInBuf {
   }
 }
 
-; 验证：`#Impl(Indexed<U>)` 隐藏索引 loop，item 为 U&
+; 验证：`#Impl("Indexed<U>")` 隐藏索引 loop，item 为 U&
 #Test
 fn test_for_in_indexed_sum() {
   let b = ForInBuf::make([1i32, 2i32, 3i32])
@@ -489,7 +489,7 @@ fn test_for_in_indexed_empty() {
 
 ; ==================== for-in Iter ====================
 
-#Impl(Iter<i32, End>)
+#Impl("Iter<i32, End>")
 struct ForInCounter {
   #Mut
   i i32
@@ -517,7 +517,7 @@ enum ForInNetErr {
   Fail
 }
 
-#Impl(Iter<i32, ForInNetErr>)
+#Impl("Iter<i32, ForInNetErr>")
 struct ForInStream {
   #Mut
   i i32
@@ -544,7 +544,7 @@ struct ForInStream {
   }
 }
 
-; 验证：`#Impl(Iter<U, End>)` 隐藏 next match，item 为 U 值
+; 验证：`#Impl("Iter<U, End>")` 隐藏 next match，item 为 U 值
 #Test
 fn test_for_in_iter_sum() {
   #Mut let c = ForInCounter::make(4)

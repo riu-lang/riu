@@ -85,7 +85,7 @@ def main(argv: list[str] | None = None) -> int:
 
     log(f"clang-tidy: {tidy}", dim=True)
     log(f"compile_commands: {compile_commands}\n", dim=True)
-    code = subprocess.run([tidy, f"-p{out_dir}", *files], cwd=root).returncode
+    code = subprocess.run([tidy, "-p", str(out_dir), *files], cwd=root).returncode
     if code != 0:
         err(f"\nclang-tidy exited with status {code}")
         return code

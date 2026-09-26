@@ -317,10 +317,11 @@ TypeInfo TypeInfo::fromFullName(const string& s) {
             const size_t start = i;
             while (i < s.size()) {
                 const char c = s[i];
-                if (c == '<' || c == '>' || c == ',') break;
+                if (c == '<' || c == '>' || c == ',' || c == '&' || c == '?') break;
                 ++i;
             }
             string n = s.substr(start, i - start);
+            TypeInfo t;
             if (i < s.size() && s[i] == '<') {
                 ++i;
                 vector<sp<TypeInfo>> args;
@@ -336,11 +337,26 @@ TypeInfo TypeInfo::fromFullName(const string& s) {
                 }
                 if (i < s.size() && s[i] == '>') ++i;
                 if (n.empty()) return {};
-                return {std::move(n), std::move(args)};
+                t = TypeInfo{std::move(n), std::move(args)};
+            } else if (n.empty()) {
+                return {};
+            } else if (n == "()") {
+                t = TypeInfo(TupleTag{}, vector<sp<TypeInfo>>{});
+            } else {
+                t = TypeInfo(std::move(n));
             }
-            if (n.empty()) return {};
-            if (n == "()") return TypeInfo(TupleTag{}, vector<sp<TypeInfo>>{});
-            return TypeInfo(std::move(n));
+            while (i < s.size()) {
+                if (s[i] == '&') {
+                    ++i;
+                    t = TypeInfo("Ref", {std::make_shared<TypeInfo>(t)});
+                } else if (s[i] == '?') {
+                    ++i;
+                    t = TypeInfo("Nullable", {std::make_shared<TypeInfo>(t)});
+                } else {
+                    break;
+                }
+            }
+            return t;
         }
     };
     Parser p{.s = s};

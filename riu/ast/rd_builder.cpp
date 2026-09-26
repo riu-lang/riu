@@ -442,7 +442,7 @@ SpecRef RdBuilder::specRefFromType(rd::NodeId id) {
 string RdBuilder::annoParenText(rd::NodeId anno) const {
     const auto& n = at(anno);
     if (n.op != rd::Kind::ParStart) return {};
-    size_t i = static_cast<size_t>(n.pos.offset);
+    auto i = static_cast<size_t>(n.pos.offset);
     while (i < _src.size() && _src[i] != '(')
         ++i;
     if (i >= _src.size()) return {};
@@ -597,10 +597,13 @@ SpecRef RdBuilder::specRefFromAnno(rd::NodeId anno) {
     if (text.empty()) text = annoArgText(anno);
     if (text.size() >= 2 && text.front() == '"' && text.back() == '"') {
         text = text.substr(1, text.size() - 2);
-    } else {
-        text.erase(std::remove_if(text.begin(), text.end(), [](unsigned char c) { return c == ' ' || c == '\t'; }),
-                   text.end());
     }
+    string compact;
+    compact.reserve(text.size());
+    for (unsigned char c : text) {
+        if (c != ' ' && c != '\t') compact.push_back(static_cast<char>(c));
+    }
+    text = std::move(compact);
     TypeInfo ti = TypeInfo::fromFullName(text);
     if (ti.empty()) {
         r.name = text;

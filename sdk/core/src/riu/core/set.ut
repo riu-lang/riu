@@ -3,7 +3,7 @@
 ; keys() 返回克隆的 Array<T>（快照）；直接 for-in 走 Indexed，不 clone。
 
 #NoCopy
-#Impl(Indexed<T>)
+#Impl("Indexed<T>")
 struct Set<T> {
   _items Map<T, bool>
 

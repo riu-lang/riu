@@ -1,7 +1,7 @@
 ; require-sdk
 ; 同一类型 Indexed + Iter：走 Indexed，item 为 U&
-#Impl(Indexed<i32>)
-#Impl(Iter<i32, End>)
+#Impl("Indexed<i32>")
+#Impl("Iter<i32, End>")
 struct Both {
     #Mut
     v i32

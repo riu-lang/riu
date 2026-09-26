@@ -12,6 +12,7 @@
 #include "sema/const_eval.h"
 #include "sema/name_resolver.h"
 #include "sema/sema_pass_detail.h"
+#include "sema/validate_builtin_annos.h"
 #include "type_validate.h"
 
 #include <algorithm>
@@ -353,6 +354,7 @@ void SemaPass::run() {
     // #23：字段默认可引用已求值的 #Cval。结构字面量常量在本循环里若先碰到，
     // 走 ConstEvaluator::omittedFieldConst 对 init 现求；这里再统一缓存。
     evalFieldDefaults(cvalEv);
+    sema::validateBuiltinAnnos(_file, cvalEv);
     for (auto& gv : _file->getGlobalVars()) {
         if (!gv) continue;
         try {

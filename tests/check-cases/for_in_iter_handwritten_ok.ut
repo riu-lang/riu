@@ -1,6 +1,6 @@
 ; require-sdk
 ; #2 2.3：手写 loop + match next 与 for-in 同一条 IterItem
-#Impl(Iter<i32, End>)
+#Impl("Iter<i32, End>")
 struct Counter {
     #Mut
     i i32

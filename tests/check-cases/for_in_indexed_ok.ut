@@ -1,6 +1,6 @@
 ; require-sdk
-; #2 2.1：`#Impl(Indexed<U>)` 可 for-in，item 为 U&
-#Impl(Indexed<i32>)
+; #2 2.1：`#Impl("Indexed<U>")` 可 for-in，item 为 U&
+#Impl("Indexed<i32>")
 struct Pair {
     #Mut
     a i32

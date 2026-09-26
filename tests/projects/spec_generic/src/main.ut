@@ -5,7 +5,7 @@ struct To<T> {
     fn to() T
 }
 
-#Impl(To<i32>)
+#Impl("To<i32>")
 struct Counter {
     n i32
 
@@ -14,7 +14,7 @@ struct Counter {
     }
 }
 
-#Impl(To<T>)
+#Impl("To<T>")
 struct Cell<T> {
     v T
 
@@ -30,7 +30,7 @@ struct Cell<T> {
     }
 }
 
-#Impl(To<i32>)
+#Impl("To<i32>")
 struct Wrap<T> {
     n i32
 

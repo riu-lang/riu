@@ -1,10 +1,10 @@
-; #15：#Impl(To<i32>) 不满足 To<bool>
+; #15：#Impl("To<i32>") 不满足 To<bool>
 #Spec
 struct To<T> {
     fn to() T
 }
 
-#Impl(To<i32>)
+#Impl("To<i32>")
 struct Counter {
     n i32
 

@@ -4,8 +4,8 @@ struct To<T> {
     fn to() T
 }
 
-#Impl(To<i32>)  ; check: E1103
-#Impl(To<bool>)
+#Impl("To<i32>")  ; check: E1103
+#Impl("To<bool>")
 struct S {
 }
 

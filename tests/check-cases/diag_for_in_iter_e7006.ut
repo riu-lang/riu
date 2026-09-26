@@ -4,7 +4,7 @@ enum NetErr {
     Fail
 }
 
-#Impl(Iter<i32, NetErr>)
+#Impl("Iter<i32, NetErr>")
 struct Stream {
     _n i32
 

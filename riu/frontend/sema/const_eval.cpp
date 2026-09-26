@@ -185,8 +185,9 @@ std::optional<ConstantValue> ConstEvaluator::evalLiteral(LiteralNode* lit) {
     if (auto obj = dynamic_cast<LiteralObjNode*>(lit)) {
         return evalLiteralObj(obj);
     }
-    // LiteralCodePoint / LiteralString / StringTemplate —— Phase 1 不支持
-    // (String 长期解见 DRAFT §4.6)
+    if (auto str = dynamic_cast<LiteralStringNode*>(lit)) {
+        return ConstantValue::makeString(str->codePoints());
+    }
     return std::nullopt;
 }
 
@@ -530,7 +531,7 @@ std::optional<ConstantValue> ConstEvaluator::omittedFieldConst(StructFieldNode* 
         return zeroHandleConst(f->getType());
     }
     _defaultStack.insert(f);
-    DefaultEvalGuard guard{_defaultStack, f};
+    DefaultEvalGuard guard{.stack = _defaultStack, .field = f};
     inferFlexibleIntForType(f->init(), f->getType());
     return eval(f->init());
 }

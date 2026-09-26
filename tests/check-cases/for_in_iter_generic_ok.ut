@@ -1,6 +1,6 @@
 ; require-sdk
-; #2 2.3：开 impl `#Impl(Iter<T, End>) struct Cell<T>`
-#Impl(Iter<T, End>)
+; #2 2.3：开 impl `#Impl("Iter<T, End>") struct Cell<T>`
+#Impl("Iter<T, End>")
 struct Cell<T> {
     #Mut
     taken bool

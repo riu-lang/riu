@@ -1,7 +1,7 @@
 use riu.core.*
 
 #NoCopy
-#Impl(Indexed<i32>)
+#Impl("Indexed<i32>")
 struct Buf {
     data Array<i32>
 
@@ -23,7 +23,7 @@ struct Buf {
 }
 
 #NoCopy
-#Impl(Indexed<T>)
+#Impl("Indexed<T>")
 struct Slot<T> {
     #Mut
     v T

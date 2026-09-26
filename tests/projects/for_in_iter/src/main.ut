@@ -1,6 +1,6 @@
 use riu.core.*
 
-#Impl(Iter<i32, End>)
+#Impl("Iter<i32, End>")
 struct Counter {
     #Mut
     i i32
@@ -25,7 +25,7 @@ struct Counter {
 }
 
 #NoCopy
-#Impl(Iter<i32, End>)
+#Impl("Iter<i32, End>")
 struct Once {
     #Mut
     taken bool
@@ -52,7 +52,7 @@ enum NetErr {
     Fail
 }
 
-#Impl(Iter<i32, NetErr>)
+#Impl("Iter<i32, NetErr>")
 struct Stream {
     #Mut
     i i32

@@ -1,6 +1,6 @@
 ; require-sdk
-; #2 2.1：开 impl `#Impl(Indexed<T>) struct Cell<T>`
-#Impl(Indexed<T>)
+; #2 2.1：开 impl `#Impl("Indexed<T>") struct Cell<T>`
+#Impl("Indexed<T>")
 struct Cell<T> {
     #Mut
     v T

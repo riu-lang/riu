@@ -4,7 +4,7 @@
 ; 模块路径 `map` / `riu.core.map` 已登记，供该文件内自由函数使用。
 
 #NoCopy
-#Impl(Indexed<K>)
+#Impl("Indexed<K>")
 struct Map<K, V> {
   _keys Array<K>
   _vals Array<V>

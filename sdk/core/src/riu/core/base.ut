@@ -132,7 +132,7 @@ struct ToJson {
   fn to_json() String
 }
 
-; Indexed：按索引遍历。for-in 第二档认 `#Impl(Indexed<U>)`（#2）。
+; Indexed：按索引遍历。for-in 第二档认 `#Impl("Indexed<U>")`（#2）。
 ; 只有签名。at 不叫 get：Map 已有 get(key K&) V?。
 #Spec
 struct Indexed<T> {
@@ -152,7 +152,7 @@ enum IterItem<T, E> {
   Error(E)
 }
 
-; Iter：消费型遍历。for-in 第三档认 `#Impl(Iter<U, E>)`（#2）。
+; Iter：消费型遍历。for-in 第三档认 `#Impl("Iter<U, E>")`（#2）。
 ; 只有签名。next 写游标，返回 IterItem；本身不是 T ! E。
 #Spec
 struct Iter<T, E> {

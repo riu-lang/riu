@@ -1,6 +1,6 @@
 ; require-sdk
-; #2 2.3：`#Impl(Iter<U, End>)` 可 for-in，item 为 U 值；E = End 不必 !
-#Impl(Iter<i32, End>)
+; #2 2.3：`#Impl("Iter<U, End>")` 可 for-in，item 为 U 值；E = End 不必 !
+#Impl("Iter<i32, End>")
 struct Counter {
     #Mut
     i i32

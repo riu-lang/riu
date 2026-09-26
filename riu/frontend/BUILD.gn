@@ -30,6 +30,7 @@ static_library("riu_frontend") {
     "sema/sema_expr.cpp",
     "sema/sema_pass.cpp",
     "sema/sema_pass_detail.cpp",
+    "sema/validate_builtin_annos.cpp",
     "sema/sema_stmt.cpp",
     "sema/type_of_call.cpp",
     "sema/type_of_ctrl.cpp",

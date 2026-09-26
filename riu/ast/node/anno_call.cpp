@@ -6,9 +6,11 @@
 #include "expr_node.h"
 #include "literal_node.h"
 
+#include <string_view>
+
 namespace {
 
-string compareOpText(ExprCompareNode::Op op) {
+std::string_view compareOpText(ExprCompareNode::Op op) {
     switch (op) {
     case ExprCompareNode::Op::Eq:
         return "==";
@@ -44,7 +46,7 @@ string exprAnnoText(ExprNode* expr) {
     if (!expr) return {};
     if (auto* lit = dynamic_cast<ExprLiteralNode*>(expr)) return literalAnnoText(lit->literal());
     if (auto* cmp = dynamic_cast<ExprCompareNode*>(expr)) {
-        return exprAnnoText(cmp->left()) + compareOpText(cmp->op()) + exprAnnoText(cmp->right());
+        return exprAnnoText(cmp->left()) + string(compareOpText(cmp->op())) + exprAnnoText(cmp->right());
     }
     if (auto* arr = dynamic_cast<ExprArrayNode*>(expr)) {
         string out = "[";
@@ -52,18 +54,18 @@ string exprAnnoText(ExprNode* expr) {
             if (i > 0) out += ", ";
             out += exprAnnoText(arr->elements()[i]);
         }
-        out += "]";
+        out += ']';
         return out;
     }
     if (auto* path = dynamic_cast<ExprPathCallNode*>(expr)) {
         string out = path->lhsPath().dotted() + "::" + path->variantName().getText();
         if (!path->args().empty()) {
-            out += "(";
+            out += '(';
             for (size_t i = 0; i < path->args().size(); ++i) {
                 if (i > 0) out += ", ";
                 out += exprAnnoText(path->args()[i]);
             }
-            out += ")";
+            out += ')';
         }
         return out;
     }

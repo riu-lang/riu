@@ -273,6 +273,7 @@ DEF_ERR(
 DEF_ERR(3117, "`#Inline` requires `#Cval` on `let` declaration (DRAFT-let-unify §3.4)")
 DEF_ERR(3118, "Cannot take address of `#Inline` constant `{}`: inline constants have no storage address "
               "(like C `#define`; use a plain `#Cval` if an address is needed)")
+DEF_ERR(3119, "Annotation '#{}' is not repeatable on this declaration (#6 builtin schema)")
 
 // ── DRAFT-const-eval Phase 2: 全局 const-eval ─────────────────────────
 DEF_ERR(3140, "Global `let {}` initializer is not a constant expression (DRAFT-const-eval §2; allowed: literals, "
@@ -308,6 +309,7 @@ DEF_ERR(3158, "Cannot read uninitialized #Mut global '{}' (DRAFT-static-vars §6
               "before first read)")
 DEF_ERR(3160, "`for-in` iterable must be Array<T>, [T*N], Indexed, or Iter, got '{}'")
 DEF_ERR(3161, "`_` is a discard slot, not a name; cannot be used as {}")
+DEF_ERR(3163, "Annotation '#{}' argument is not a constant expression (#6 builtin schema)")
 DEF_ERR(3162, "Field '{}' default is not a constant expression (literals, `#Cval` names, arithmetic, "
               "struct literals, or empty `Array<T>`)")
 
