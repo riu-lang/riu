@@ -3,9 +3,9 @@
 
 // LSP textDocument/semanticTokens 支持
 //
-// 复跑 rd Scanner 把 token 类型映射到 LSP semanticTokens 协议的
-// (deltaLine, deltaStartChar, length, tokenType, tokenModifiers)
-// 五元组编码。ID 的 class/function/method 等由 FlatAst 覆盖；语法错时仍有 lexer 着色。
+// 复跑 rd Scanner + FlatAst，仅把语义分类（标识符角色、# 注解）编码为
+// (deltaLine, deltaStartChar, length, tokenType, tokenModifiers) 五元组。
+// 词法级 token 由编辑器 SyntaxHighlighter / TextMate 负责，不在此重复发送。
 
 #pragma once
 

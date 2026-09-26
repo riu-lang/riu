@@ -5,7 +5,7 @@
 //
 // 本文件是独立 LSP 服务进程的主入口:
 // - 直接进入 stdio JSON-RPC 主循环（riu::lsp::runServer）
-// - 不解析任何命令行参数；调用方（VSCode / IntelliJ LSP4IJ）按 LSP 规范驱动
+// - 不解析任何命令行参数；调用方（VSCode / IntelliJ LSP 客户端）按 LSP 规范驱动
 // - 仅处理 --version（打印版本号后退出）
 
 #include "lsp/lsp_server.h"

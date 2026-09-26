@@ -178,7 +178,7 @@ stdlib = { sdk = "stdlib" }
 ## 编辑器支持
 
 - [`plugins/riu-vscode/`](plugins/riu-vscode/) —— VSCode 扩展
-- [`plugins/riu-idea/`](plugins/riu-idea/) —— IntelliJ 系插件，通过 [LSP4IJ](https://github.com/redhat-developer/lsp4ij) 接入 `riu-lsp`
+- [`plugins/riu-idea/`](plugins/riu-idea/) —— IntelliJ 系插件，通过平台内置 LSP API 接入 `riu-lsp`（需 IDEA 2025.2+ Ultimate 系）
 
 ## 测试
 

@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -137,6 +138,7 @@ using OverrideMap = std::unordered_map<rd::i32, OverrideEntry>;
 struct CollectState {
     OverrideMap overrides;
     std::vector<rd::Token> ids; // 按 offset 升序的 default ID
+    std::unordered_set<rd::i32> metadataHashOffsets; // #Name 的 '#' 位置
 };
 
 void putIndex(OverrideMap& m, rd::i32 index, TT kind, int mods = 0) {
@@ -209,7 +211,16 @@ void collectOverrides(const rd::FlatAst& ast, rd::NodeId id, CollectState& state
         putNameInSpan(state, n.pos, n.value, TT::Function, MOD_DECLARATION);
         break;
     case rd::NodeKind::Anno:
-        putNameInSpan(state, n.pos, n.value, TT::Metadata, 0);
+        // Anno.pos 仅覆盖 '#'；Name 在下一 token，不能靠 inSpan 查找。
+        state.metadataHashOffsets.insert(n.pos.offset);
+        if (!n.value.empty()) {
+            for (const auto& t : state.ids) {
+                if (t.text != n.value) continue;
+                if (t.pos.offset <= n.pos.offset) continue;
+                putIndex(state.overrides, t.index, TT::Metadata, 0);
+                break;
+            }
+        }
         break;
     case rd::NodeKind::Field:
         putAtOffset(state, n.pos.offset, TT::Property, MOD_DECLARATION);
@@ -368,17 +379,21 @@ std::vector<int> computeSemanticTokens(std::string_view text) {
     int prevLine = 0;
     int prevChar = 0;
 
-    for (const auto& tok : raw) {
-        int kind = classify(tok.kind);
-        int mods = 0;
-        if (kind < 0) continue;
+    const auto& metadataHashOffsets = state.metadataHashOffsets;
 
+    for (const auto& tok : raw) {
+        // 只发语义信息（标识符分类 + 注解 '#'），词法级 token 留给编辑器 SyntaxHighlighter / TextMate。
+        int kind = -1;
+        int mods = 0;
         if (tok.kind == rd::Kind::ID) {
             auto it = overrides.find(tok.index);
-            if (it != overrides.end()) {
-                kind = it->second.first;
-                mods = it->second.second;
-            }
+            if (it == overrides.end()) continue;
+            kind = it->second.first;
+            mods = it->second.second;
+        } else if (tok.kind == rd::Kind::SymbolHash && metadataHashOffsets.contains(tok.pos.offset)) {
+            kind = static_cast<int>(TT::Metadata);
+        } else {
+            continue;
         }
 
         if (tok.text.find('\n') != std::string_view::npos) continue;

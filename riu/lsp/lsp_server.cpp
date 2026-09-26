@@ -587,7 +587,7 @@ static void handleDefinition(ServerState& st, const json& msg) {
     }
     // 始终返回 LocationLink：originSelectionRange 限制 ctrl-hover 时
     // 客户端显示的可点击下划线范围（否则没有 PSI 的客户端会按整行兜底）。
-    // LSP4IJ 等现代客户端均支持 LocationLink；不支持的客户端会忽略。
+    // 现代 LSP 客户端均支持 LocationLink；不支持的客户端会忽略。
     json link = {
         {"originSelectionRange", rangeToJson(hit.start, hit.end)},
         {"targetUri", loc->first},
