@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| 状态 | 实施中 |
+| 状态 | 已落地 |
 | 开 | 2026-09-13 |
 | 旧档 | `DRAFT-spec-unify.md` [#1.P] / 未落地的 `DRAFT-anno-struct.md`。反射 `#Reflect` 命名参数挂 [#4](4-reflect.md) |
 
@@ -123,4 +123,4 @@ const-eval 已有：字面量、`#Cval` 名、算术 / 比较 / `&&` `||`、`#Co
 
 ## 落地
 
-（未开始）
+- 2026-09-26（`notes/0.23`）：切片 1–4 语法 / AST / 白名单 / CfgStrip；切片 5 SDK `sdk/core/src/riu/core/anno.ut`（`enum AnnoType` + `#Anno struct If/Impl/Align/CName/Anno`，不进 `pkg`）+ §11 / 附录 A/B/C/D / §7.8 / §12 / CHANGELOG。编译器仍白名单，不读 SDK struct。用户 `#Anno struct` 不登记。`Platform::*` 仍归 #10。

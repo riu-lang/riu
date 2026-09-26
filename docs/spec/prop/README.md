@@ -24,7 +24,7 @@
 | 3 | 泛型 enum | 已落地 | [3-generic-enum.md](3-generic-enum.md) |
 | 4 | 反射补全 | 提议 | [4-reflect.md](4-reflect.md) |
 | 5 | `format` 类 printf | 提议 | [5-format.md](5-format.md) |
-| 6 | 条件编译 + 用户注解 | 提议 | [6-cond-compile.md](6-cond-compile.md) |
+| 6 | 条件编译 + 用户注解 | 已落地 | [6-cond-compile.md](6-cond-compile.md) |
 | 7 | 代码生成代码（派生） | 提议 | [7-codegen.md](7-codegen.md) |
 | 8 | 异步 / 并发 | 提议 | [8-async.md](8-async.md) |
 | 9 | 包管理：sdk / path / git | 已落地 | [9-pkg.md](9-pkg.md) |

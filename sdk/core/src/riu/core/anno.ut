@@ -1,0 +1,43 @@
+; 内置注解 schema 给人看。不进 pkg，不扁平进 riu.core.*。
+; 编译器仍走白名单（riu/include/builtin_annos.h），不读本文件，也不按 `#Anno struct` 登记。
+; 用户自己写 `#Anno struct Foo` 同样不生效；`#Foo` 仍未知名。
+
+enum AnnoType {
+  Code
+  StructDecl
+  FnDecl
+  ExternFn
+  Field
+  EnumDecl
+  GlobalLet
+  AliasDecl
+}
+
+; 条件编译：罩下一条语句或声明。假分支仍 parse，Sema 前摘掉。
+#Anno(repeatable=false, on=[AnnoType::Code, AnnoType::StructDecl, AnnoType::FnDecl, AnnoType::ExternFn, AnnoType::Field, AnnoType::EnumDecl, AnnoType::GlobalLet, AnnoType::AliasDecl])
+struct If {
+  value bool
+}
+
+; spec 实现宣告。定义侧字段是 Type；使用处写无插值字符串或裸 ident。
+#Anno(repeatable=true, on=[AnnoType::StructDecl])
+struct Impl {
+  value String
+}
+
+#Anno(repeatable=false, on=[AnnoType::StructDecl, AnnoType::Field])
+struct Align {
+  value i32
+}
+
+#Anno(repeatable=false, on=[AnnoType::ExternFn])
+struct CName {
+  value String
+}
+
+; 元注解。本轮只作文档；编译器不按它登记用户 struct。
+#Anno(repeatable=false)
+struct Anno {
+  repeatable bool = false
+  on Array<AnnoType> = []
+}

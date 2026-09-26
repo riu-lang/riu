@@ -1,0 +1,4 @@
+; require-sdk
+use riu.core.anno  ; check: E5018
+
+fn main() {}

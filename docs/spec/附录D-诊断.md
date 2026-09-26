@@ -232,7 +232,7 @@ let-unify（E3112..E3116；引入自 [draft/DRAFT-let-unify.md](draft/DRAFT-let-
 
 | 码     | 模板 |
 |--------|------|
-| E3112 | `Unknown \`let\` annotation '#{}' (only '#Mut', '#Frozen', '#Cval' are supported on \`let\`; DRAFT-let-unify §3.4)` |
+| E3112 | `Unknown \`let\` annotation '#{}' (only '#Mut', '#Frozen', '#Cval', '#Inline' are supported on \`let\`; DRAFT-let-unify §3.4)` |
 | E3113 | `\`let {}\` requires a type or initializer (DRAFT-let-unify §3.4)` |
 | E3114 | `\`let {} <type>\` requires an initializer (use \`#Mut let\` for deferred assignment; DRAFT-let-unify §3.4)` |
 | E3115 | `Annotations '#{}' and '#{}' are mutually exclusive on \`let\` (DRAFT-let-unify §3.4)` |
@@ -283,6 +283,13 @@ for-in（E3160；§5.5.4）：
 | 码 | 模板 |
 |---|---|
 | E3162 | `` Field '{}' default is not a constant expression (literals, `#Cval` names, arithmetic, struct literals, or empty `Array<T>`) `` |
+
+内置注解 schema（E3119 / E3163；#6，§11.1.3 / §11.16）：
+
+| 码 | 模板 |
+|---|---|
+| E3119 | `Annotation '#{}' is not repeatable on this declaration (#6 builtin schema)` |
+| E3163 | `Annotation '#{}' argument is not a constant expression (#6 builtin schema)` |
 
 构造模型重构（E3120..E3129；引入自 [draft/DRAFT-static-fn.md](draft/DRAFT-static-fn.md)，落地章节 §7.10）：
 

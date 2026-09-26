@@ -138,7 +138,9 @@
 | `riu.core` | riu core SDK | §10.4.1.1 | 隐式 SDK 包（`sdk/core/`，始终加载） |
 | `stdlib` | riu stdlib | §10.4.1.1 | 显式 SDK 包（`sdk/stdlib/`，`{ sdk = "stdlib" }`） |
 | `base.ut` | SDK base | §10.4 | 内置类型 / 内置函数声明源 |
-| 构建注解 | build annotation | §11 | `#Name` 形态 |
+| 构建注解 | build annotation | §11 | `#Name` / `#Name(...)` 标签 |
+| `#If` | cfg annotation | §11.16 | 条件编译；假分支 Sema 前摘掉 |
+| `AnnoType` | annotation attach site | §11.15 / SDK `anno.ut` | 文档用附着点枚举；编译器不读 |
 | `#Builtin` | compiler-internal annotation | §11.2 | 编译器合成实现 |
 | `#Test` | test annotation | §11.3 | 标记单元测试函数；仅 `*.test.ut` 中允许 |
 | 测试文件 | test file | §11.3.3 | 以 `.test.ut` 结尾；`riu test` 专属 |

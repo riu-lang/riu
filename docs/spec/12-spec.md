@@ -69,13 +69,13 @@ draftBound ::= modulePath? ID genericDef?     ; 例：ToString / pkg.Display / T
 
 §12.2.1.1 `#Impl(D)` 顶行注解附着在 `struct` 上，宣告该 struct 实现 spec `D`。可重复出现（多 spec 由多条 `#Impl(D)` 平铺），等价于旧形态 `Type : D1 + D2 { ... }` 的实现关系。
 
-§12.2.1.2 `#Impl(D)` 不接受嵌套 spec 参数之外的形态；turbofish `#Impl(To<i32>)` 通过 g4 `buildAnno` 的 `arg=ID genericDef?` 槽承载（§11.1.1.1）。
+§12.2.1.2 `#Impl(D)` 的 `D` 由位置实参给出：无插值字符串（按 `type` 再解析）或裸 ident（§11.1.1.3）。`#Impl("To<i32>")` / `#Impl(ToString)` 合法。
 
 §12.2.1.3 被宣告的 struct **应当**为 owned 名义类型；语法层不可能在 struct 头位写 `T&` / `T?`（与 §7.1 一致）。泛型 struct 可写 `#Impl(D) struct Foo<T> { ... }`；每个泛型实例化产出一份独立的实现位（与 §6.4.2.3 单态化路径一致）。`D` 带类型参数时，同一 `S` 对同一 spec **基名**只能挑下面三种之一（每种一条，§12.2.2.3）：
 
-- 闭、非泛型：`#Impl(D<i32>) struct S` — 只这一份。
-- 闭、泛型：`#Impl(D<i32>) struct S<T>` — 任意 `T` 的 `S<T>` 都实现 `D<i32>`（与 `#Impl(ToString) struct Foo<T>` 同一模型：impl 不提 `T`）。
-- 开：`#Impl(D<T>) struct S<T>` / `#Impl(D<K>) struct Map<K, V>` — 每个单态一份；实参可以是实现者的任一形参，不必与 spec 形参同名。
+- 闭、非泛型：`#Impl("D<i32>") struct S` — 只这一份。
+- 闭、泛型：`#Impl("D<i32>") struct S<T>` — 任意 `T` 的 `S<T>` 都实现 `D<i32>`（与 `#Impl(ToString) struct Foo<T>` 同一模型：impl 不提 `T`）。
+- 开：`#Impl("D<T>") struct S<T>` / `#Impl("D<K>") struct Map<K, V>` — 每个单态一份；实参可以是实现者的任一形参，不必与 spec 形参同名。
 
 无 `where`、不特化：不能写「仅当 `T : Foo`」或另开一份 `S<i32>` 更特殊的 `#Impl`。
 
@@ -158,7 +158,7 @@ struct Bad {
 
 §12.4.2.1 `#Impl(D)` 仅可附着于 `structDecl`（含 spec？否——见 §12.4.1.2）；附着于其它声明位由 ast_builder 拒收报 **E1110**。
 
-§12.4.2.2 `#Impl(D)` **必须**带单参数 `(D)`，其中 D 由 `ID genericDef?` 形态表达（§11.1.1.1 单参数糖）。缺参 / 多参 / 字面量参报 **E2010**（注解参数形态不合）。
+§12.4.2.2 `#Impl(D)` **必须**带单参数。`D` 为无插值字符串或裸 ident（§11.1.1.3）。缺参报 **E2005**。
 
 §12.4.2.3 同一 struct 上多条 `#Impl(D)` 顺序无语义；重复同名 **基名** D（含不同实参）按 §12.2.2.3 报 **E1103**。实参数与 spec 形参数不一致报 **E1142**。
 

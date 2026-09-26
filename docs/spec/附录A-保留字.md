@@ -61,7 +61,9 @@
 | `#Builtin` | 编译器内部合成实现 | §11.2 |
 | `#Test` | 单元测试函数（仅 `*.test.ut`） | §11.3 |
 | `#Spec` | 把 struct 声明转为 spec（仅签名集合） | §11.4 / §12.1 |
-| `#Impl(D)` | 宣告 struct 实现 spec `D`（单参数糖） | §11.4 / §12.2 |
+| `#Impl(D)` | 宣告 struct 实现 spec `D`（字符串或裸 ident） | §11.4 / §12.2 |
+| `#If(cond)` | 条件编译：假分支 Sema 前摘掉 | §11.16 |
+| `#Anno(...)` | SDK 文档用元注解；不登记用户 struct | §11.15 |
 | `#Const` | `#Const fn`：编译期常量函数（不改外部状态） | §11.6 |
 | `#Frozen` | 参数 / 字段深不可变；局部 `#Frozen let` 同语义 | §11.7 / §5.1.1 |
 | `#Val` | 字段浅不可变 | §11.8 |
@@ -70,14 +72,14 @@
 | `#Static` | struct body 内方法（关联函数）+ 字段（静态字段） | §11.11 / §7.10 / §7.11 |
 | `#Fallible(E)` | 失败声明：函数可能以错误 enum `E` 失败（草案，单参数糖） | DRAFT-错误.md §3 |
 | `#NoReturn` | 不返回声明：函数永不正常返回（草案，零参数） | DRAFT-错误.md §8.3 |
-| `#CName` | `extern` 块内指定链接时 C ABI 符号名（单参） | §6.6.1.3 / §11.5.1 |
+| `#CName` | `extern` 块内指定链接时 C ABI 符号名（单参字符串） | §6.6.1.3 / §11.5.1 |
 | `#Reflect` | 强制保留反射 rodata | §11.12 / §13.6 |
 | `#NoCopy` | 结构体不可隐式复制 | §11.13 / §7.6a |
 | `#Inline` | 全局 `#Cval` 常量内联（无 GlobalVariable） | §11.14 |
 | `#Packed` | 关掉 struct 字段间自然 pad | §7.5.3 / §11.5 |
 | `#Align(N)` | struct / 字段对齐至少为 2 的幂 `N` | §7.5.3 / §11.5 |
 
-§A.3.1 v1 正式注解即上表。`#Fallible(E)` / `#NoReturn` 由 DRAFT-错误.md 引入。早期 `#DraftLike` 已废弃（§11.4.3）。用户自定义注解不支持（§11.15）。
+§A.3.1 v1 正式注解即上表。`#Fallible(E)` / `#NoReturn` 由 DRAFT-错误.md 引入。早期 `#DraftLike` 已废弃（§11.4.3）。用户 `#Anno struct` 不登记（§11.15）。
 
 ## A.4 运算符与符号 token
 

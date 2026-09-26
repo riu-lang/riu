@@ -33,13 +33,10 @@ globalConst    ::= buildAnno* 'let' ID type? '=' expr codeLineEnd
 
 aliasDecl      ::= 'type' ID '=' type codeLineEnd
 
-buildAnno      ::= '#' ID ( '(' annoArg ')' )? codeLineEnd
-annoArg        ::= ID ('<' typeParam (',' typeParam)* '>')?
-                 | INT | FLOAT
-                 | STR_LINE_RAW
-                 | '"' STR_TPL_TEXT* '"'
-                 | type
-                 ; 参数接受 ID（含 turbofish）/ 数字 / 字符串（无插值） / type 引用
+buildAnno      ::= '#' ID ( '(' (annoArg (',' annoArg)*)? ')' )? codeLineEnd
+annoArg        ::= ID '=' annoVal | annoVal
+annoVal        ::= expr
+                 ; 零或多实参；位置实参或 字段=值；槽内不 parse type（§11.1.1）
 ```
 
 ## B.2 类型
@@ -155,7 +152,7 @@ staticFieldDecl ::= buildAnno* ID type '=' expr LineEnd
 
 - `#Spec` 形态下 body 内只允许 `fn` 签名（无 body），不允许 `filedDecl` / `fnClean`（§12.1.1.1 / §11.4.1）。
 - 非 spec 形态可含字段（实例 `filedDecl` + `aliasDecl` + 静态 `staticFieldDecl`）、`fnClean`（析构 `fn ~()`，居于字段之后、其它 `fn` 之前）、实例方法 / 静态工厂（`#Static fn`）；构造函数形态已删除（§7.3.1.1），构造唯一通道为 `#Static fn` + `Self { ... }` 字段字面量。实例字段可选 `= expr` 须 const（E3162）；字面量省略规则见 §7.3.2.2。
-- `#Impl(D)` 接受单参数糖 `(ID genericDef?)`，可重复出现，宣告该 struct 实现 D。
+- `#Impl(D)` 实参为无插值字符串或裸 ident（§11.1.1.3），可重复出现，宣告该 struct 实现 D。
 
 ## B.5b 枚举（v0.x）
 
@@ -287,8 +284,8 @@ enumPattern    ::= ID '::' ID ( '(' ID (',' ID)* ')' )?          # patternEnum
 
 ```
 statement ::=
-    letAnno* 'let' ID type? ('=' expr)? codeLineEnd?               # statementLet
-  | letAnno* 'let' '(' ID (',' ID)+ ')' type? '=' expr codeLineEnd? # statementLetTuple
+    buildAnno* 'let' ID type? ('=' expr)? codeLineEnd?               # statementLet
+  | buildAnno* 'let' '(' ID (',' ID)+ ')' type? '=' expr codeLineEnd? # statementLetTuple
   | expr '[' expr (',' expr)* ']' '=' expr codeLineEnd?                   # statementSet
   | ID '::' ID '=' expr codeLineEnd?                                      # statementStaticFieldSet
   | (ID ':')? 'loop' loopInit? statementBlock codeLineEnd?                # statementLoop
@@ -305,9 +302,9 @@ statementBlock ::= '{' LineEnd*
                        (statement | comment | codeLineEnd)*
                    '}'
                    ; `{` 后 / 语句后 / `}` 前换行均可省（§2.3.2.3）
-
-letAnno        ::= '#' ID codeLineEnd?   ; #Mut / #Cval / #Frozen（let 声明专用，无单参槽）
 ```
+
+`parseStatement` 先收集 `buildAnno*` 再分流任意语句（`#If(true) println(...)` 合法，§11.16）。`riu.bnf` 文本把 `buildAnno*` 写在 `statementLet` / `statementLetTuple` 上；其余语句同类由 parser 接受。`let` 档位 `#Mut` / `#Cval` / `#Frozen` / `#Inline` 与 `#If` 同一前缀槽；形参仍是零参 `paramAnno`（§B.4）。
 
 > `statementLet` / `statementLetTuple` 由 let-unify 统一局部声明形态（注解严格 inline）；旧 `var` / `val` / `cval` 关键字已从 lexer 移除（附录 A §A.1.1），`#Mut let x T`（无 init）保留旧 `var x T` 的延后赋值语义（§5.1.1.3）。顶层 `globalConst` RHS 从 `literal` 升为 `expr`（常量表达式，const-eval 落地，§5.1.4.1.3）。
 
